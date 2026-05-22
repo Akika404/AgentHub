@@ -27,3 +27,7 @@ Standard three-process Electron app using Vue 3 + TypeScript, built with electro
 IPC pattern: renderer calls `window.api.<method>` → preload exposes it via `contextBridge` → main handles it with `ipcMain.handle/on`. Keep IPC surface minimal and typed via `src/preload/index.d.ts`.
 
 Output goes to `out/` (main/preload compiled) and `out/renderer/` (Vue bundle).
+
+## Rules
+Please follow the shared project rules under:
+- .claude/rules
