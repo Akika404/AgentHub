@@ -1,4 +1,4 @@
-## Think Before Coding
+# Think Before Coding
 
 - Requirements must be clear before implementing a new feature.
 - If requirements are ambiguous or incomplete, ask the user for clarification first.
