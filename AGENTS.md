@@ -29,5 +29,7 @@ IPC pattern: renderer calls `window.api.<method>` → preload exposes it via `co
 Output goes to `out/` (main/preload compiled) and `out/renderer/` (Vue bundle).
 
 ## Rules
+
 Please follow the shared project rules under:
+
 - .claude/rules
