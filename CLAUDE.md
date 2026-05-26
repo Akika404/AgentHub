@@ -58,5 +58,4 @@ When changing an API shape, edit it in `packages/shared/src/` so both ends pick 
 ## Submodule Rules
 
 - Before modifying any code under `apps/server`, you **must** first read `apps/server/CLAUDE.md`.
-- Before modifying any code under `apps/desktop`, you **must** first read `apps/desktop/CLAUDE.md`.
 - For any change involving the frontend-backend contract, **both files must be read**.
