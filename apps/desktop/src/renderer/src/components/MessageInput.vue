@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import type { MessageReplyRef } from '../api'
 
-const emit = defineEmits<{ (e: 'send', text: string): void }>()
+const props = defineProps<{
+  replyTo?: MessageReplyRef | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'send', payload: { text: string; replyTo?: MessageReplyRef }): void
+  (e: 'cancel-reply'): void
+}>()
 
 const text = ref('')
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+watch(
+  () => props.replyTo,
+  (v) => {
+    if (v) inputRef.value?.focus()
+  }
+)
 
 function submit(): void {
   const trimmed = text.value.trim()
   if (!trimmed) return
-  emit('send', trimmed)
+  emit('send', { text: trimmed, replyTo: props.replyTo ?? undefined })
   text.value = ''
 }
 
@@ -16,6 +32,9 @@ function onKey(event: KeyboardEvent): void {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     submit()
+  } else if (event.key === 'Escape' && props.replyTo) {
+    event.preventDefault()
+    emit('cancel-reply')
   }
 }
 </script>
@@ -23,8 +42,27 @@ function onKey(event: KeyboardEvent): void {
 <template>
   <div class="p-4 border-t border-surface-border bg-surface flex-shrink-0">
     <div class="flex flex-col">
+      <div
+        v-if="replyTo"
+        class="mb-2 flex items-start justify-between bg-[#f5f6f7] border-l-2 border-primary rounded-[6px] px-3 py-2"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="text-[12px] font-semibold text-text-main">回复 {{ replyTo.senderName }}</div>
+          <div class="text-[12px] text-text-muted line-clamp-2 break-words">
+            {{ replyTo.excerpt }}
+          </div>
+        </div>
+        <button
+          type="button"
+          class="ml-2 text-[#8f959e] hover:text-text-main p-0.5 rounded-[4px] hover:bg-[#eaecef] transition-colors"
+          @click="emit('cancel-reply')"
+        >
+          <span class="material-symbols-outlined text-[18px]">close</span>
+        </button>
+      </div>
       <div class="p-1">
         <textarea
+          ref="inputRef"
           v-model="text"
           class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-[14px] text-text-main placeholder-[#8f959e] bg-transparent leading-[22px]"
           placeholder="Type a message or /command..."

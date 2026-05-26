@@ -15,6 +15,13 @@ const isSelf = (): boolean =>
       <div
         class="bg-primary text-white p-3 rounded-[8px] rounded-tr-sm text-[14px] leading-[22px] whitespace-pre-wrap break-words"
       >
+        <div
+          v-if="message.replyTo"
+          class="mb-2 px-2.5 py-1.5 rounded-[6px] bg-white/15 border-l-2 border-white/60 text-[12px] leading-[18px]"
+        >
+          <div class="font-semibold opacity-90">回复 {{ message.replyTo.senderName }}</div>
+          <div class="opacity-80 line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
+        </div>
         {{ message.text }}
       </div>
       <span class="text-[12px] text-[#8f959e] mt-1">{{ formatTime(message.timestamp) }}</span>
@@ -31,6 +38,13 @@ const isSelf = (): boolean =>
       <div
         class="bg-[#f2f3f5] p-3 rounded-[8px] rounded-tl-sm text-[14px] leading-[22px] whitespace-pre-wrap break-words"
       >
+        <div
+          v-if="message.replyTo"
+          class="mb-2 px-2.5 py-1.5 rounded-[6px] bg-white border-l-2 border-primary text-[12px] leading-[18px] text-text-muted"
+        >
+          <div class="font-semibold text-text-main">回复 {{ message.replyTo.senderName }}</div>
+          <div class="line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
+        </div>
         {{ message.text }}
       </div>
     </div>

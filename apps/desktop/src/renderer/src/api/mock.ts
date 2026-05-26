@@ -237,7 +237,7 @@ export const mockApi: AgentHubApi = {
     return delay((networkMap[chatId] ?? []).map((n) => ({ ...n })))
   },
 
-  async sendMessage(chatId, text) {
+  async sendMessage(chatId, text, replyTo) {
     const message: TextMessage = {
       id: `m-local-${Date.now()}`,
       chatId,
@@ -250,7 +250,8 @@ export const mockApi: AgentHubApi = {
         initials: 'ME',
         accent: 'primary'
       },
-      text
+      text,
+      ...(replyTo ? { replyTo } : {})
     }
     const list = messageMap[chatId] ?? (messageMap[chatId] = [])
     list.push(message)

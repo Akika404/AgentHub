@@ -53,6 +53,8 @@ interface BaseMessage {
   id: string
   chatId: string
   timestamp: string
+  /** when true the message is pinned within the chat */
+  pinned?: boolean
 }
 
 export interface SystemMessage extends BaseMessage {
@@ -60,10 +62,21 @@ export interface SystemMessage extends BaseMessage {
   text: string
 }
 
+export interface MessageReplyRef {
+  /** id of the message being replied to */
+  messageId: string
+  /** display name of the original sender */
+  senderName: string
+  /** short excerpt of the original message content */
+  excerpt: string
+}
+
 export interface TextMessage extends BaseMessage {
   kind: 'text'
   sender: SenderInfo
   text: string
+  /** when present, this message is a reply that quotes another message */
+  replyTo?: MessageReplyRef
 }
 
 export interface TaskListMessage extends BaseMessage {
@@ -79,6 +92,10 @@ export interface OptionsMessage extends BaseMessage {
   text: string
   options: OptionItem[]
   placeholder?: string
+  /** when true the user has already chosen — options become read-only */
+  answered?: boolean
+  /** id of the option that was picked (when answered) */
+  answeredOptionId?: string
 }
 
 export type ChatMessage = SystemMessage | TextMessage | TaskListMessage | OptionsMessage
@@ -105,5 +122,5 @@ export interface AgentHubApi {
   getChatDetail(chatId: string): Promise<ChatDetail>
   listMessages(chatId: string): Promise<ChatMessage[]>
   getNetwork(chatId: string): Promise<NetworkNode[]>
-  sendMessage(chatId: string, text: string): Promise<TextMessage>
+  sendMessage(chatId: string, text: string, replyTo?: MessageReplyRef): Promise<TextMessage>
 }
