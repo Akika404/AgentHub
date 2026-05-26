@@ -3,6 +3,7 @@ packages:
   - 'packages/*'
 
 allowBuilds:
+  '@nestjs/core': false
   electron: true
   electron-winstaller: true
   esbuild: true
@@ -10,3 +11,6 @@ allowBuilds:
 onlyBuiltDependencies:
   - electron
   - esbuild
+
+ignoredBuiltDependencies:
+  - '@nestjs/core'

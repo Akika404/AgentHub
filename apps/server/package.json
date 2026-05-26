@@ -2,17 +2,40 @@
   "name": "@agenthub/server",
   "version": "0.0.0",
   "private": true,
-  "description": "AgentHub backend service (placeholder)",
-  "type": "module",
-  "main": "./src/index.ts",
+  "description": "AgentHub backend service (NestJS)",
+  "main": "dist/main.js",
   "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agenthub/shared": "workspace:*"
+    "@agenthub/shared": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.150",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.0",
+    "@openai/codex-sdk": "^0.133.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "ioredis": "^5.4.2",
+    "mysql2": "^3.11.5",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "typeorm": "^0.3.20"
   },
   "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.19.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3"
   }
 }
