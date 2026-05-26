@@ -59,4 +59,4 @@ When changing an API shape, edit it in `packages/shared/src/` so both ends pick 
 
 Please follow the shared project rules under:
 
-- .claude/rules
+- .agents/rules
