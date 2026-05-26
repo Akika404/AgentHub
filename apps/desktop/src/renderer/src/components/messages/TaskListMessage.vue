@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TaskListMessage } from '../../api'
+import { formatTime } from '../../utils/format'
 import SenderAvatar from './SenderAvatar.vue'
 
 defineProps<{ message: TaskListMessage }>()
@@ -9,9 +10,10 @@ defineProps<{ message: TaskListMessage }>()
   <div class="flex space-x-3">
     <SenderAvatar :sender="message.sender" />
     <div class="flex flex-col max-w-[80%] w-full">
-      <span class="text-[12px] text-[#8f959e] mb-1 ml-1 font-medium">{{
-        message.sender.name
-      }}</span>
+      <div class="flex items-center space-x-2 mb-1 ml-1">
+        <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
+        <span class="text-[12px] text-[#8f959e]">{{ formatTime(message.timestamp) }}</span>
+      </div>
       <div
         class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-[14px] w-full max-w-md shadow-card"
       >

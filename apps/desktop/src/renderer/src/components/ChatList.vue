@@ -25,14 +25,14 @@ const emit = defineEmits<{
           search
         </span>
         <input
-          class="w-full pl-8 pr-3 py-1.5 text-[14px] bg-[#f2f3f5] border border-transparent rounded-[6px] focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-[#8f959e]"
+          class="w-full h-8 pl-8 pr-3 text-[14px] leading-none bg-[#f2f3f5] border border-transparent rounded-[6px] focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-[#8f959e]"
           placeholder="搜索"
           type="text"
           @input="emit('search', ($event.target as HTMLInputElement).value)"
         />
       </div>
       <button
-        class="w-[30px] h-[30px] flex items-center justify-center bg-[#f2f3f5] rounded-[6px] hover:bg-[#e4e6ea] text-text-muted transition-colors"
+        class="w-8 h-8 flex items-center justify-center bg-[#f2f3f5] rounded-[6px] hover:bg-[#e4e6ea] text-text-muted transition-colors"
         title="新建会话"
       >
         <span class="material-symbols-outlined text-[18px]">add</span>
