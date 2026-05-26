@@ -3,12 +3,57 @@ import type {
   ChatDetail,
   ChatMessage,
   ChatSummary,
+  CurrentUser,
   NetworkNode,
+  SenderInfo,
   TextMessage
 } from '@agenthub/shared'
 
 const delay = <T>(value: T, ms = 120): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms))
+
+const AVATAR_STORAGE_KEY = 'agenthub.currentUser.avatar'
+
+const currentUser: CurrentUser = {
+  id: 'me',
+  name: '我',
+  initials: 'ME',
+  accent: 'primary',
+  avatarDataUrl: readStoredAvatar()
+}
+
+function readStoredAvatar(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(AVATAR_STORAGE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredAvatar(value: string | null): void {
+  try {
+    if (value) globalThis.localStorage?.setItem(AVATAR_STORAGE_KEY, value)
+    else globalThis.localStorage?.removeItem(AVATAR_STORAGE_KEY)
+  } catch {
+    /* storage may be unavailable; tolerate silently */
+  }
+}
+
+function withCurrentUserAvatar(sender: SenderInfo): SenderInfo {
+  if (sender.id !== currentUser.id) return sender
+  return {
+    ...sender,
+    name: currentUser.name,
+    initials: currentUser.initials,
+    accent: currentUser.accent,
+    avatarDataUrl: currentUser.avatarDataUrl ?? undefined
+  }
+}
+
+function decorateMessage(message: ChatMessage): ChatMessage {
+  if (message.kind === 'system') return message
+  return { ...message, sender: withCurrentUserAvatar(message.sender) }
+}
 
 const chats: ChatSummary[] = [
   {
@@ -240,7 +285,7 @@ export const mockApi: AgentHubApi = {
   },
 
   listMessages(chatId) {
-    return delay((messageMap[chatId] ?? []).map((m) => ({ ...m })))
+    return delay((messageMap[chatId] ?? []).map((m) => decorateMessage({ ...m })))
   },
 
   getNetwork(chatId) {
@@ -253,18 +298,28 @@ export const mockApi: AgentHubApi = {
       chatId,
       kind: 'text',
       timestamp: new Date().toISOString(),
-      sender: {
-        id: 'me',
-        name: '我',
+      sender: withCurrentUserAvatar({
+        id: currentUser.id,
+        name: currentUser.name,
         role: 'user',
-        initials: 'ME',
-        accent: 'primary'
-      },
+        initials: currentUser.initials,
+        accent: currentUser.accent
+      }),
       text,
       ...(replyTo ? { replyTo } : {})
     }
     const list = messageMap[chatId] ?? (messageMap[chatId] = [])
     list.push(message)
     return delay(message, 60)
+  },
+
+  async getCurrentUser() {
+    return delay({ ...currentUser })
+  },
+
+  async updateCurrentUserAvatar(avatarDataUrl) {
+    currentUser.avatarDataUrl = avatarDataUrl
+    writeStoredAvatar(avatarDataUrl)
+    return delay({ ...currentUser }, 40)
   }
 }

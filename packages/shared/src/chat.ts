@@ -35,6 +35,8 @@ export interface SenderInfo {
   initials?: string
   /** color theme for the bubble avatar */
   accent?: 'primary' | 'violet' | 'green' | 'neutral'
+  /** data URL of a user-uploaded avatar image; overrides icon/initials */
+  avatarDataUrl?: string
 }
 
 export interface TaskItem {
@@ -123,4 +125,16 @@ export interface AgentHubApi {
   listMessages(chatId: string): Promise<ChatMessage[]>
   getNetwork(chatId: string): Promise<NetworkNode[]>
   sendMessage(chatId: string, text: string, replyTo?: MessageReplyRef): Promise<TextMessage>
+  getCurrentUser(): Promise<CurrentUser>
+  updateCurrentUserAvatar(avatarDataUrl: string | null): Promise<CurrentUser>
+}
+
+/** Profile of the logged-in user. Drives "me" avatars across the UI. */
+export interface CurrentUser {
+  id: string
+  name: string
+  initials: string
+  accent: NonNullable<SenderInfo['accent']>
+  /** data URL of the user-uploaded avatar; null/undefined falls back to initials */
+  avatarDataUrl?: string | null
 }

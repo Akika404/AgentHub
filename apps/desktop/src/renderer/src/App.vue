@@ -5,6 +5,7 @@ import {
   type ChatDetail,
   type ChatMessage,
   type ChatSummary,
+  type CurrentUser,
   type MessageReplyRef,
   type NetworkNode,
   type OptionItem,
@@ -25,6 +26,7 @@ const activeChatId = ref<string | null>(null)
 const chatDetail = ref<ChatDetail | null>(null)
 const messages = ref<ChatMessage[]>([])
 const network = ref<NetworkNode[]>([])
+const currentUser = ref<CurrentUser | null>(null)
 
 const chatsLoading = ref(false)
 const messagesLoading = ref(false)
@@ -35,11 +37,21 @@ const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 async function loadChats(): Promise<void> {
   chatsLoading.value = true
   try {
-    chats.value = await api.listChats()
+    const [user, list] = await Promise.all([api.getCurrentUser(), api.listChats()])
+    currentUser.value = user
+    chats.value = list
     const initial = chats.value.find((c) => c.active) ?? chats.value[0]
     if (initial) await selectChat(initial.id)
   } finally {
     chatsLoading.value = false
+  }
+}
+
+async function onAvatarSelected(dataUrl: string): Promise<void> {
+  const updated = await api.updateCurrentUserAvatar(dataUrl)
+  currentUser.value = updated
+  if (activeChatId.value) {
+    messages.value = await api.listMessages(activeChatId.value)
   }
 }
 
@@ -177,7 +189,12 @@ onMounted(loadChats)
 
 <template>
   <div class="flex w-full h-full bg-background">
-    <GlobalSidebar :active="nav" @navigate="nav = $event" />
+    <GlobalSidebar
+      :active="nav"
+      :user="currentUser"
+      @navigate="nav = $event"
+      @avatar-selected="onAvatarSelected"
+    />
     <ChatList
       :chats="chats"
       :active-chat-id="activeChatId"

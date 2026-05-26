@@ -13,10 +13,16 @@ const accentClasses: Record<NonNullable<SenderInfo['accent']>, string> = {
 
 <template>
   <div
-    class="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0 text-[14px] font-semibold"
-    :class="accentClasses[sender.accent ?? 'neutral']"
+    class="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0 text-[14px] font-semibold overflow-hidden"
+    :class="sender.avatarDataUrl ? '' : accentClasses[sender.accent ?? 'neutral']"
   >
-    <span v-if="sender.icon" class="material-symbols-outlined text-[20px]">
+    <img
+      v-if="sender.avatarDataUrl"
+      :src="sender.avatarDataUrl"
+      :alt="sender.name"
+      class="w-full h-full object-cover"
+    />
+    <span v-else-if="sender.icon" class="material-symbols-outlined text-[20px]">
       {{ sender.icon }}
     </span>
     <span v-else>{{ sender.initials ?? sender.name.slice(0, 2).toUpperCase() }}</span>
