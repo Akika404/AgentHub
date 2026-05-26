@@ -55,8 +55,13 @@ All data types crossing the desktop ↔ server boundary (chat summaries, message
 
 When changing an API shape, edit it in `packages/shared/src/` so both ends pick up the change.
 
-## Rules
+## Coding Rules
 
 Please follow the shared project rules under:
-
 - .agents/rules
+
+## Submodule Rules
+
+- Before modifying any code under `apps/server`, you **must** first read `apps/server/CLAUDE.md`.
+- Before modifying any code under `apps/desktop`, you **must** first read `apps/desktop/CLAUDE.md`.
+- For any change involving the frontend-backend contract, **both files must be read**.

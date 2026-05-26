@@ -54,3 +54,9 @@ Output goes to `apps/desktop/out/` (main/preload compiled) and `apps/desktop/out
 All data types crossing the desktop ↔ server boundary (chat summaries, messages, message-card kinds, network nodes, the `AgentHubApi` interface) live here and are imported as `@agenthub/shared`. The package ships TypeScript source directly — no build step.
 
 When changing an API shape, edit it in `packages/shared/src/` so both ends pick up the change.
+
+## Submodule Rules
+
+- Before modifying any code under `apps/server`, you **must** first read `apps/server/CLAUDE.md`.
+- Before modifying any code under `apps/desktop`, you **must** first read `apps/desktop/CLAUDE.md`.
+- For any change involving the frontend-backend contract, **both files must be read**.
