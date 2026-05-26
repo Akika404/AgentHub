@@ -62,6 +62,6 @@ Please follow the shared project rules under:
 
 ## Submodule Rules
 
-- Before modifying any code under `apps/server`, you **must** first read `apps/server/CLAUDE.md`.
-- Before modifying any code under `apps/desktop`, you **must** first read `apps/desktop/CLAUDE.md`.
+- Before modifying any code under `apps/server`, you **must** first read `apps/server/AGENTS.md`.
+- Before modifying any code under `apps/desktop`, you **must** first read `apps/desktop/AGENTS.md`.
 - For any change involving the frontend-backend contract, **both files must be read**.
