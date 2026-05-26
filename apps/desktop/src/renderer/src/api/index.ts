@@ -1,5 +1,5 @@
 import { mockApi } from './mock'
-import type { AgentHubApi } from './types'
+import type { AgentHubApi } from '@agenthub/shared'
 
 /**
  * Single entry point for renderer code to access the backend.
@@ -8,4 +8,4 @@ import type { AgentHubApi } from './types'
  */
 export const api: AgentHubApi = mockApi
 
-export type * from './types'
+export type * from '@agenthub/shared'

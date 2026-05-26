@@ -2,21 +2,42 @@
 
 This file provides guidance to Vibe Coding Tools (Claude Code、OpenCode、Trae...) when working with code in this repository.
 
-## Commands
+## Repository layout
 
-```bash
-pnpm dev          # start dev server with HMR
-pnpm build        # typecheck + build for production
-pnpm start        # preview production build
-pnpm lint         # ESLint
-pnpm format       # Prettier
-pnpm typecheck    # run both tsc (main/preload) and vue-tsc (renderer)
-pnpm build:mac    # package for macOS
-pnpm build:win    # package for Windows
-pnpm build:linux  # package for Linux
+pnpm workspace monorepo:
+
+```
+apps/
+  desktop/   — Electron + Vue 3 renderer (the current main deliverable)
+  server/    — Backend service (placeholder; framework not chosen yet)
+packages/
+  shared/    — Shared TypeScript types & protocol contracts (consumed by desktop & server)
 ```
 
-## Architecture
+Root-level configs: `pnpm-workspace.yaml`, `package.json` (workspace scripts), `.prettierrc.yaml`, `.npmrc`.
+
+## Commands
+
+Root scripts delegate to the desktop app for now (the only runnable app):
+
+```bash
+pnpm dev          # alias: pnpm -F @agenthub/desktop dev
+pnpm build        # alias: pnpm -F @agenthub/desktop build
+pnpm typecheck    # run typecheck across every workspace package (pnpm -r)
+pnpm lint         # alias: pnpm -F @agenthub/desktop lint
+pnpm format       # Prettier across the whole repo
+```
+
+Per-package commands use `pnpm -F <pkg> <script>`:
+
+```bash
+pnpm -F @agenthub/desktop start       # preview production build
+pnpm -F @agenthub/desktop build:mac   # package for macOS (also :win / :linux)
+pnpm -F @agenthub/shared  typecheck   # types-only package
+pnpm -F @agenthub/server  typecheck
+```
+
+## Desktop architecture (`apps/desktop/`)
 
 Standard three-process Electron app using Vue 3 + TypeScript, built with electron-vite.
 
@@ -26,7 +47,13 @@ Standard three-process Electron app using Vue 3 + TypeScript, built with electro
 
 IPC pattern: renderer calls `window.api.<method>` → preload exposes it via `contextBridge` → main handles it with `ipcMain.handle/on`. Keep IPC surface minimal and typed via `src/preload/index.d.ts`.
 
-Output goes to `out/` (main/preload compiled) and `out/renderer/` (Vue bundle).
+Output goes to `apps/desktop/out/` (main/preload compiled) and `apps/desktop/out/renderer/` (Vue bundle).
+
+## Shared types (`packages/shared/`)
+
+All data types crossing the desktop ↔ server boundary (chat summaries, messages, message-card kinds, network nodes, the `AgentHubApi` interface) live here and are imported as `@agenthub/shared`. The package ships TypeScript source directly — no build step.
+
+When changing an API shape, edit it in `packages/shared/src/` so both ends pick up the change.
 
 ## Rules
 

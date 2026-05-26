@@ -5,7 +5,7 @@ import type {
   ChatSummary,
   NetworkNode,
   TextMessage
-} from './types'
+} from '@agenthub/shared'
 
 const delay = <T>(value: T, ms = 120): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms))
