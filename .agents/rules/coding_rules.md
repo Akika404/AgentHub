@@ -17,3 +17,8 @@ Do NOT automatically run tests in the following situations:
 - Pure visual UI changes that do not affect functionality, such as colors, fonts, spacing, or styling.
 - Running tests requires additional environment setup that may pollute or alter the current environment.
 - The required test execution time is significantly long relative to the scope of the change.
+
+# Think After Coding
+
+- If the changes cause the actual implementation to diverge from existing documentation, update the documentation to keep it consistent.
+- Explicitly call out any TODOs, known limitations, skipped edge cases, or follow-up work introduced by this change.
