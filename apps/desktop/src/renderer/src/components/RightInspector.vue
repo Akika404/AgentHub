@@ -64,7 +64,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
     <div v-if="tab === 'status'" class="flex-1 overflow-y-auto px-5 py-2">
       <div class="text-[14px] font-semibold text-text-main mb-5">当前协作网络</div>
       <div v-if="!tree.length" class="text-[13px] text-text-muted">暂无协作节点</div>
-      <div class="space-y-2">
+      <div class="space-y-1">
         <template v-for="root in tree" :key="root.id">
           <div class="flex items-center space-x-2.5 py-1">
             <div
@@ -76,30 +76,29 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
             ></div>
             <span class="text-[14px] font-medium text-text-main">{{ root.name }}</span>
           </div>
-          <div v-if="root.children.length" class="pl-[14px] space-y-2 mt-2">
-            <div
-              v-for="(child, idx) in root.children"
-              :key="child.id"
-              class="tree-node relative"
-              :class="idx === root.children.length - 1 ? 'last' : ''"
-            >
+          <div
+            v-if="root.children.length"
+            class="ml-[6px] pl-[14px] border-l border-surface-border space-y-1"
+          >
+            <div v-for="child in root.children" :key="child.id">
               <div class="flex items-center space-x-2.5 py-1">
-                <div class="tree-line"></div>
                 <span
-                  class="w-2.5 h-2.5 rounded-full z-10"
+                  class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                   :class="dotClasses[child.status]"
                 ></span>
                 <span class="text-[13px] text-text-main">{{ child.name }}</span>
               </div>
-              <div v-if="child.children.length" class="pl-[14px] space-y-2 pt-2 pb-1">
+              <div
+                v-if="child.children.length"
+                class="ml-[5px] pl-[12px] border-l border-surface-border space-y-1"
+              >
                 <div
                   v-for="grand in child.children"
                   :key="grand.id"
-                  class="tree-node relative flex items-center space-x-2.5 py-1"
+                  class="flex items-center space-x-2.5 py-1"
                 >
-                  <div class="tree-line"></div>
                   <span
-                    class="w-2.5 h-2.5 rounded-full z-10"
+                    class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     :class="dotClasses[grand.status]"
                   ></span>
                   <span class="text-[13px] text-text-main">{{ grand.name }}</span>

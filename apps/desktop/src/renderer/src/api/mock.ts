@@ -207,14 +207,24 @@ const networkMap: Record<string, NetworkNode[]> = {
   'project-collab': [
     { id: 'orchestrator', name: 'Orchestrator', status: 'active', parentId: null },
     { id: 'designer', name: '设计师 Agent', status: 'working', parentId: 'orchestrator' },
-    { id: 'frontend', name: '前端 Agent', status: 'active', parentId: 'orchestrator' },
-    { id: 'search', name: 'Search Agent', status: 'active', parentId: 'frontend' }
+    { id: 'designer-search', name: '素材检索 Agent', status: 'idle', parentId: 'designer' },
+    { id: 'frontend', name: '前端工程师 Agent', status: 'active', parentId: 'orchestrator' },
+    { id: 'frontend-search', name: 'Search Agent', status: 'active', parentId: 'frontend' },
+    { id: 'frontend-lint', name: '代码审查 Agent', status: 'idle', parentId: 'frontend' },
+    { id: 'backend', name: '后端工程师 Agent', status: 'working', parentId: 'orchestrator' },
+    { id: 'qa', name: 'QA Agent', status: 'idle', parentId: 'orchestrator' }
   ],
-  'data-analysis': [{ id: 'da', name: '数据分析 Agent', status: 'active', parentId: null }],
-  zhangsan: [],
+  'data-analysis': [
+    { id: 'da', name: '数据分析 Agent', status: 'active', parentId: null },
+    { id: 'da-sql', name: 'SQL 查询 Agent', status: 'working', parentId: 'da' },
+    { id: 'da-viz', name: '可视化 Agent', status: 'idle', parentId: 'da' }
+  ],
+  zhangsan: [{ id: 'zhangsan', name: '张三', status: 'active', parentId: null }],
   'product-discussion': [
     { id: 'pm', name: '产品经理', status: 'active', parentId: null },
-    { id: 'design', name: '设计师', status: 'idle', parentId: 'pm' }
+    { id: 'design', name: '设计师', status: 'idle', parentId: 'pm' },
+    { id: 'design-research', name: '用户研究 Agent', status: 'idle', parentId: 'design' },
+    { id: 'engineering', name: '工程师代表', status: 'working', parentId: 'pm' }
   ]
 }
 
