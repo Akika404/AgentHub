@@ -41,6 +41,10 @@ When a reasonable backend design conflicts with the frontend mock, you must:
 - DTOs and Entities must be kept separate
 - Errors must be thrown via [the unified exception class], never returned as a bare 500
 
+## API Documentation
+- Interactive API docs (Scalar UI) are served at `/api/reference`; the raw OpenAPI JSON is at `/api/openapi.json`. Toggle off via `API_DOCS_ENABLED=false`.
+- Document new routes with `@ApiTags` / `@ApiOperation` and wrap responses with `@ApiEnvelope(model)` so the docs reflect the unified `{ code, message, data, timestamp }` envelope; response shapes need a DTO **class** (interfaces are erased at runtime and produce empty schemas).
+
 ## Collaboration with the Frontend
 - Once a backend API is finalized, the `shared type definitions` or documentation must be updated accordingly
 - Frontend mocks should be **replaced** once the backend interface is finalized, not the other way around
