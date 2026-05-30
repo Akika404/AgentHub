@@ -1,25 +1,15 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
-import {
-  createAgent,
-  getCapabilities,
-  type AgentEvent,
-  type AgentVendor,
-} from './adapter/index.js'
+import { createAgent, getCapabilities, type AgentEvent, type AgentVendor } from './adapter/index.js'
 import { AgentSpec } from './entities/agent-spec.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
 import type { AgentView, CreateAgentResult } from './dto/agent-view.dto.js'
 import { specToConfig, toAgentView } from './mappers/agent.mapper.js'
 import type { LiveAgent } from './live-agent.js'
-import { BusinessException } from '../common/exceptions/business.exception.js'
+import { BusinessException } from '../common/index.js'
 
 /**
  * AgentManager — 虚拟员工的注册表与生命周期管家。
@@ -47,7 +37,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private readonly specRepo: Repository<AgentSpec>,
     @InjectRepository(AgentSession)
     private readonly sessionRepo: Repository<AgentSession>,
-    private readonly config: ConfigService,
+    private readonly config: ConfigService
   ) {
     this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
     this.maxLiveCodex = this.config.get<number>('AGENT_MAX_LIVE_CODEX', 8)
@@ -81,7 +71,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       allowedTools: dto.allowedTools ?? null,
       permissionMode: dto.permissionMode ?? null,
       reasoningEffort: dto.reasoningEffort ?? null,
-      baseUrl: dto.baseUrl ?? null,
+      baseUrl: dto.baseUrl ?? null
     })
     const savedSpec = await this.specRepo.save(spec)
 
@@ -90,7 +80,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       vendor: savedSpec.vendor,
       sdkSessionId: null,
       status: 'active',
-      lastTurnAt: null,
+      lastTurnAt: null
     })
     const savedSession = await this.sessionRepo.save(session)
 
@@ -98,7 +88,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       sessionId: savedSession.id,
       specId: savedSpec.id,
       vendor: savedSpec.vendor,
-      capabilities: getCapabilities(savedSpec.vendor),
+      capabilities: getCapabilities(savedSpec.vendor)
     }
   }
 
@@ -106,7 +96,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     const sessions = await this.sessionRepo.find({ order: { createdAt: 'DESC' } })
     if (sessions.length === 0) return []
     const specs = await this.specRepo.find({
-      where: { id: In(sessions.map((s) => s.specId)) },
+      where: { id: In(sessions.map((s) => s.specId)) }
     })
     const specById = new Map(specs.map((sp) => [sp.id, sp]))
     return sessions
@@ -134,7 +124,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
   async converse(
     sessionId: string,
     prompt: string,
-    clientSignal?: AbortSignal,
+    clientSignal?: AbortSignal
   ): Promise<AsyncIterable<AgentEvent>> {
     const { session } = await this.loadSessionAndSpec(sessionId)
     const live = await this.getOrRehydrate(session)
@@ -160,7 +150,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     session: AgentSession,
     live: LiveAgent,
     prompt: string,
-    abort: AbortController,
+    abort: AbortController
   ): AsyncIterable<AgentEvent> {
     try {
       for await (const ev of live.adapter.send(prompt, { signal: abort.signal })) {
@@ -175,9 +165,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       try {
         await this.persistHandle(session, live)
       } catch (err) {
-        this.logger.error(
-          `Failed to persist session handle ${session.id}: ${this.errMsg(err)}`,
-        )
+        this.logger.error(`Failed to persist session handle ${session.id}: ${this.errMsg(err)}`)
       }
     }
   }
@@ -224,10 +212,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     this.registry.delete(sessionId) // 必须驱逐：活实例内部仍持有旧会话上下文
     session.sdkSessionId = null
     session.status = 'cleared'
-    await this.sessionRepo.update(
-      { id: sessionId },
-      { sdkSessionId: null, status: 'cleared' },
-    )
+    await this.sessionRepo.update({ id: sessionId }, { sdkSessionId: null, status: 'cleared' })
     return toAgentView(session, spec)
   }
 
@@ -268,7 +253,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     const spec = await this.specRepo.findOne({ where: { id: session.specId } })
     if (!spec) {
       throw BusinessException.agentUnavailable(
-        `AgentSpec ${session.specId} missing for session ${session.id}`,
+        `AgentSpec ${session.specId} missing for session ${session.id}`
       )
     }
     const apiKey = this.resolveApiKey(spec.vendor)
@@ -279,7 +264,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       adapter = createAgent(spec.vendor, config)
     } catch (err) {
       throw BusinessException.agentUnavailable(
-        `Failed to create ${spec.vendor} adapter: ${this.errMsg(err)}`,
+        `Failed to create ${spec.vendor} adapter: ${this.errMsg(err)}`
       )
     }
     if (session.sdkSessionId) adapter.resumeWith(session.sdkSessionId)
@@ -291,7 +276,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
       adapter,
       busy: false,
       abort: null,
-      lastUsedAt: Date.now(),
+      lastUsedAt: Date.now()
     }
   }
 
@@ -314,9 +299,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
   private evictLruIdle(candidates: LiveAgent[], count: number): void {
     if (count <= 0) return
-    const idle = candidates
-      .filter((l) => !l.busy)
-      .sort((a, b) => a.lastUsedAt - b.lastUsedAt)
+    const idle = candidates.filter((l) => !l.busy).sort((a, b) => a.lastUsedAt - b.lastUsedAt)
     for (let i = 0; i < count && i < idle.length; i++) {
       this.registry.delete(idle[i].sessionId)
       this.logger.debug(`Evicted idle live agent ${idle[i].sessionId} (${idle[i].vendor})`)
@@ -338,9 +321,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         ? this.config.get<string>('ANTHROPIC_API_KEY')
         : this.config.get<string>('OPENAI_API_KEY')
     if (!key) {
-      throw BusinessException.agentUnavailable(
-        `Missing API key for vendor ${vendor}`,
-      )
+      throw BusinessException.agentUnavailable(`Missing API key for vendor ${vendor}`)
     }
     return key
   }
@@ -355,7 +336,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     if (unsupported.length > 0) {
       throw BusinessException.agentUnavailable(
         `Vendor "${dto.vendor}" does not support: ${unsupported.join(', ')}`,
-        { vendor: dto.vendor, unsupported, capabilities: caps },
+        { vendor: dto.vendor, unsupported, capabilities: caps }
       )
     }
   }
@@ -363,14 +344,12 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
   private assertNotBusy(sessionId: string): void {
     const live = this.registry.get(sessionId)
     if (live?.busy) {
-      throw BusinessException.agentBusy(
-        `Agent ${sessionId} is busy; cannot mutate mid-turn`,
-      )
+      throw BusinessException.agentBusy(`Agent ${sessionId} is busy; cannot mutate mid-turn`)
     }
   }
 
   private async loadSessionAndSpec(
-    sessionId: string,
+    sessionId: string
   ): Promise<{ session: AgentSession; spec: AgentSpec }> {
     const session = await this.sessionRepo.findOne({ where: { id: sessionId } })
     if (!session) {
@@ -379,7 +358,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     const spec = await this.specRepo.findOne({ where: { id: session.specId } })
     if (!spec) {
       throw BusinessException.agentUnavailable(
-        `AgentSpec ${session.specId} missing for session ${sessionId}`,
+        `AgentSpec ${session.specId} missing for session ${sessionId}`
       )
     }
     return { session, spec }

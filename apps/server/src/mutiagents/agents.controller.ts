@@ -8,7 +8,7 @@ import {
   Post,
   Query,
   Req,
-  Sse,
+  Sse
 } from '@nestjs/common'
 import type { Request } from 'express'
 import { Observable, from, map } from 'rxjs'
@@ -51,7 +51,7 @@ export class AgentsController {
   async converse(
     @Param('sessionId') sessionId: string,
     @Query() query: ConverseDto,
-    @Req() req: Request,
+    @Req() req: Request
   ): Promise<Observable<MessageEvent>> {
     const abort = new AbortController()
     req.on('close', () => abort.abort())

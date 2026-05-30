@@ -14,6 +14,6 @@ import { AgentSession } from './entities/agent-session.entity.js'
   imports: [TypeOrmModule.forFeature([AgentSpec, AgentSession])],
   controllers: [AgentsController],
   providers: [AgentManager],
-  exports: [AgentManager],
+  exports: [AgentManager]
 })
 export class AgentsModule {}
