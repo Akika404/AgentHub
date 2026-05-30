@@ -6,6 +6,7 @@ import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
 import { AgentsModule } from './mutiagents/agents.module.js'
 import { UserModule } from './user/user.module.js'
+import { PlatformProviderModule } from './platform-provider/platform-provider.module.js'
 
 @Module({
     imports: [
@@ -31,7 +32,8 @@ import { UserModule } from './user/user.module.js'
         // Redis：用户模块的 token 黑名单依赖它（@Global，导出 REDIS_CLIENT）
         RedisModule,
         AgentsModule,
-        UserModule
+        UserModule,
+        PlatformProviderModule
     ],
     controllers: [HealthController],
     providers: [HealthService]

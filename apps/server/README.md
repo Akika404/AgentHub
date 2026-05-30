@@ -21,7 +21,8 @@ apps/server/
     │   ├── health.controller.ts  # GET /api/health
     │   └── health.service.ts     # 同时探测 MySQL & Redis
     ├── mutiagents/               # 多 Agent 管理（AgentManager）：spec + 会话句柄 + vendor adapter
-    └── user/                     # 用户管理 + JWT 认证基座（详见下文「用户管理模块」）
+    ├── user/                     # 用户管理 + JWT 认证基座（详见下文「用户管理模块」）
+    └── platform-provider/        # 用户自建模型平台（Provider）管理（详见下文「Provider 管理模块」）
 ```
 
 ## 关键依赖（对应 Java 概念）
@@ -133,6 +134,72 @@ src/user/
 - 注册不自动登录（如需登录态直接返回，可在 `register` 末尾复用 `login` 逻辑）。
 - 账号注销为逻辑删除，`account` / `email` 仍占用唯一索引，不可同名重注册。
 - 未做登录失败次数限制 / 验证码 / 密码找回。
+
+## Provider 管理模块（`src/platform-provider/`）
+
+用户自建「模型平台/供应商」的增删改查，外加连接测试与模型拉取。每个 Provider 归属创建它的用户，复用 `user` 模块导出的 `JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `mutiagents` 的 `agent_spec`「不存 apiKey」相反——本模块的语义就是用户自带密钥，故必须落库。
+
+### 目录结构
+
+```
+src/platform-provider/
+├── platform-provider.module.ts          # 装配 PlatformProvider 实体；import UserModule 复用 JwtAuthGuard
+├── platform-provider.controller.ts      # @Controller('platform-providers')，整体 @UseGuards(JwtAuthGuard)
+├── platform-provider.service.ts         # CRUD + 测连接 + 刷新模型；按 userId 数据隔离
+├── provider-probe.service.ts            # 出网探测上游（列模型/测连接），原生 fetch + 超时
+├── entities/platform-provider.entity.ts # @Entity('platform_provider') + ProviderType 枚举
+├── dto/                                  # create/update 入参、view 契约(interface)、response 文档类
+└── mappers/platform-provider.mapper.ts  # 实体 → 视图，apiKey 掩码
+```
+
+### 接口（前缀 `/api`，成功响应统一信封 `{ code, message, data, timestamp }`，全部需鉴权）
+
+| 方法     | 路径                                           | 功能                                                      |
+|--------|----------------------------------------------|---------------------------------------------------------|
+| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）                    |
+| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                                      |
+| GET    | `/api/platform-providers/:id`                | 查询单个详情                                                  |
+| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                                 |
+| DELETE | `/api/platform-providers/:id`                | 删除（硬删除）                                                 |
+| POST   | `/api/platform-providers/:id/test`           | 测试连接，返回 `{ ok, latencyMs, modelCount?, message? }`      |
+| POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                                 |
+
+- 字段：`platformName` 展示名、`baseUrl` 上游地址、`apiKey` 密钥、`modelList` 模型名数组、`type` 协议类型。
+- `type` 取值：`openai-chat-completions` / `openai-responses` / `anthropic`（前端自行映射「OpenAI(Chat Completions)」等展示名）。
+- 所有接口需带 `Authorization: Bearer <token>`，且只能操作本人记录；非本人记录一律按 `NOT_FOUND` 处理（不泄露存在性）。
+
+### 密钥与安全
+
+- `apiKey` 必须可逆使用（用于调上游），无法像密码那样哈希；**明文存储**但实体侧 `select: false`，默认不随查询返回。
+- 对外视图只回**掩码**（`apiKeyMasked`，如 `sk-****wl7g`），**绝不回明文**；需要密钥的操作（掩码/探测）在 service 内显式 `addSelect` 取出。
+
+### 测试连接 / 拉取模型
+
+- 二者都只读地打上游「列模型」接口（OpenAI 走 `GET {base}/models` + `Bearer`；Anthropic 走 `GET {base}/v1/models` + `x-api-key` & `anthropic-version`），不产生 token 费用。
+- 出网请求带 10s 超时；上游不可达 / 非 2xx 归一为 `5000 UPSTREAM_ERROR`（502）。
+- `test` 失败**不抛异常**，而是返回 `{ ok:false, message }`，便于前端直接展示；`models/refresh` 上游异常时抛 `UPSTREAM_ERROR`。
+
+### 数据库
+
+仅一张 `platform_provider` 表，`(userId, platformName)` 唯一。dev 环境 TypeORM `synchronize` 自动建表；结构存档见 `sql/platform_provider.sql`，**真实结构以实体定义为准**。
+
+### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
+
+| 码                       | HTTP | 含义                            |
+|-------------------------|------|-------------------------------|
+| `2001 UNAUTHORIZED`     | 401  | 缺少/无效/已失效的 token              |
+| `3000 VALIDATION_FAILED`| 400  | 入参校验失败（如 `baseUrl` 非 http(s)） |
+| `4000 NOT_FOUND`        | 404  | Provider 不存在或非本人              |
+| `4001 CONFLICT`         | 409  | 同名 Provider 已存在               |
+| `5000 UPSTREAM_ERROR`   | 502  | 上游不可达或返回非 2xx                 |
+
+### 已知限制
+
+- `apiKey` 明文存储（按需求选定）；未做静态加密。
+- 测连接 / 拉模型只作用于**已保存**的 Provider（按 `:id`），不支持「未保存先测」的草稿校验。
+- `models/refresh` 会**整体覆盖** `modelList`（拉取即持久化），非预览。
+- `baseUrl` 仅校验 `http(s)://` 前缀，未做更严格的 URL 规范化；`modelList` 上限 200。
+- 未写单测（项目当前无测试框架）。
 
 ## 下一步建议
 
