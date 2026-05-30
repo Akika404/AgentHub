@@ -42,6 +42,20 @@ export class BusinessException extends HttpException {
         return new BusinessException(ErrorCode.FORBIDDEN, message, details)
     }
 
+    static invalidCredentials(
+        message = 'Invalid credentials',
+        details?: unknown
+    ): BusinessException {
+        return new BusinessException(ErrorCode.INVALID_CREDENTIALS, message, details)
+    }
+
+    static accountDeactivated(
+        message = 'Account deactivated',
+        details?: unknown
+    ): BusinessException {
+        return new BusinessException(ErrorCode.ACCOUNT_DEACTIVATED, message, details)
+    }
+
     static conflict(message = 'Resource conflict', details?: unknown): BusinessException {
         return new BusinessException(ErrorCode.CONFLICT, message, details)
     }

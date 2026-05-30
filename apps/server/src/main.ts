@@ -27,6 +27,7 @@ function setupApiDocs(app: Parameters<typeof SwaggerModule.createDocument>[0]): 
                 '`{ code, message, data, timestamp }` 信封（见各接口 200/201 响应的 schema）。'
         )
         .setVersion('0.0.0')
+        .addBearerAuth()
         .build()
 
     const document = SwaggerModule.createDocument(app, swaggerConfig)

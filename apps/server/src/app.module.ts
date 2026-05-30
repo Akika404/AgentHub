@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
-// Redis 暂未使用，初始化已停用（如需启用：取消本行及下方 imports 中 RedisModule 的注释）
-// import { RedisModule } from './redis/redis.module.js'
+import { RedisModule } from './redis/redis.module.js'
 import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
 import { AgentsModule } from './mutiagents/agents.module.js'
+import { UserModule } from './user/user.module.js'
 
 @Module({
     imports: [
@@ -28,8 +28,10 @@ import { AgentsModule } from './mutiagents/agents.module.js'
                 charset: 'utf8mb4'
             })
         }),
-        // RedisModule, // Redis 暂未使用，初始化已停用
-        AgentsModule
+        // Redis：用户模块的 token 黑名单依赖它（@Global，导出 REDIS_CLIENT）
+        RedisModule,
+        AgentsModule,
+        UserModule
     ],
     controllers: [HealthController],
     providers: [HealthService]

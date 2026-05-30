@@ -58,6 +58,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     // ─────────────────────────── 创建 / 查询 ───────────────────────────
 
+    // TODO: 这个地方的 spec 应该是用户已经创建过的 Agent，应该直接从 user_agent 表中根据 agent_id 查出来
+    // 现在还没建这个表，先保持这样
     async createAgentSession(dto: CreateAgentDto): Promise<CreateAgentResult> {
         this.assertConfigSupported(dto)
 

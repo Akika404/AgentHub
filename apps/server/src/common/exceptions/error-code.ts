@@ -24,6 +24,8 @@ export enum ErrorCode {
     // auth
     UNAUTHORIZED = 2001,
     FORBIDDEN = 2002,
+    INVALID_CREDENTIALS = 2003,
+    ACCOUNT_DEACTIVATED = 2004,
 
     // resource
     NOT_FOUND = 4000,
@@ -43,6 +45,8 @@ export const ERROR_CODE_HTTP_STATUS: Record<ErrorCode, HttpStatus> = {
     [ErrorCode.BAD_REQUEST]: HttpStatus.BAD_REQUEST,
     [ErrorCode.UNAUTHORIZED]: HttpStatus.UNAUTHORIZED,
     [ErrorCode.FORBIDDEN]: HttpStatus.FORBIDDEN,
+    [ErrorCode.INVALID_CREDENTIALS]: HttpStatus.UNAUTHORIZED,
+    [ErrorCode.ACCOUNT_DEACTIVATED]: HttpStatus.FORBIDDEN,
     [ErrorCode.NOT_FOUND]: HttpStatus.NOT_FOUND,
     [ErrorCode.CONFLICT]: HttpStatus.CONFLICT,
     [ErrorCode.UPSTREAM_ERROR]: HttpStatus.BAD_GATEWAY,

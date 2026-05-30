@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   '@nestjs/core': false
   '@scarf/scarf': false
+  bcrypt: false
   electron: true
   electron-winstaller: true
   esbuild: true
