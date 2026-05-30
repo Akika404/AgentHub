@@ -2,11 +2,11 @@ import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { AppModule } from './app.module'
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter'
-import { ResponseInterceptor } from './common/interceptors/response.interceptor'
-import { BusinessException } from './common/exceptions/business.exception'
-import { ErrorCode } from './common/exceptions/error-code'
+import { AppModule } from './app.module.js'
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js'
+import { ResponseInterceptor } from './common/interceptors/response.interceptor.js'
+import { BusinessException } from './common/exceptions/business.exception.js'
+import { ErrorCode } from './common/exceptions/error-code.js'
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule)

@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import Redis from 'ioredis'
+import { Redis } from 'ioredis'
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT')
 

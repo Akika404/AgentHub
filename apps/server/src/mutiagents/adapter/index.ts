@@ -1,6 +1,11 @@
 export * from "./types.js";
 export { ClaudeAdapter } from "./claude.js";
 export { CodexAdapter } from "./codex.js";
+export {
+    getCapabilities,
+    CLAUDE_CAPABILITIES,
+    CODEX_CAPABILITIES,
+} from "./capabilities.js";
 
 import { ClaudeAdapter } from "./claude.js";
 import { CodexAdapter } from "./codex.js";

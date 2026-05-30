@@ -79,6 +79,18 @@ export type AgentEvent =
           usage?: AgentUsage;
       };
 
+/**
+ * 权限模式。取自 Claude SDK 的 PermissionMode 取值集，作为统一接口。
+ * Codex 端只能近似映射（never ≈ bypassPermissions），本期默认 bypass。
+ */
+export type AgentPermissionMode =
+    | "default"
+    | "acceptEdits"
+    | "bypassPermissions"
+    | "plan"
+    | "dontAsk"
+    | "auto";
+
 /** 构造一个 Agent 时的通用配置 */
 export interface AgentAdapterConfig {
     /** AgentHub 内部的唯一标识，例如 "claude-bob"。仅做日志/调试用 */
@@ -95,6 +107,38 @@ export interface AgentAdapterConfig {
     env?: Record<string, string | undefined>;
     /** 推理 effort。两边都有，但取值集不完全相同，由各 adapter 自行映射 */
     reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+    /**
+     * 系统提示词。Claude 走 options.systemPrompt；Codex SDK 无此字段，
+     * capabilities().supportsSystemPrompt 为 false，上层应在创建时拦截而非静默丢弃。
+     */
+    systemPrompt?: string;
+    /**
+     * 预加载的 skills。Claude 走 options.skills（"all" 或名称数组）；
+     * Codex 无 skills 概念，capabilities().supportsSkills 为 false。
+     */
+    skills?: "all" | string[];
+    /**
+     * MCP 服务器配置。形状对齐 Claude SDK 的 Record<string, McpServerConfig>；
+     * 用 unknown value 以免把 SDK 类型泄漏到统一接口，由各 adapter 自行收窄。
+     */
+    mcpServers?: Record<string, unknown>;
+    /** 工具白名单。不传时各 adapter 用各自的默认集合 */
+    allowedTools?: string[];
+    /** 权限模式。不传时各 adapter 默认 bypassPermissions（自动化全开） */
+    permissionMode?: AgentPermissionMode;
+}
+
+/**
+ * adapter 能力描述符。用于向上层（AgentManager / 前端）声明厂商差异，
+ * 避免假装两家能力对齐。创建 Agent 时上层据此校验配置是否被支持。
+ */
+export interface AgentCapabilities {
+    supportsSystemPrompt: boolean;
+    supportsSkills: boolean;
+    supportsMcp: boolean;
+    /** 是否支持按外部 sessionId 跨进程恢复（两家当前都支持） */
+    supportsResumeById: boolean;
 }
 
 /** 发送消息时的可选项 */
@@ -119,4 +163,11 @@ export interface AgentAdapter {
     readonly sessionId: string | null;
     /** 发送一条用户消息 */
     send(prompt: string, options?: SendOptions): AsyncIterable<AgentEvent>;
+    /**
+     * 注入一个已有的 SDK 会话 id，使下一次 send() 续接该会话（跨进程恢复）。
+     * 必须在首次 send() 之前调用。Claude 走 options.resume，Codex 走 resumeThread。
+     */
+    resumeWith(sdkSessionId: string): void;
+    /** 返回该 vendor 的能力描述符（厂商不对称声明） */
+    capabilities(): AgentCapabilities;
 }

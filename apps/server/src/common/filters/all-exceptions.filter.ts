@@ -7,9 +7,9 @@ import {
   Logger,
 } from '@nestjs/common'
 import { Request, Response } from 'express'
-import { ApiResponse, buildFailure } from '../dto/api-response'
-import { BusinessException } from '../exceptions/business.exception'
-import { ErrorCode } from '../exceptions/error-code'
+import { ApiResponse, buildFailure } from '../dto/api-response.js'
+import { BusinessException } from '../exceptions/business.exception.js'
+import { ErrorCode } from '../exceptions/error-code.js'
 
 interface NormalizedError {
   httpStatus: number

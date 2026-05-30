@@ -539,17 +539,30 @@ async function broadcast(prompt: string) {
 
 ### 8.1 当前限制
 
+> 自 AgentManager 接入后，以下原限制已落地（见 `../README.md`）：MCP 配置、systemPrompt、skills、
+> 工具白名单均已加入 `AgentAdapterConfig` 并由 Claude 端透传；`resumeWith()` 支持按
+> 外部 sessionId 跨进程恢复；`capabilities()` 声明厂商不对称（Codex 不支持
+> systemPrompt/skills/MCP）。下表为仍存在的限制。
+
 | 限制                          | 影响                       | 解决方向                                                    |
 | ----------------------------- | -------------------------- | ----------------------------------------------------------- |
 | Claude 的 `text` 不流式       | 大段输出会等整段产生后才发 | 加配置开关，启用时订阅 `SDKPartialAssistantMessage`         |
 | Codex 的 `agent_message` 同上 | 同上                       | `item.updated` 阶段做增量 diff 后发 `text` 增量             |
 | Codex 的 todo 拿不到 in_progress | 上层只能看到两态           | SDK 限制；等 Codex SDK 升级或自行从相邻状态推断             |
-| 未暴露 MCP 服务器配置         | 工具能力受限于内置工具集   | `AgentAdapterConfig` 加 `mcpServers` 字段，分别透传给两端   |
-| 未暴露 hooks / 权限审批      | 自动化"全开"，无法对接 UI 审批 | Claude 端接 `canUseTool` 回调；Codex SDK 暂无回调 API     |
+| 权限审批未实现（本期 auto-approve） | 自动化"全开"，无法对接 UI 审批 | Claude 端接 `canUseTool`（已留 `permissionMode` seam）；Codex SDK 暂无回调 API |
 | Claude 的 AskUserQuestion 卡死 | 反问场景下流会挂起         | 需切到 streaming input 模式 + 双向回调，重构较大            |
-| 工具白名单写死                | Claude 端固定 4 个工具     | `AgentAdapterConfig.allowedTools` 字段                      |
+| Codex 的 systemPrompt/skills/MCP 不支持 | 这些配置在 Codex 上无效 | `capabilities()` 已声明；Manager 创建时显式拒绝而非静默丢弃 |
 | 无 cost / rate-limit 上报     | Codex SDK 没有 cost 字段   | 等 SDK 升级；或基于 token 数 + 模型价格表自己算            |
 | 不支持图片输入                | Codex 的 `local_image` UserInput 未接 | `send()` 改成接受 `string \| UserInput[]`                   |
+
+### 8.4 模块系统互操作
+
+两个 Agent SDK 均为 **ESM-only**（`package.json` `type: module`，无 `require` 导出）。
+后端已整体迁移到 **ESM**（`package.json` `type: module`、tsconfig `module/moduleResolution: NodeNext`），
+因此 adapter 直接 `import { query }` / `import { Codex }` 静态加载，无需任何动态 import 桥接
+（原先的 `esm.ts` 已删除）。
+`CodexAdapter` 仍惰性构造（`ensureCodex()`，首次 `send` 时再 `new Codex`），
+这只是为了延迟到真正用到时，与模块系统无关。
 
 ### 8.2 扩展点示意
 

@@ -32,6 +32,7 @@ export enum ErrorCode {
   // upstream / agent
   UPSTREAM_ERROR = 5000,
   AGENT_UNAVAILABLE = 5001,
+  AGENT_BUSY = 5002,
 }
 
 /** Map business error codes to HTTP status codes for response framing. */
@@ -46,4 +47,5 @@ export const ERROR_CODE_HTTP_STATUS: Record<ErrorCode, HttpStatus> = {
   [ErrorCode.CONFLICT]: HttpStatus.CONFLICT,
   [ErrorCode.UPSTREAM_ERROR]: HttpStatus.BAD_GATEWAY,
   [ErrorCode.AGENT_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
+  [ErrorCode.AGENT_BUSY]: HttpStatus.CONFLICT,
 }

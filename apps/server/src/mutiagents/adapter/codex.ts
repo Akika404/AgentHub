@@ -1,12 +1,15 @@
-import { Codex, type Thread, type ThreadEvent, type ThreadItem } from "@openai/codex-sdk";
+import { Codex } from "@openai/codex-sdk";
+import type { Thread, ThreadEvent, ThreadItem } from "@openai/codex-sdk";
 import type {
     AgentAdapter,
     AgentAdapterConfig,
+    AgentCapabilities,
     AgentEvent,
     AgentUsage,
     SendOptions,
     ToolCallStatus,
 } from "./types.js";
+import { CODEX_CAPABILITIES } from "./capabilities.js";
 
 /** Codex 的 effort 取值集与统一接口对齐 */
 function mapEffort(
@@ -28,14 +31,22 @@ export class CodexAdapter implements AgentAdapter {
     readonly vendor = "codex" as const;
     readonly id: string;
     private readonly config: AgentAdapterConfig;
-    private readonly codex: Codex;
+    /** 惰性构造，首次 send 时再 new（见 ensureCodex） */
+    private codex: Codex | null = null;
     private thread: Thread | null = null;
     private busy = false;
+    /** 由 resumeWith() 注入的待恢复 thread id；首次 send() 时用 resumeThread 续接 */
+    private resumeId: string | null = null;
 
     constructor(config: AgentAdapterConfig) {
         this.config = config;
         this.id = config.id ?? `codex-${Math.random().toString(36).slice(2, 8)}`;
+    }
 
+    /** 惰性构造 Codex 实例（首次 send 时复用同一实例以维持线程上下文） */
+    private ensureCodex(): Codex {
+        if (this.codex) return this.codex;
+        const { config } = this;
         // 与现有 codex_agent.ts 对齐：使用 test_provider 把流量打到自定义网关
         this.codex = new Codex({
             apiKey: config.apiKey,
@@ -58,10 +69,19 @@ export class CodexAdapter implements AgentAdapter {
                 ...config.env,
             } as Record<string, string>,
         });
+        return this.codex;
     }
 
     get sessionId(): string | null {
-        return this.thread?.id ?? null;
+        return this.thread?.id ?? this.resumeId ?? null;
+    }
+
+    resumeWith(sdkSessionId: string): void {
+        this.resumeId = sdkSessionId;
+    }
+
+    capabilities(): AgentCapabilities {
+        return CODEX_CAPABILITIES;
     }
 
     async *send(prompt: string, options?: SendOptions): AsyncIterable<AgentEvent> {
@@ -70,24 +90,31 @@ export class CodexAdapter implements AgentAdapter {
         }
         this.busy = true;
 
-        // 首次调用：开新 thread；之后复用以维持对话上下文
-        if (!this.thread) {
-            const effort = mapEffort(this.config.reasoningEffort);
-            this.thread = this.codex.startThread({
-                model: this.config.model,
-                sandboxMode: "danger-full-access",
-                approvalPolicy: "never",
-                skipGitRepoCheck: true,
-                workingDirectory: this.config.workingDirectory,
-                ...(effort ? { modelReasoningEffort: effort } : {}),
-            });
-        }
-
         let success = true;
         let finalText: string | undefined;
         let usageOut: AgentUsage | undefined;
 
         try {
+            // 首次调用：开新 thread 或按 resumeId 续接；之后复用以维持对话上下文。
+            // 放在 try 内，确保动态加载 / 建 thread 失败也能走到 done + 释放 busy。
+            // sandboxMode/approvalPolicy 本期固定为自动化全开（auto-approve），
+            // 交互审批留待 phase-2（届时映射 config.permissionMode → approvalPolicy）。
+            if (!this.thread) {
+                const codex = this.ensureCodex();
+                const effort = mapEffort(this.config.reasoningEffort);
+                const threadOptions = {
+                    model: this.config.model,
+                    sandboxMode: "danger-full-access" as const,
+                    approvalPolicy: "never" as const,
+                    skipGitRepoCheck: true,
+                    workingDirectory: this.config.workingDirectory,
+                    ...(effort ? { modelReasoningEffort: effort } : {}),
+                };
+                this.thread = this.resumeId
+                    ? codex.resumeThread(this.resumeId, threadOptions)
+                    : codex.startThread(threadOptions);
+            }
+
             const { events } = await this.thread.runStreamed(prompt, {
                 signal: options?.signal,
             });

@@ -1,13 +1,26 @@
-import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type {
+    McpServerConfig,
+    Options,
+    SDKMessage,
+} from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type {
     AgentAdapter,
     AgentAdapterConfig,
+    AgentCapabilities,
     AgentEvent,
     AgentTodoItem,
     AgentTodoStatus,
     AgentUsage,
     SendOptions,
 } from "./types.js";
+import { CLAUDE_CAPABILITIES } from "./capabilities.js";
+
+/** Claude 端默认工具白名单（config.allowedTools 未配置时使用） */
+const DEFAULT_CLAUDE_TOOLS = [
+    "Read", "Write", "Edit", "Glob", "Grep", "Bash",
+    "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+];
 
 /**
  * 把 Claude SDK 的 effort 字段映射过去。
@@ -76,6 +89,8 @@ export class ClaudeAdapter implements AgentAdapter {
     readonly vendor = "claude" as const;
     readonly id: string;
     private _sessionId: string | null = null;
+    /** session_started 在实例生命周期内只发一次；与 _sessionId 的更新解耦 */
+    private sessionStartedEmitted = false;
     private readonly config: AgentAdapterConfig;
     private busy = false;
     /**
@@ -102,6 +117,16 @@ export class ClaudeAdapter implements AgentAdapter {
         return this._sessionId;
     }
 
+    resumeWith(sdkSessionId: string): void {
+        this._sessionId = sdkSessionId;
+        // 恢复来的会话已建立过，不再重复发 session_started
+        this.sessionStartedEmitted = true;
+    }
+
+    capabilities(): AgentCapabilities {
+        return CLAUDE_CAPABILITIES;
+    }
+
     /** 当前任务表的有序快照(按创建顺序) */
     private snapshotTasks(): AgentTodoItem[] {
         return this.taskOrder
@@ -121,16 +146,17 @@ export class ClaudeAdapter implements AgentAdapter {
             else options.signal.addEventListener("abort", () => abortController.abort(), { once: true });
         }
 
+        // 权限模式：未配置时沿用 bypassPermissions（自动化全开）。
+        // 仅 bypass 时附带 allowDangerouslySkipPermissions；其它模式留给 phase-2 接 canUseTool。
+        const permissionMode = this.config.permissionMode ?? "bypassPermissions";
+
         // 构造 Claude SDK 选项
         const opts: Options = {
             cwd: this.config.workingDirectory,
             model: this.config.model,
-            allowedTools: [
-                "Read", "Write", "Edit", "Glob", "Grep", "Bash",
-                "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
-            ],
-            permissionMode: "bypassPermissions",
-            allowDangerouslySkipPermissions: true,
+            allowedTools: this.config.allowedTools ?? DEFAULT_CLAUDE_TOOLS,
+            permissionMode,
+            allowDangerouslySkipPermissions: permissionMode === "bypassPermissions",
             settingSources: [],
             abortController,
             env: {
@@ -140,6 +166,11 @@ export class ClaudeAdapter implements AgentAdapter {
                 ...(this.config.baseUrl ? { ANTHROPIC_BASE_URL: this.config.baseUrl } : {}),
             },
         };
+        if (this.config.systemPrompt) opts.systemPrompt = this.config.systemPrompt;
+        if (this.config.skills) opts.skills = this.config.skills;
+        if (this.config.mcpServers) {
+            opts.mcpServers = this.config.mcpServers as Record<string, McpServerConfig>;
+        }
         const effort = mapEffort(this.config.reasoningEffort);
         if (effort) opts.effort = effort;
         if (this._sessionId) opts.resume = this._sessionId;
@@ -188,10 +219,15 @@ export class ClaudeAdapter implements AgentAdapter {
 
     /** 把单条 SDKMessage 翻译成 0 或多个 AgentEvent */
     private *translate(msg: SDKMessage): Iterable<AgentEvent> {
-        // 记录 sessionId（init 或任意带 session_id 的消息）
-        if ("session_id" in msg && msg.session_id && !this._sessionId) {
+        // 记录 sessionId（init 或任意带 session_id 的消息）。
+        // resume 续聊时 Claude 可能轮换 session_id，因此每次都把 _sessionId 更新为最新值，
+        // 但 session_started 在实例生命周期内只发一次（避免上层误判为新会话）。
+        if ("session_id" in msg && msg.session_id) {
             this._sessionId = msg.session_id;
-            yield { type: "session_started", vendor: this.vendor, sessionId: msg.session_id };
+            if (!this.sessionStartedEmitted) {
+                this.sessionStartedEmitted = true;
+                yield { type: "session_started", vendor: this.vendor, sessionId: msg.session_id };
+            }
         }
 
         switch (msg.type) {
@@ -199,7 +235,7 @@ export class ClaudeAdapter implements AgentAdapter {
                 const content = msg.message?.content;
                 if (!Array.isArray(content)) return;
                 for (const block of content) {
-                    const b = block as { type: string; [k: string]: unknown };
+                    const b = block as unknown as { type: string; [k: string]: unknown };
                     if (b.type === "text" && typeof b.text === "string") {
                         yield {
                             type: "text",
@@ -296,7 +332,7 @@ export class ClaudeAdapter implements AgentAdapter {
                 const content = msg.message?.content;
                 if (!Array.isArray(content)) return;
                 for (const block of content) {
-                    const b = block as { type: string; [k: string]: unknown };
+                    const b = block as unknown as { type: string; [k: string]: unknown };
                     if (b.type === "tool_result") {
                         const toolUseId = String(b.tool_use_id ?? "");
                         // 被归一成 todo 事件的 TodoWrite 调用，其结果也不上抛

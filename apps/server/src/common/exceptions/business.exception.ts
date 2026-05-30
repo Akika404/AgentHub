@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus } from '@nestjs/common'
-import { ERROR_CODE_HTTP_STATUS, ErrorCode } from './error-code'
+import { ERROR_CODE_HTTP_STATUS, ErrorCode } from './error-code.js'
 
 /**
  * Unified business exception.
@@ -48,5 +48,13 @@ export class BusinessException extends HttpException {
 
   static upstream(message = 'Upstream error', details?: unknown): BusinessException {
     return new BusinessException(ErrorCode.UPSTREAM_ERROR, message, details)
+  }
+
+  static agentUnavailable(message = 'Agent unavailable', details?: unknown): BusinessException {
+    return new BusinessException(ErrorCode.AGENT_UNAVAILABLE, message, details)
+  }
+
+  static agentBusy(message = 'Agent is busy with another turn', details?: unknown): BusinessException {
+    return new BusinessException(ErrorCode.AGENT_BUSY, message, details)
   }
 }
