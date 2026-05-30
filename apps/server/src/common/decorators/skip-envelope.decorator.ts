@@ -9,4 +9,4 @@ export const SKIP_ENVELOPE = 'skipEnvelope'
  * 返回值套进 envelope，会破坏 MessageEvent 流，因此这类路由必须显式跳过。
  */
 export const SkipEnvelope = (): MethodDecorator & ClassDecorator =>
-  SetMetadata(SKIP_ENVELOPE, true)
+    SetMetadata(SKIP_ENVELOPE, true)

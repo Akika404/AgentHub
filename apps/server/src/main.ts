@@ -20,54 +20,54 @@ import { ErrorCode } from './common/exceptions/error-code.js'
  *   因此不会被 ResponseInterceptor 信封包裹，也不受全局前缀影响（路径写全）。
  */
 function setupApiDocs(app: Parameters<typeof SwaggerModule.createDocument>[0]): void {
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('AgentHub API')
-    .setDescription(
-      'AgentHub 后端接口文档。除 SSE 流外，所有成功响应统一包裹为 ' +
-        '`{ code, message, data, timestamp }` 信封（见各接口 200/201 响应的 schema）。',
-    )
-    .setVersion('0.0.0')
-    .build()
+    const swaggerConfig = new DocumentBuilder()
+        .setTitle('AgentHub API')
+        .setDescription(
+            'AgentHub 后端接口文档。除 SSE 流外，所有成功响应统一包裹为 ' +
+                '`{ code, message, data, timestamp }` 信封（见各接口 200/201 响应的 schema）。'
+        )
+        .setVersion('0.0.0')
+        .build()
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig)
+    const document = SwaggerModule.createDocument(app, swaggerConfig)
 
-  // 原始 OpenAPI JSON：方便导入 Postman / Apifox 等
-  app.use('/api/openapi.json', (_req: Request, res: Response) => {
-    res.json(document)
-  })
-  // Scalar UI
-  app.use('/api/reference', apiReference({ content: document }))
+    // 原始 OpenAPI JSON：方便导入 Postman / Apifox 等
+    app.use('/api/openapi.json', (_req: Request, res: Response) => {
+        res.json(document)
+    })
+    // Scalar UI
+    app.use('/api/reference', apiReference({ content: document }))
 }
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule)
-  const config = app.get(ConfigService)
+    const app = await NestFactory.create(AppModule)
+    const config = app.get(ConfigService)
 
-  app.setGlobalPrefix('api')
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-      exceptionFactory: (errors) =>
-        new BusinessException(ErrorCode.VALIDATION_FAILED, 'Validation failed', errors),
-    }),
-  )
-  app.useGlobalInterceptors(new ResponseInterceptor())
-  app.useGlobalFilters(new AllExceptionsFilter())
+    app.setGlobalPrefix('api')
+    app.useGlobalPipes(
+        new ValidationPipe({
+            whitelist: true,
+            transform: true,
+            forbidNonWhitelisted: true,
+            exceptionFactory: (errors) =>
+                new BusinessException(ErrorCode.VALIDATION_FAILED, 'Validation failed', errors)
+        })
+    )
+    app.useGlobalInterceptors(new ResponseInterceptor())
+    app.useGlobalFilters(new AllExceptionsFilter())
 
-  // API 文档：默认开启，设 API_DOCS_ENABLED=false 可关闭（如生产环境）
-  const docsEnabled = config.get<string>('API_DOCS_ENABLED', 'true') !== 'false'
-  if (docsEnabled) {
-    setupApiDocs(app)
-  }
+    // API 文档：默认开启，设 API_DOCS_ENABLED=false 可关闭（如生产环境）
+    const docsEnabled = config.get<string>('API_DOCS_ENABLED', 'true') !== 'false'
+    if (docsEnabled) {
+        setupApiDocs(app)
+    }
 
-  const port = config.get<number>('SERVER_PORT', 3000)
-  await app.listen(port)
-  Logger.log(`AgentHub server listening on http://localhost:${port}/api`, 'Bootstrap')
-  if (docsEnabled) {
-    Logger.log(`API docs (Scalar) on http://localhost:${port}/api/reference`, 'Bootstrap')
-  }
+    const port = config.get<number>('SERVER_PORT', 3000)
+    await app.listen(port)
+    Logger.log(`AgentHub server listening on http://localhost:${port}/api`, 'Bootstrap')
+    if (docsEnabled) {
+        Logger.log(`API docs (Scalar) on http://localhost:${port}/api/reference`, 'Bootstrap')
+    }
 }
 
 bootstrap()

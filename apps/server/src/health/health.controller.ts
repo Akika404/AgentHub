@@ -3,10 +3,10 @@ import { HealthService, HealthStatus } from './health.service.js'
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly health: HealthService) {}
+    constructor(private readonly health: HealthService) {}
 
-  @Get()
-  check(): Promise<HealthStatus> {
-    return this.health.check()
-  }
+    @Get()
+    check(): Promise<HealthStatus> {
+        return this.health.check()
+    }
 }

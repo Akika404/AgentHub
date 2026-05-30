@@ -18,33 +18,33 @@ import { SKIP_ENVELOPE } from '../decorators/skip-envelope.decorator.js'
  */
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, ApiResponse<T> | T> {
-  private readonly reflector = new Reflector()
+    private readonly reflector = new Reflector()
 
-  intercept(context: ExecutionContext, next: CallHandler<T>): Observable<ApiResponse<T> | T> {
-    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_ENVELOPE, [
-      context.getHandler(),
-      context.getClass(),
-    ])
-    if (skip) {
-      return next.handle()
-    }
-    return next.handle().pipe(
-      map((data) => {
-        if (isApiResponse<T>(data)) {
-          return data
+    intercept(context: ExecutionContext, next: CallHandler<T>): Observable<ApiResponse<T> | T> {
+        const skip = this.reflector.getAllAndOverride<boolean>(SKIP_ENVELOPE, [
+            context.getHandler(),
+            context.getClass()
+        ])
+        if (skip) {
+            return next.handle()
         }
-        return buildSuccess<T>(data)
-      }),
-    )
-  }
+        return next.handle().pipe(
+            map((data) => {
+                if (isApiResponse<T>(data)) {
+                    return data
+                }
+                return buildSuccess<T>(data)
+            })
+        )
+    }
 }
 
 function isApiResponse<T>(value: unknown): value is ApiResponse<T> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { code?: unknown }).code === 'number' &&
-    'data' in value &&
-    'message' in value
-  )
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as { code?: unknown }).code === 'number' &&
+        'data' in value &&
+        'message' in value
+    )
 }

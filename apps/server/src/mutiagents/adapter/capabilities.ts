@@ -1,4 +1,4 @@
-import type { AgentCapabilities, AgentVendor } from "./types.js";
+import type { AgentCapabilities, AgentVendor } from './types.js'
 
 /**
  * 各 vendor 的能力描述符（单一事实来源）。
@@ -10,8 +10,8 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = {
     supportsSystemPrompt: true,
     supportsSkills: true,
     supportsMcp: true,
-    supportsResumeById: true,
-};
+    supportsResumeById: true
+}
 
 export const CODEX_CAPABILITIES: AgentCapabilities = {
     // Codex ThreadOptions 无 systemPrompt/skills；MCP 配置形态与统一接口(Claude 形状)
@@ -19,10 +19,10 @@ export const CODEX_CAPABILITIES: AgentCapabilities = {
     supportsSystemPrompt: false,
     supportsSkills: false,
     supportsMcp: false,
-    supportsResumeById: true,
-};
+    supportsResumeById: true
+}
 
 /** 按 vendor 取能力描述符，无需构造 adapter 实例 */
 export function getCapabilities(vendor: AgentVendor): AgentCapabilities {
-    return vendor === "claude" ? CLAUDE_CAPABILITIES : CODEX_CAPABILITIES;
+    return vendor === 'claude' ? CLAUDE_CAPABILITIES : CODEX_CAPABILITIES
 }

@@ -1,10 +1,10 @@
 import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
+    Column,
+    CreateDateColumn,
+    Entity,
+    Index,
+    PrimaryGeneratedColumn,
+    UpdateDateColumn
 } from 'typeorm'
 import type { AgentVendor } from '../adapter/index.js'
 
@@ -20,30 +20,30 @@ export type AgentSessionStatus = 'active' | 'suspended' | 'cleared'
  */
 @Entity('agent_session')
 export class AgentSession {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string
+    @PrimaryGeneratedColumn('uuid')
+    id!: string
 
-  @Index()
-  @Column({ type: 'uuid' })
-  specId!: string
+    @Index()
+    @Column({ type: 'uuid' })
+    specId!: string
 
-  /** 冗余 vendor，免去重建时为取 vendor 而 join spec */
-  @Column({ type: 'varchar', length: 16 })
-  vendor!: AgentVendor
+    /** 冗余 vendor，免去重建时为取 vendor 而 join spec */
+    @Column({ type: 'varchar', length: 16 })
+    vendor!: AgentVendor
 
-  /** 底层 SDK 的会话 id（Claude session UUID / Codex thread id）。清空后为 null */
-  @Column({ type: 'varchar', length: 128, nullable: true })
-  sdkSessionId!: string | null
+    /** 底层 SDK 的会话 id（Claude session UUID / Codex thread id）。清空后为 null */
+    @Column({ type: 'varchar', length: 128, nullable: true })
+    sdkSessionId!: string | null
 
-  @Column({ type: 'varchar', length: 16, default: 'active' })
-  status!: AgentSessionStatus
+    @Column({ type: 'varchar', length: 16, default: 'active' })
+    status!: AgentSessionStatus
 
-  @Column({ type: 'datetime', nullable: true })
-  lastTurnAt!: Date | null
+    @Column({ type: 'datetime', nullable: true })
+    lastTurnAt!: Date | null
 
-  @CreateDateColumn()
-  createdAt!: Date
+    @CreateDateColumn()
+    createdAt!: Date
 
-  @UpdateDateColumn()
-  updatedAt!: Date
+    @UpdateDateColumn()
+    updatedAt!: Date
 }

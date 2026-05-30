@@ -11,9 +11,9 @@ import { AgentSession } from './entities/agent-session.entity.js'
  * 注册 AgentSpec / AgentSession 两个实体；autoLoadEntities 已开，forFeature 即建表。
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([AgentSpec, AgentSession])],
-  controllers: [AgentsController],
-  providers: [AgentManager],
-  exports: [AgentManager]
+    imports: [TypeOrmModule.forFeature([AgentSpec, AgentSession])],
+    controllers: [AgentsController],
+    providers: [AgentManager],
+    exports: [AgentManager]
 })
 export class AgentsModule {}
