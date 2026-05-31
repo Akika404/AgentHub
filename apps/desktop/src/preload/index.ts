@@ -1,8 +1,18 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
-const api = {}
+/** Mirror of the main-process `ApiRequest` shape (kept local to avoid coupling). */
+interface ApiRequest {
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
+  path: string
+  body?: unknown
+  token?: string
+}
+
+// Custom APIs for renderer: a single typed channel onto the main-process HTTP proxy.
+const api = {
+  request: (req: ApiRequest) => ipcRenderer.invoke('api:request', req)
+}
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
