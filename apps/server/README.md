@@ -68,17 +68,20 @@ import { REDIS_CLIENT } from '../redis/redis.module'
 
 @Injectable()
 export class FooService {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+    constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {
+    }
 }
 ```
 
 ## ORM 选择说明
 
-选用 TypeORM 而非 Prisma，因为 `@Entity` / `@Column` / Repository 模式与 JPA 几乎一一对应，迁移成本最低。如果后续想要更强的类型推导和 schema 迁移工具，再切换到 Prisma 也很容易。
+选用 TypeORM 而非 Prisma，因为 `@Entity` / `@Column` / Repository 模式与 JPA 几乎一一对应，迁移成本最低。如果后续想要更强的类型推导和
+schema 迁移工具，再切换到 Prisma 也很容易。
 
 ## 用户管理模块（`src/user/`）
 
-提供注册、登录、退出登录、注销账号、获取用户信息五项能力，并自带一套可复用的 JWT 认证基座。类比 Spring：相当于 `Spring Security + JWT` 的最小落地。
+提供注册、登录、退出登录、注销账号、获取用户信息五项能力，并自带一套可复用的 JWT 认证基座。类比 Spring：相当于
+`Spring Security + JWT` 的最小落地。
 
 ### 目录结构
 
@@ -113,12 +116,14 @@ src/user/
 ### 认证机制
 
 - **无状态 JWT**：登录签发 access token（含 `jti`），放 `Authorization: Bearer` 使用。
-- **服务端吊销**：退出登录/注销时把 token 的 `jti` 写入 Redis 黑名单（`auth:blacklist:<jti>`，TTL=token 剩余有效期），`JwtAuthGuard` 每次校验时查黑名单 → 实现无状态 token 的即时失效。**故本模块依赖 Redis 在线**。
+- **服务端吊销**：退出登录/注销时把 token 的 `jti` 写入 Redis 黑名单（`auth:blacklist:<jti>`，TTL=token 剩余有效期），
+  `JwtAuthGuard` 每次校验时查黑名单 → 实现无状态 token 的即时失效。**故本模块依赖 Redis 在线**。
 - **密码**：仅存 `bcrypt` 哈希；实体侧 `select: false`，默认不随查询返回，登录时显式 select 后比对。
 
 ### 数据库
 
-仅一张 `user` 表（登录态/黑名单走 JWT/Redis，不入库）。dev 环境 TypeORM `synchronize` 自动建表；结构存档见 `sql/user_management.sql`，**真实结构以实体定义为准**。
+仅一张 `user` 表（登录态/黑名单走 JWT/Redis，不入库）。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
+`sql/user_management.sql`，**真实结构以实体定义为准**。
 
 ### 错误码（见 `common/exceptions/error-code.ts`）
 
@@ -137,7 +142,10 @@ src/user/
 
 ## Provider 管理模块（`src/platform-provider/`）
 
-用户自建「模型平台/供应商」的增删改查，外加连接测试与模型拉取。每个 Provider 归属创建它的用户，复用 `user` 模块导出的 `JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `mutiagents` 的 `agent`「不存 apiKey」相反——本模块的语义就是用户自带密钥，故必须落库；`mutiagents` 的 Agent 正是引用本模块的 Provider 取运行时凭证（`resolveRuntimeConfig`）。
+用户自建「模型平台/供应商」的增删改查，外加连接测试与模型拉取。每个 Provider 归属创建它的用户，复用 `user` 模块导出的
+`JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `mutiagents` 的 `agent`「不存
+apiKey」相反——本模块的语义就是用户自带密钥，故必须落库；`mutiagents` 的 Agent 正是引用本模块的 Provider 取运行时凭证（
+`resolveRuntimeConfig`）。
 
 ### 目录结构
 
@@ -154,15 +162,15 @@ src/platform-provider/
 
 ### 接口（前缀 `/api`，成功响应统一信封 `{ code, message, data, timestamp }`，全部需鉴权）
 
-| 方法     | 路径                                           | 功能                                                      |
-|--------|----------------------------------------------|---------------------------------------------------------|
-| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）                    |
-| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                                      |
-| GET    | `/api/platform-providers/:id`                | 查询单个详情                                                  |
-| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                                 |
-| DELETE | `/api/platform-providers/:id`                | 删除（硬删除）                                                 |
-| POST   | `/api/platform-providers/:id/test`           | 测试连接，返回 `{ ok, latencyMs, modelCount?, message? }`      |
-| POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                                 |
+| 方法     | 路径                                           | 功能                                                 |
+|--------|----------------------------------------------|----------------------------------------------------|
+| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）               |
+| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                                 |
+| GET    | `/api/platform-providers/:id`                | 查询单个详情                                             |
+| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                            |
+| DELETE | `/api/platform-providers/:id`                | 删除（硬删除）                                            |
+| POST   | `/api/platform-providers/:id/test`           | 测试连接，返回 `{ ok, latencyMs, modelCount?, message? }` |
+| POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                            |
 
 - 字段：`platformName` 展示名、`baseUrl` 上游地址、`apiKey` 密钥、`modelList` 模型名数组、`type` 协议类型。
 - `type` 取值：`openai-chat-completions` / `openai-responses` / `anthropic`（前端自行映射「OpenAI(Chat Completions)」等展示名）。
@@ -171,27 +179,31 @@ src/platform-provider/
 ### 密钥与安全
 
 - `apiKey` 必须可逆使用（用于调上游），无法像密码那样哈希；**明文存储**但实体侧 `select: false`，默认不随查询返回。
-- 对外视图只回**掩码**（`apiKeyMasked`，如 `sk-****wl7g`），**绝不回明文**；需要密钥的操作（掩码/探测）在 service 内显式 `addSelect` 取出。
+- 对外视图只回**掩码**（`apiKeyMasked`，如 `sk-****wl7g`），**绝不回明文**；需要密钥的操作（掩码/探测）在 service 内显式
+  `addSelect` 取出。
 
 ### 测试连接 / 拉取模型
 
-- 二者都只读地打上游「列模型」接口（OpenAI 走 `GET {base}/models` + `Bearer`；Anthropic 走 `GET {base}/v1/models` + `x-api-key` & `anthropic-version`），不产生 token 费用。
+- 二者都只读地打上游「列模型」接口（OpenAI 走 `GET {base}/models` + `Bearer`；Anthropic 走 `GET {base}/v1/models` +
+  `x-api-key` & `anthropic-version`），不产生 token 费用。
 - 出网请求带 10s 超时；上游不可达 / 非 2xx 归一为 `5000 UPSTREAM_ERROR`（502）。
-- `test` 失败**不抛异常**，而是返回 `{ ok:false, message }`，便于前端直接展示；`models/refresh` 上游异常时抛 `UPSTREAM_ERROR`。
+- `test` 失败**不抛异常**，而是返回 `{ ok:false, message }`，便于前端直接展示；`models/refresh` 上游异常时抛
+  `UPSTREAM_ERROR`。
 
 ### 数据库
 
-仅一张 `platform_provider` 表，`(userId, platformName)` 唯一。dev 环境 TypeORM `synchronize` 自动建表；结构存档见 `sql/platform_provider.sql`，**真实结构以实体定义为准**。
+仅一张 `platform_provider` 表，`(userId, platformName)` 唯一。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
+`sql/platform_provider.sql`，**真实结构以实体定义为准**。
 
 ### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
 
-| 码                       | HTTP | 含义                            |
-|-------------------------|------|-------------------------------|
-| `2001 UNAUTHORIZED`     | 401  | 缺少/无效/已失效的 token              |
-| `3000 VALIDATION_FAILED`| 400  | 入参校验失败（如 `baseUrl` 非 http(s)） |
-| `4000 NOT_FOUND`        | 404  | Provider 不存在或非本人              |
-| `4001 CONFLICT`         | 409  | 同名 Provider 已存在               |
-| `5000 UPSTREAM_ERROR`   | 502  | 上游不可达或返回非 2xx                 |
+| 码                        | HTTP | 含义                            |
+|--------------------------|------|-------------------------------|
+| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token              |
+| `3000 VALIDATION_FAILED` | 400  | 入参校验失败（如 `baseUrl` 非 http(s)） |
+| `4000 NOT_FOUND`         | 404  | Provider 不存在或非本人              |
+| `4001 CONFLICT`          | 409  | 同名 Provider 已存在               |
+| `5000 UPSTREAM_ERROR`    | 502  | 上游不可达或返回非 2xx                 |
 
 ### 已知限制
 
@@ -203,7 +215,8 @@ src/platform-provider/
 
 ## 多 Agent 管理模块（`src/mutiagents/`）
 
-用户「虚拟员工」（Agent）的创建、管理与单聊对话（SSE 流）。每个 Agent 归属创建它的用户，整模块复用 `user` 模块导出的 `JwtAuthGuard` 鉴权。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
+用户「虚拟员工」（Agent）的创建、管理与单聊对话（SSE 流）。每个 Agent 归属创建它的用户，整模块复用 `user` 模块导出的
+`JwtAuthGuard` 鉴权。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
 
 ### 目录结构
 
@@ -228,39 +241,47 @@ src/mutiagents/
 
 ### 三层模型
 
-- **Agent**（`agent` 表）：用户拥有的不变配置——`name`、`vendor`（claude/codex）、`platformProviderId` + `model`、工作目录、systemPrompt、skills、mcp、tools 等。**不存 `apiKey` / `baseUrl`**。
+- **Agent**（`agent` 表）：用户拥有的不变配置——`name`、`vendor`（claude/codex）、`platformProviderId` + `model`
+  、工作目录、systemPrompt、skills、mcp、tools 等。**不存 `apiKey` / `baseUrl`**。
 - **AgentSession**（`agent_session` 表）：会话句柄——`userId` + `agentId` + `sdkSessionId` + 状态，持久化以扛进程重启。
 - **LiveAgent**（进程内存，不入库）：内存中的 adapter 活实例 + 并发锁 + LRU 时间戳。
 
-**Agent 与会话解耦**：创建 Agent 只落配置（进 AgentList），不开会话；本期单聊按 `agentId` 懒加载/复用一条会话。把多个 Agent 拉进同一会话的**群聊**是后续独立模块。
+**Agent 与会话解耦**：创建 Agent 只落配置（进 AgentList），不开会话；本期单聊按 `agentId` 懒加载/复用一条会话。把多个 Agent
+拉进同一会话的**群聊**是后续独立模块。
 
-**凭证来自 Provider**：Agent 引用一个 `platformProviderId`，运行时调 `PlatformProviderService.resolveRuntimeConfig` 取 `baseUrl` + 明文 `apiKey` 注入 adapter（仅后端内部）。创建时校验 vendor↔Provider 类型兼容（`claude`↔`anthropic`，`codex`↔`openai-*`）、`model` 属于 Provider 的 `modelList`。
+**凭证来自 Provider**：Agent 引用一个 `platformProviderId`，运行时调 `PlatformProviderService.resolveRuntimeConfig` 取
+`baseUrl` + 明文 `apiKey` 注入 adapter（仅后端内部）。创建时校验 vendor↔Provider 类型兼容（`claude`↔`anthropic`，`codex`↔
+`openai-*`）、`model` 属于 Provider 的 `modelList`。
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法     | 路径                                  | 功能                                       |
-|--------|-------------------------------------|------------------------------------------|
-| POST   | `/api/agents`                       | 创建 Agent 配置（不开会话），返回 `AgentView`        |
-| GET    | `/api/agents`                       | 列出当前用户的 AgentList                        |
-| GET    | `/api/agents/:agentId`              | 查询单个 Agent                              |
-| DELETE | `/api/agents/:agentId`              | 删除 Agent（连同其会话）                         |
-| GET `@Sse` | `/api/agents/:agentId/converse?prompt=...` | 单聊（懒加载会话），SSE 推 `AgentEvent`        |
-| POST   | `/api/agents/:agentId/suspend`      | 暂存单聊会话（从内存驱逐，可恢复）                       |
-| POST   | `/api/agents/:agentId/restore`      | 恢复单聊会话并预热活实例                            |
-| POST   | `/api/agents/:agentId/clear`        | 清空单聊会话（丢弃句柄，下次开新会话）                     |
+| 方法         | 路径                                         | 功能                               |
+|------------|--------------------------------------------|----------------------------------|
+| POST       | `/api/agents`                              | 创建 Agent 配置（不开会话），返回 `AgentView` |
+| GET        | `/api/agents`                              | 列出当前用户的 AgentList                |
+| GET        | `/api/agents/:agentId`                     | 查询单个 Agent                       |
+| DELETE     | `/api/agents/:agentId`                     | 删除 Agent（连同其会话）                  |
+| GET `@Sse` | `/api/agents/:agentId/converse?prompt=...` | 单聊（懒加载会话），SSE 推 `AgentEvent`     |
+| POST       | `/api/agents/:agentId/suspend`             | 暂存单聊会话（从内存驱逐，可恢复）                |
+| POST       | `/api/agents/:agentId/restore`             | 恢复单聊会话并预热活实例                     |
+| POST       | `/api/agents/:agentId/clear`               | 清空单聊会话（丢弃句柄，下次开新会话）              |
 
 - 所有操作按 `@CurrentUser()` 隔离，非本人 Agent 一律 `NOT_FOUND`。
-- SSE 路由用 `@SkipEnvelope()`；浏览器原生 `EventSource` 不便带 `Authorization` 头，前端需用 fetch-stream 或后续支持 query token。
+- SSE 路由用 `@SkipEnvelope()`；浏览器原生 `EventSource` 不便带 `Authorization` 头，前端需用 fetch-stream 或后续支持 query
+  token。
 
 ### 并发与生命周期
 
 - **单会话串行**：进行中的 turn 再次对话 → `AGENT_BUSY`（Manager 同步 check-and-set，非裸 throw）。
-- **驱逐**：LRU + 上限（`AGENT_MAX_LIVE` 默认 30；Codex 子进程较重，`AGENT_MAX_LIVE_CODEX` 默认 8），仅驱逐空闲（非 busy）实例；另有 idle-TTL 清扫（`AGENT_IDLE_TTL_MS` 默认 15min）。Codex 子进程无 dispose API，驱逐只能丢引用靠 GC，故设活跃实例上限兜底。
-- **句柄回写**：仅在每轮结束（`done`）持久化 `sdkSessionId`，绝不在流中途写；缺失活实例时按 Agent 配置重建 adapter 并 `resumeWith(sdkSessionId)` 续接，故能扛进程重启（仅恢复已完成轮次，崩溃时进行中的 turn 丢失，客户端需重发）。
+- **驱逐**：LRU + 上限（`AGENT_MAX_LIVE` 默认 30；Codex 子进程较重，`AGENT_MAX_LIVE_CODEX` 默认 8），仅驱逐空闲（非 busy）实例；另有
+  idle-TTL 清扫（`AGENT_IDLE_TTL_MS` 默认 15min）。Codex 子进程无 dispose API，驱逐只能丢引用靠 GC，故设活跃实例上限兜底。
+- **句柄回写**：仅在每轮结束（`done`）持久化 `sdkSessionId`，绝不在流中途写；缺失活实例时按 Agent 配置重建 adapter 并
+  `resumeWith(sdkSessionId)` 续接，故能扛进程重启（仅恢复已完成轮次，崩溃时进行中的 turn 丢失，客户端需重发）。
 
 ### 数据库
 
-两张表 `agent` / `agent_session`，均按 `userId` 隔离。dev 环境 TypeORM `synchronize` 自动建表；结构存档见 `sql/agent_manager.sql`，**真实结构以实体定义为准**。
+两张表 `agent` / `agent_session`，均按 `userId` 隔离。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
+`sql/agent_manager.sql`，**真实结构以实体定义为准**。
 
 ### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
 
@@ -277,7 +298,8 @@ src/mutiagents/
 - 群聊会话留给后续模块；本期仅单聊（一个 Agent 至多一条会话）。
 - Agent 配置创建后不可编辑（无 PATCH）；`name` 同一用户下不强制唯一。
 - 删除被 Agent 引用的 Provider 不级联，运行时凭证解析失败 → `AGENT_UNAVAILABLE`。
-- **权限审批**：本期 auto-approve（Claude `bypassPermissions` / Codex `approvalPolicy:"never"`），已留 `config.permissionMode` + `canUseTool` seam，交互审批为 phase-2。
+- **权限审批**：本期 auto-approve（Claude `bypassPermissions` / Codex `approvalPolicy:"never"`），已留
+  `config.permissionMode` + `canUseTool` seam，交互审批为 phase-2。
 - **厂商不对称**：Codex 不支持 systemPrompt / skills / MCP（见 `capabilities()`），创建时显式拒绝。
 - `clear()` 仅逻辑清空：SDK 落盘的旧会话文件不删除（disk 增长、旧会话技术上仍可 resume）→ phase-2 清理任务。
 - 前端 / `packages/shared` 的 Agent 契约（`id`/`name`/`platformProviderId`，无 `sessionId`）需另行更新。
