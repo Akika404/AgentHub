@@ -6,6 +6,7 @@ import { BusinessException } from '../common/index.js'
 import { User } from './entities/user.entity.js'
 import { RegisterDto } from './dto/register.dto.js'
 import { LoginDto } from './dto/login.dto.js'
+import { UpdateUserDto } from './dto/update-user.dto.js'
 import type { LoginResult, UserView } from './dto/user-view.dto.js'
 import { toUserView } from './mappers/user.mapper.js'
 import { TokenService } from './auth/token.service.js'
@@ -88,6 +89,22 @@ export class UserService {
 
     /** 获取当前用户信息（守卫已载入实体）。 */
     getMe(user: User): UserView {
+        return toUserView(user)
+    }
+
+    /**
+     * 更新当前用户资料：部分更新，只覆盖传入字段（undefined 保留原值，null 清空）。
+     * 守卫已载入实体；用 update 而非 save 局部落库，避免把 select:false 的 passwordHash 误写空。
+     */
+    async update(user: User, dto: UpdateUserDto): Promise<UserView> {
+        const patch: Partial<Pick<User, 'nickname' | 'avatar'>> = {}
+        if (dto.nickname !== undefined) patch.nickname = dto.nickname
+        if (dto.avatar !== undefined) patch.avatar = dto.avatar
+
+        if (Object.keys(patch).length > 0) {
+            await this.userRepo.update({ id: user.id }, patch)
+            Object.assign(user, patch)
+        }
         return toUserView(user)
     }
 }

@@ -4,6 +4,7 @@ import { ApiEnvelope } from '../common/swagger/api-envelope.decorator.js'
 import { UserService } from './user.service.js'
 import { RegisterDto } from './dto/register.dto.js'
 import { LoginDto } from './dto/login.dto.js'
+import { UpdateUserDto } from './dto/update-user.dto.js'
 import type { LoginResult, UserView } from './dto/user-view.dto.js'
 import {
     DeactivateResultDto,
@@ -51,6 +52,18 @@ export class UserController {
     @ApiEnvelope(UserViewDto)
     me(@CurrentUser() user: User): UserView {
         return this.userService.getMe(user)
+    }
+
+    @Post('update')
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({
+        summary: '更新当前用户资料',
+        description: '部分更新，只覆盖传入字段；省略保留原值，传 null 清空。当前支持 nickname / avatar'
+    })
+    @ApiEnvelope(UserViewDto, { status: 201 })
+    update(@CurrentUser() user: User, @Body() dto: UpdateUserDto): Promise<UserView> {
+        return this.userService.update(user, dto)
     }
 
     @Delete('me')

@@ -2,7 +2,7 @@
 
 ## Context
 
-`apps/server` 本次新增"用户管理"模块，提供注册、登录、退出登录(sign-out)、注销账号(逻辑删除)、获取用户信息五项能力，并从零搭建一套可复用的 JWT 认证基座。
+`apps/server` 本次新增"用户管理"模块，提供注册、登录、退出登录(sign-out)、注销账号(逻辑删除)、获取用户信息、更新用户资料六项能力，并从零搭建一套可复用的 JWT 认证基座。
 
 设计依据已与用户确认的三项决策：
 1. **凭证机制 = 纯 JWT 无状态**（access token 放 `Authorization: Bearer`）。
@@ -19,10 +19,12 @@
 | POST | `/api/user/login` | 登录，返回 token + 用户视图 | 否 |
 | POST | `/api/user/logout` | 退出登录，当前 token 加黑名单 | 是 |
 | GET | `/api/user/me` | 获取当前用户信息 | 是 |
+| POST | `/api/user/update` | 更新当前用户资料（部分更新 nickname / avatar） | 是 |
 | DELETE | `/api/user/me` | 注销账号（status→deactivated，并使当前 token 失效） | 是 |
 
 - `account` = 登录名（唯一、不可变）；`nickname` = 展示名；`email`/`avatar` 注册后可选补充。注册入参仅 `account` + `password`。
 - 注册**不自动登录**，返回用户视图；登录单独换取 token。
+- `POST /api/user/update` 为**部分更新**：字段省略（`undefined`）保留原值、显式传 `null` 清空；当前仅开放 `nickname` / `avatar`。`account` 不可变不在此收集；`email`（唯一索引、需冲突校验）暂未开放；`password` 应走独立的「校验旧密码」接口，不并入资料更新。
 
 ## 新增文件结构（`apps/server/src/user/`）
 
@@ -30,12 +32,13 @@
 user/
   user.module.ts          # TypeOrmModule.forFeature([User]) + JwtModule.registerAsync；声明 controller/service/guard/token，导出 JwtAuthGuard 供未来其他模块复用
   user.controller.ts      # @ApiTags('user') @Controller('user')；薄控制器，委派 service
-  user.service.ts         # register / login / logout / deactivate / getMe 全部业务逻辑 + DB 访问
+  user.service.ts         # register / login / logout / deactivate / getMe / update 全部业务逻辑 + DB 访问
   entities/
     user.entity.ts        # @Entity('user')
   dto/
     register.dto.ts       # class-validator 入参
     login.dto.ts          # class-validator 入参
+    update-user.dto.ts    # class-validator 入参（部分更新：nickname / avatar，均可选）
     user-view.dto.ts      # interface：UserView / LoginResult（对外契约，唯一真源）
     user-response.dto.ts  # Swagger class，implements 上面 interface（仅出文档）
   mappers/
@@ -102,6 +105,7 @@ CREATE TABLE `user` (
 - **logout**：从守卫注入的 payload 取 `jti` + `exp`，写 Redis 黑名单键 `auth:blacklist:<jti>`，TTL = `exp - now`。返回 `{ success: true }`。
 - **deactivate（注销账号）**：`repo.update({ id }, { status: 'deactivated' })`，并把当前 token 加黑名单（即时下线）。返回 `{ deactivated: true }`。
 - **getMe**：直接由守卫已载入的 user 经 mapper 返回。
+- **update（更新资料）**：守卫已载入实体；按传入字段构造 patch（仅 `!== undefined` 的字段进 patch，`null` 视为清空），`repo.update({ id }, patch)` 局部落库——**用 `update` 而非 `save(entity)`**，避免把 `select:false` 未加载的 `passwordHash` 误写空（与 `deactivate` 同模式）。patch 为空则直接回当前视图。返回 `toUserView`。
 
 ## 认证基座
 
@@ -144,3 +148,4 @@ CREATE TABLE `user` (
 - 注册不自动登录（如需自动登录返回 token，可在 register 末尾复用 login 逻辑）。
 - 账号注销为逻辑删除，`account`/`email` 仍占用唯一索引（不可同名重注册）——如需释放需另行约定。
 - 未做登录失败次数限制 / 验证码 / 密码找回，超出本次范围。
+- 资料更新（`POST /user/update`）当前仅 `nickname` / `avatar`；`email` 更新（含唯一性冲突校验）与改密码（校验旧密码）为后续独立工作。

@@ -80,7 +80,7 @@ schema 迁移工具，再切换到 Prisma 也很容易。
 
 ## 用户管理模块（`src/user/`）
 
-提供注册、登录、退出登录、注销账号、获取用户信息五项能力，并自带一套可复用的 JWT 认证基座。类比 Spring：相当于
+提供注册、登录、退出登录、注销账号、获取用户信息、更新用户资料六项能力，并自带一套可复用的 JWT 认证基座。类比 Spring：相当于
 `Spring Security + JWT` 的最小落地。
 
 ### 目录结构
@@ -89,9 +89,9 @@ schema 迁移工具，再切换到 Prisma 也很容易。
 src/user/
 ├── user.module.ts          # 装配 User 实体 + JwtModule；导出 JwtAuthGuard 供其他模块复用
 ├── user.controller.ts      # @Controller('user')，薄控制器
-├── user.service.ts         # 注册/登录/退出/注销/获取信息全部业务逻辑
+├── user.service.ts         # 注册/登录/退出/注销/获取信息/更新资料全部业务逻辑
 ├── entities/user.entity.ts # @Entity('user')
-├── dto/                    # register/login 入参、user-view 契约(interface)、user-response 文档类
+├── dto/                    # register/login/update-user 入参、user-view 契约(interface)、user-response 文档类
 ├── mappers/user.mapper.ts  # 实体 → 视图，剥离 passwordHash
 └── auth/
     ├── token.service.ts        # JWT 签发/校验 + Redis 黑名单吊销
@@ -108,9 +108,11 @@ src/user/
 | POST   | `/api/user/login`    | 登录，返回 `{ token, expiresIn, user }` | 否  |
 | POST   | `/api/user/logout`   | 退出登录，当前 token 加入黑名单即时失效            | 是  |
 | GET    | `/api/user/me`       | 获取当前用户信息                           | 是  |
+| POST   | `/api/user/update`   | 更新当前用户资料（部分更新 `nickname` / `avatar`） | 是  |
 | DELETE | `/api/user/me`       | 注销账号（逻辑删除），并吊销当前 token             | 是  |
 
 - `account` = 登录名（唯一不可变）；`nickname` = 展示名；`email` / `avatar` 注册后可选补充。
+- `POST /api/user/update` 为部分更新：字段省略保留原值、显式传 `null` 清空；当前仅开放 `nickname` / `avatar`（`account` 不可变、`email` 暂未开放、`password` 应走独立的校验旧密码接口）。
 - 受保护接口需带 `Authorization: Bearer <token>`；Scalar UI 中点右上 **Authorize** 填入即可。
 
 ### 认证机制
