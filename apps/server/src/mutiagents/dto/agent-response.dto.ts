@@ -1,9 +1,25 @@
 import { ApiProperty } from '@nestjs/swagger'
-import type { AgentCapabilities, AgentVendor } from '../adapter/index.js'
-import type { AgentView, AgentRuntimeStatus } from './agent-view.dto.js'
+import type { AgentCapabilities, AgentPermissionMode, AgentVendor } from '../adapter/index.js'
+import type { AgentReasoningEffort, AgentView, AgentRuntimeStatus } from './agent-view.dto.js'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
 const RUNTIME_STATUSES: AgentRuntimeStatus[] = ['active', 'suspended', 'cleared', 'none']
+const PERMISSION_MODES: AgentPermissionMode[] = [
+    'default',
+    'acceptEdits',
+    'bypassPermissions',
+    'plan',
+    'dontAsk',
+    'auto'
+]
+const REASONING_EFFORTS: AgentReasoningEffort[] = [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max'
+]
 
 /**
  * 响应侧 DTO（Swagger 文档模型）。
@@ -67,6 +83,49 @@ export class AgentViewDto implements AgentView {
 
     @ApiProperty({ description: '更新时间，ISO8601' })
     updatedAt!: string
+
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '系统提示词；未配置或 vendor 不支持时为 null'
+    })
+    systemPrompt!: string | null
+
+    @ApiProperty({
+        nullable: true,
+        oneOf: [{ type: 'string', enum: ['all'] }, { type: 'array', items: { type: 'string' } }],
+        description: '"all" 或技能名数组；未配置为 null'
+    })
+    skills!: 'all' | string[] | null
+
+    @ApiProperty({
+        type: 'object',
+        additionalProperties: true,
+        nullable: true,
+        description: 'MCP 服务器配置（Claude 形状）；未配置为 null'
+    })
+    mcpServers!: Record<string, unknown> | null
+
+    @ApiProperty({
+        type: [String],
+        nullable: true,
+        description: '工具白名单；未配置为 null'
+    })
+    allowedTools!: string[] | null
+
+    @ApiProperty({
+        enum: PERMISSION_MODES,
+        nullable: true,
+        description: '权限模式；未配置为 null'
+    })
+    permissionMode!: AgentPermissionMode | null
+
+    @ApiProperty({
+        enum: REASONING_EFFORTS,
+        nullable: true,
+        description: '推理 effort；未配置为 null'
+    })
+    reasoningEffort!: AgentReasoningEffort | null
 }
 
 /** 删除 Agent 的返回 */

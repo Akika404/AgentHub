@@ -1,8 +1,11 @@
-import type { AgentCapabilities, AgentVendor } from '../adapter/index.js'
+import type { AgentCapabilities, AgentPermissionMode, AgentVendor } from '../adapter/index.js'
 import type { AgentSessionStatus } from '../entities/agent-session.entity.js'
 
 /** Agent 视图里的运行时状态：在会话状态之上多一个 `none`（尚未开过任何会话）。 */
 export type AgentRuntimeStatus = AgentSessionStatus | 'none'
+
+/** 推理 effort 取值集（与 create-agent.dto / adapter config 对齐）。 */
+export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /**
  * 对外返回的 Agent 视图（以 Agent 配置为主体，附带单聊会话的运行时状态）。
@@ -28,4 +31,20 @@ export interface AgentView {
     lastTurnAt: string | null
     createdAt: string
     updatedAt: string
+
+    /**
+     * 详情面板展示用的配置字段。是否真正生效取决于 vendor 能力（见 capabilities）；
+     * 未配置时为 null。codex 不支持 systemPrompt / skills / mcp，对应字段恒为 null。
+     */
+    systemPrompt: string | null
+    /** "all" 或技能名数组；未配置为 null */
+    skills: 'all' | string[] | null
+    /** MCP 服务器配置（Claude 形状的 Record<string, McpServerConfig>）；未配置为 null */
+    mcpServers: Record<string, unknown> | null
+    /** 工具白名单；未配置为 null（adapter 用各自默认集合） */
+    allowedTools: string[] | null
+    /** 权限模式；未配置为 null */
+    permissionMode: AgentPermissionMode | null
+    /** 推理 effort；未配置为 null */
+    reasoningEffort: AgentReasoningEffort | null
 }

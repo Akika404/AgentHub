@@ -2,7 +2,7 @@ import type { AgentAdapterConfig } from '../adapter/index.js'
 import { getCapabilities } from '../adapter/index.js'
 import type { Agent } from '../entities/agent.entity.js'
 import type { AgentSession } from '../entities/agent-session.entity.js'
-import type { AgentView } from '../dto/agent-view.dto.js'
+import type { AgentReasoningEffort, AgentView } from '../dto/agent-view.dto.js'
 
 type ReasoningEffort = AgentAdapterConfig['reasoningEffort']
 
@@ -51,6 +51,12 @@ export function toAgentView(agent: Agent, session: AgentSession | null): AgentVi
         hasLiveSession: session?.sdkSessionId != null,
         lastTurnAt: session?.lastTurnAt ? session.lastTurnAt.toISOString() : null,
         createdAt: agent.createdAt.toISOString(),
-        updatedAt: agent.updatedAt.toISOString()
+        updatedAt: agent.updatedAt.toISOString(),
+        systemPrompt: agent.systemPrompt,
+        skills: agent.skills,
+        mcpServers: agent.mcpServers,
+        allowedTools: agent.allowedTools,
+        permissionMode: agent.permissionMode,
+        reasoningEffort: (agent.reasoningEffort as AgentReasoningEffort | null) ?? null
     }
 }

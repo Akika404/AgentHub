@@ -60,11 +60,10 @@ export function isVendorProviderCompatible(
 /**
  * Outward agent view (config + single-chat runtime status projection).
  *
- * NOTE: `systemPrompt` / `skills` / `mcpServers` / `allowedTools` /
- * `permissionMode` / `reasoningEffort` depend on the backend extending
- * `agent-view.dto.ts` to expose them (the create DTO already accepts them, but
- * the current view omits them). Until then these come back as null/undefined
- * and the UI shows empty placeholders. This shared type IS the contract.
+ * `systemPrompt` / `skills` / `mcpServers` / `allowedTools` / `permissionMode` /
+ * `reasoningEffort` are the detail-panel config fields; always present, `null`
+ * when unset (or when the vendor doesn't support them — e.g. codex lacks
+ * systemPrompt/skills/mcp). This shared type IS the contract.
  */
 export interface AgentView {
   /** Agent id (client uses it to converse / manage) */
@@ -87,13 +86,13 @@ export interface AgentView {
   createdAt: string
   updatedAt: string
 
-  // --- pending backend AgentView extension (see note above) ---
-  systemPrompt?: string | null
-  skills?: 'all' | string[] | null
-  mcpServers?: Record<string, unknown> | null
-  allowedTools?: string[] | null
-  permissionMode?: AgentPermissionMode | null
-  reasoningEffort?: AgentReasoningEffort | null
+  // --- detail-panel config fields (null when unset / unsupported) ---
+  systemPrompt: string | null
+  skills: 'all' | string[] | null
+  mcpServers: Record<string, unknown> | null
+  allowedTools: string[] | null
+  permissionMode: AgentPermissionMode | null
+  reasoningEffort: AgentReasoningEffort | null
 }
 
 /**
