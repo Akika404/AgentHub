@@ -2,12 +2,23 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { BusinessException } from '../common/index.js'
-import { PlatformProvider } from './entities/platform-provider.entity.js'
+import { PlatformProvider, type ProviderType } from './entities/platform-provider.entity.js'
 import { CreatePlatformProviderDto } from './dto/create-platform-provider.dto.js'
 import { UpdatePlatformProviderDto } from './dto/update-platform-provider.dto.js'
 import type { PlatformProviderView, ProviderTestResult } from './dto/platform-provider-view.dto.js'
 import { toPlatformProviderView } from './mappers/platform-provider.mapper.js'
 import { ProviderProbeService } from './provider-probe.service.js'
+
+/**
+ * Provider 的运行时凭证：含**明文 apiKey**，仅供后端内部（如 AgentManager 重建 adapter）使用，
+ * 绝不经控制器对外返回。
+ */
+export interface ProviderRuntimeConfig {
+    type: ProviderType
+    baseUrl: string
+    apiKey: string
+    modelList: string[]
+}
 
 /**
  * PlatformProviderService —— 用户自建 Provider 的全部业务逻辑与 DB 访问。
@@ -96,6 +107,20 @@ export class PlatformProviderService {
         entity.modelList = await this.probe.listModels(entity.type, entity.baseUrl, entity.apiKey)
         const saved = await this.providerRepo.save(entity)
         return toPlatformProviderView(saved)
+    }
+
+    /**
+     * 按 (userId, id) 取运行时凭证（含明文 apiKey），供其他后端模块（AgentManager）重建 adapter。
+     * 不存在或非本人 → NOT_FOUND。**绝不**把返回值经控制器对外暴露。
+     */
+    async resolveRuntimeConfig(userId: string, id: string): Promise<ProviderRuntimeConfig> {
+        const entity = await this.findOwned(userId, id)
+        return {
+            type: entity.type,
+            baseUrl: entity.baseUrl,
+            apiKey: entity.apiKey,
+            modelList: entity.modelList
+        }
     }
 
     /**

@@ -3,20 +3,24 @@ import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
 import { createAgent, getCapabilities, type AgentEvent, type AgentVendor } from './adapter/index.js'
-import { AgentSpec } from './entities/agent-spec.entity.js'
+import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
-import type { AgentView, CreateAgentResult } from './dto/agent-view.dto.js'
-import { specToConfig, toAgentView } from './mappers/agent.mapper.js'
+import type { AgentView } from './dto/agent-view.dto.js'
+import { agentToConfig, toAgentView } from './mappers/agent.mapper.js'
 import type { LiveAgent } from './live-agent.js'
 import { BusinessException } from '../common/index.js'
+import { PlatformProviderService } from '../platform-provider/platform-provider.service.js'
+import type { ProviderType } from '../platform-provider/entities/platform-provider.entity.js'
 
 /**
- * AgentManager — 虚拟员工的注册表与生命周期管家。
+ * AgentManager — 用户虚拟员工的注册表与生命周期管家。
  *
- * 三层模型：AgentSpec（档案，MySQL）/ AgentSession（句柄，MySQL）/ LiveAgent（活实例，内存）。
+ * 三层模型：Agent（配置，MySQL，归属用户）/ AgentSession（句柄，MySQL）/ LiveAgent（活实例，内存）。
+ * Agent 与会话解耦：创建 Agent 只落配置（进 AgentList）；本期单聊按 agentId 懒加载/复用一条会话。
+ * 凭证（baseUrl + apiKey）不存 Agent，运行时按 Agent.platformProviderId 从 platform-provider 取。
  * 会话内容由底层 SDK 落盘，这里只持久化句柄（sdkSessionId），因而能扛进程重启：
- * 缺失活实例时按 spec 重建 adapter 并 resumeWith(sdkSessionId) 续接。
+ * 缺失活实例时按 Agent 配置重建 adapter 并 resumeWith(sdkSessionId) 续接。
  */
 @Injectable()
 export class AgentManager implements OnModuleInit, OnModuleDestroy {
@@ -33,10 +37,11 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private sweepTimer: NodeJS.Timeout | null = null
 
     constructor(
-        @InjectRepository(AgentSpec)
-        private readonly specRepo: Repository<AgentSpec>,
+        @InjectRepository(Agent)
+        private readonly agentRepo: Repository<Agent>,
         @InjectRepository(AgentSession)
         private readonly sessionRepo: Repository<AgentSession>,
+        private readonly providerService: PlatformProviderService,
         private readonly config: ConfigService
     ) {
         this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
@@ -56,15 +61,27 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         this.registry.clear()
     }
 
-    // ─────────────────────────── 创建 / 查询 ───────────────────────────
+    // ─────────────────────────── 创建 / 查询（按用户隔离） ───────────────────────────
 
-    // TODO: 这个地方的 spec 应该是用户已经创建过的 Agent，应该直接从 user_agent 表中根据 agent_id 查出来
-    // 现在还没建这个表，先保持这样
-    async createAgentSession(dto: CreateAgentDto): Promise<CreateAgentResult> {
+    /**
+     * 创建一个 Agent（仅落配置，进入该用户的 AgentList，不开会话）。
+     *
+     * 校验：vendor 能力支持配置；所引用 Provider 存在且本人所有；vendor 与 Provider 类型兼容；
+     * model 属于该 Provider 的 modelList（modelList 为空时跳过）。
+     */
+    async createAgent(userId: string, dto: CreateAgentDto): Promise<AgentView> {
         this.assertConfigSupported(dto)
 
-        const spec = this.specRepo.create({
+        // 取所引用 Provider 的运行时配置：顺带校验其存在且归属本人（否则 NOT_FOUND）
+        const provider = await this.providerService.resolveRuntimeConfig(userId, dto.platformProviderId)
+        this.assertVendorProviderCompatible(dto.vendor, provider.type)
+        this.assertModelInList(dto.model, provider.modelList)
+
+        const agent = this.agentRepo.create({
+            userId,
+            name: dto.name,
             vendor: dto.vendor,
+            platformProviderId: dto.platformProviderId,
             model: dto.model,
             workingDirectory: dto.workingDirectory,
             systemPrompt: dto.systemPrompt ?? null,
@@ -72,68 +89,50 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             mcpServers: dto.mcpServers ?? null,
             allowedTools: dto.allowedTools ?? null,
             permissionMode: dto.permissionMode ?? null,
-            reasoningEffort: dto.reasoningEffort ?? null,
-            baseUrl: dto.baseUrl ?? null
+            reasoningEffort: dto.reasoningEffort ?? null
         })
-        const savedSpec = await this.specRepo.save(spec)
-
-        const session = this.sessionRepo.create({
-            specId: savedSpec.id,
-            vendor: savedSpec.vendor,
-            sdkSessionId: null,
-            status: 'active',
-            lastTurnAt: null
-        })
-        const savedSession = await this.sessionRepo.save(session)
-
-        return {
-            sessionId: savedSession.id,
-            specId: savedSpec.id,
-            vendor: savedSpec.vendor,
-            capabilities: getCapabilities(savedSpec.vendor)
-        }
+        const saved = await this.agentRepo.save(agent)
+        return toAgentView(saved, null)
     }
 
-    async list(): Promise<AgentView[]> {
-        const sessions = await this.sessionRepo.find({ order: { createdAt: 'DESC' } })
-        if (sessions.length === 0) return []
-        const specs = await this.specRepo.find({
-            where: { id: In(sessions.map((s) => s.specId)) }
+    /** 列出当前用户的全部 Agent（AgentList），附带各自单聊会话的运行时状态。 */
+    async list(userId: string): Promise<AgentView[]> {
+        const agents = await this.agentRepo.find({ where: { userId }, order: { createdAt: 'DESC' } })
+        if (agents.length === 0) return []
+        const sessions = await this.sessionRepo.find({
+            where: { agentId: In(agents.map((a) => a.id)) }
         })
-        const specById = new Map(specs.map((sp) => [sp.id, sp]))
-        return sessions
-            .map((s) => {
-                const spec = specById.get(s.specId)
-                return spec ? toAgentView(s, spec) : null
-            })
-            .filter((v): v is AgentView => v !== null)
+        const sessionByAgent = new Map(sessions.map((s) => [s.agentId, s]))
+        return agents.map((a) => toAgentView(a, sessionByAgent.get(a.id) ?? null))
     }
 
-    async get(sessionId: string): Promise<AgentView> {
-        const { session, spec } = await this.loadSessionAndSpec(sessionId)
-        return toAgentView(session, spec)
+    async get(userId: string, agentId: string): Promise<AgentView> {
+        const agent = await this.loadAgent(userId, agentId)
+        const session = await this.findSoloSession(userId, agentId)
+        return toAgentView(agent, session)
     }
 
     // ─────────────────────────── 对话（SSE） ───────────────────────────
 
     /**
-     * 与 agent 对话，返回事件流。
+     * 与某个 Agent 对话（单聊），返回事件流。
      *
-     * 同步流程：加载会话 → 取/重建活实例 → 检查并占用 busy（无 await 的 check-and-set，
+     * 同步流程：取/建单聊会话 → 取/重建活实例 → 检查并占用 busy（无 await 的 check-and-set，
      * 防并发）→ 返回生成器。生成器负责实际流式转发，并在 finally 回写句柄、释放 busy。
      * 客户端断连时，控制器对返回的迭代器调用 .return()，触发本生成器 finally。
      */
     async converse(
-        sessionId: string,
+        userId: string,
+        agentId: string,
         prompt: string,
         clientSignal?: AbortSignal
     ): Promise<AsyncIterable<AgentEvent>> {
-        const { session } = await this.loadSessionAndSpec(sessionId)
+        const { session } = await this.getOrCreateSoloSession(userId, agentId)
         const live = await this.getOrRehydrate(session)
 
         // check-and-set：此处到置位之间无 await，单线程下原子，避免并发对话交错上下文
         if (live.busy) {
-            throw BusinessException.agentBusy(`Agent ${sessionId} is busy with another turn`)
+            throw BusinessException.agentBusy(`Agent ${agentId} is busy with another turn`)
         }
         live.busy = true
         live.lastUsedAt = Date.now()
@@ -187,51 +186,62 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         await this.sessionRepo.update({ id: session.id }, patch)
     }
 
-    // ─────────────────────── 暂存 / 恢复 / 清空 / 删除 ───────────────────────
+    // ─────────────────────── 暂存 / 恢复 / 清空 / 删除（按用户隔离） ───────────────────────
 
-    async suspend(sessionId: string): Promise<AgentView> {
-        const { session, spec } = await this.loadSessionAndSpec(sessionId)
-        this.assertNotBusy(sessionId)
-        this.registry.delete(sessionId) // 从内存驱逐；磁盘会话仍在，可后续恢复
+    /** 暂存单聊会话：从内存驱逐，可恢复。无会话则为 no-op（返回 none 视图）。 */
+    async suspend(userId: string, agentId: string): Promise<AgentView> {
+        const agent = await this.loadAgent(userId, agentId)
+        const session = await this.findSoloSession(userId, agentId)
+        if (!session) return toAgentView(agent, null)
+        this.assertNotBusy(session.id)
+        this.registry.delete(session.id) // 从内存驱逐；磁盘会话仍在，可后续恢复
         session.status = 'suspended'
-        await this.sessionRepo.update({ id: sessionId }, { status: 'suspended' })
-        return toAgentView(session, spec)
+        await this.sessionRepo.update({ id: session.id }, { status: 'suspended' })
+        return toAgentView(agent, session)
     }
 
-    async restore(sessionId: string): Promise<AgentView> {
-        const { session, spec } = await this.loadSessionAndSpec(sessionId)
+    /** 恢复单聊会话：用 Agent 配置重建 adapter 并续接底层会话；无会话则新建并预热。 */
+    async restore(userId: string, agentId: string): Promise<AgentView> {
+        const { agent, session } = await this.getOrCreateSoloSession(userId, agentId)
         session.status = 'active'
-        await this.sessionRepo.update({ id: sessionId }, { status: 'active' })
+        await this.sessionRepo.update({ id: session.id }, { status: 'active' })
         await this.getOrRehydrate(session) // 预热活实例（按 sdkSessionId resume）
-        return toAgentView(session, spec)
+        return toAgentView(agent, session)
     }
 
     /**
-     * 清空聊天历史 = 丢弃底层会话句柄，下次对话自动开新会话。
+     * 清空聊天历史 = 丢弃底层会话句柄，下次对话自动开新会话。无会话则为 no-op。
      * 注意：这是逻辑清空，SDK 落盘的旧会话文件不会被删除（见 README 已知限制）。
      */
-    async clear(sessionId: string): Promise<AgentView> {
-        const { session, spec } = await this.loadSessionAndSpec(sessionId)
-        this.assertNotBusy(sessionId)
-        this.registry.delete(sessionId) // 必须驱逐：活实例内部仍持有旧会话上下文
+    async clear(userId: string, agentId: string): Promise<AgentView> {
+        const agent = await this.loadAgent(userId, agentId)
+        const session = await this.findSoloSession(userId, agentId)
+        if (!session) return toAgentView(agent, null)
+        this.assertNotBusy(session.id)
+        this.registry.delete(session.id) // 必须驱逐：活实例内部仍持有旧会话上下文
         session.sdkSessionId = null
         session.status = 'cleared'
-        await this.sessionRepo.update({ id: sessionId }, { sdkSessionId: null, status: 'cleared' })
-        return toAgentView(session, spec)
+        await this.sessionRepo.update(
+            { id: session.id },
+            { sdkSessionId: null, status: 'cleared' }
+        )
+        return toAgentView(agent, session)
     }
 
-    async remove(sessionId: string): Promise<{ deleted: true }> {
-        const { session } = await this.loadSessionAndSpec(sessionId)
-        this.assertNotBusy(sessionId)
-        this.registry.delete(sessionId)
-        await this.sessionRepo.delete({ id: session.id })
-        // 保留 spec：一份档案可被复用；清理留待 phase-2
+    /** 删除 Agent：连同其会话一并删除，并驱逐相关活实例。 */
+    async remove(userId: string, agentId: string): Promise<{ deleted: true }> {
+        const agent = await this.loadAgent(userId, agentId)
+        const sessions = await this.sessionRepo.find({ where: { agentId, userId } })
+        for (const s of sessions) this.assertNotBusy(s.id) // 任一会话进行中则整体拒绝
+        for (const s of sessions) this.registry.delete(s.id)
+        if (sessions.length > 0) await this.sessionRepo.delete({ agentId, userId })
+        await this.agentRepo.delete({ id: agent.id, userId })
         return { deleted: true }
     }
 
     // ─────────────────────────── 内部工具 ───────────────────────────
 
-    /** 取活实例；缺失则按 spec 重建并 resume。用 in-flight 去重避免并发重复构造。 */
+    /** 取活实例；缺失则按 Agent 配置重建并 resume。用 in-flight 去重避免并发重复构造。 */
     private async getOrRehydrate(session: AgentSession): Promise<LiveAgent> {
         const existing = this.registry.get(session.id)
         if (existing) {
@@ -254,29 +264,42 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     }
 
     private async buildLiveAgent(session: AgentSession): Promise<LiveAgent> {
-        const spec = await this.specRepo.findOne({ where: { id: session.specId } })
-        if (!spec) {
+        const agent = await this.agentRepo.findOne({ where: { id: session.agentId } })
+        if (!agent) {
             throw BusinessException.agentUnavailable(
-                `AgentSpec ${session.specId} missing for session ${session.id}`
+                `Agent ${session.agentId} missing for session ${session.id}`
             )
         }
-        const apiKey = this.resolveApiKey(spec.vendor)
-        const config = specToConfig(spec, apiKey, session.id)
+
+        // 运行时凭证来自所引用 Provider；Provider 被删/不可用 → 该 Agent 不可用
+        let provider
+        try {
+            provider = await this.providerService.resolveRuntimeConfig(
+                session.userId,
+                agent.platformProviderId
+            )
+        } catch {
+            throw BusinessException.agentUnavailable(
+                `Agent ${agent.id} 引用的 Provider ${agent.platformProviderId} 不可用（可能已被删除）`
+            )
+        }
+
+        const config = agentToConfig(agent, provider.apiKey, provider.baseUrl, session.id)
 
         let adapter
         try {
-            adapter = createAgent(spec.vendor, config)
+            adapter = createAgent(agent.vendor, config)
         } catch (err) {
             throw BusinessException.agentUnavailable(
-                `Failed to create ${spec.vendor} adapter: ${this.errMsg(err)}`
+                `Failed to create ${agent.vendor} adapter: ${this.errMsg(err)}`
             )
         }
         if (session.sdkSessionId) adapter.resumeWith(session.sdkSessionId)
 
         return {
             sessionId: session.id,
-            specId: spec.id,
-            vendor: spec.vendor,
+            agentId: agent.id,
+            vendor: agent.vendor,
             adapter,
             busy: false,
             abort: null,
@@ -319,15 +342,28 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private resolveApiKey(vendor: AgentVendor): string {
-        const key =
+    /** 校验 vendor 与 Provider 接入类型兼容：claude↔anthropic；codex↔openai-*。 */
+    private assertVendorProviderCompatible(vendor: AgentVendor, type: ProviderType): void {
+        const compatible =
             vendor === 'claude'
-                ? this.config.get<string>('ANTHROPIC_API_KEY')
-                : this.config.get<string>('OPENAI_API_KEY')
-        if (!key) {
-            throw BusinessException.agentUnavailable(`Missing API key for vendor ${vendor}`)
+                ? type === 'anthropic'
+                : type === 'openai-responses' || type === 'openai-chat-completions'
+        if (!compatible) {
+            throw BusinessException.badRequest(
+                `vendor "${vendor}" 与 Provider 类型 "${type}" 不兼容`,
+                { vendor, providerType: type }
+            )
         }
-        return key
+    }
+
+    /** 校验所选 model 属于该 Provider 的 modelList（modelList 为空时无法校验，放行）。 */
+    private assertModelInList(model: string, modelList: string[]): void {
+        if (modelList.length > 0 && !modelList.includes(model)) {
+            throw BusinessException.badRequest(
+                `model "${model}" 不在所引用 Provider 的 modelList 中`,
+                { model, modelList }
+            )
+        }
     }
 
     /** 创建时校验 vendor 能力，不支持的配置显式报错而非静默丢弃 */
@@ -352,20 +388,40 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private async loadSessionAndSpec(
-        sessionId: string
-    ): Promise<{ session: AgentSession; spec: AgentSpec }> {
-        const session = await this.sessionRepo.findOne({ where: { id: sessionId } })
-        if (!session) {
-            throw BusinessException.notFound(`Agent session ${sessionId} not found`)
+    /** 按 (userId, agentId) 取 Agent；不存在或非本人 → NOT_FOUND。 */
+    private async loadAgent(userId: string, agentId: string): Promise<Agent> {
+        const agent = await this.agentRepo.findOne({ where: { id: agentId, userId } })
+        if (!agent) {
+            throw BusinessException.notFound(`Agent ${agentId} not found`)
         }
-        const spec = await this.specRepo.findOne({ where: { id: session.specId } })
-        if (!spec) {
-            throw BusinessException.agentUnavailable(
-                `AgentSpec ${session.specId} missing for session ${sessionId}`
+        return agent
+    }
+
+    /** 取某 Agent 的单聊会话（本期一个 Agent 至多一条）；无则 null。 */
+    private findSoloSession(userId: string, agentId: string): Promise<AgentSession | null> {
+        return this.sessionRepo.findOne({ where: { agentId, userId } })
+    }
+
+    /** 取/建某 Agent 的单聊会话（顺带校验 Agent 归属本人）。 */
+    private async getOrCreateSoloSession(
+        userId: string,
+        agentId: string
+    ): Promise<{ agent: Agent; session: AgentSession }> {
+        const agent = await this.loadAgent(userId, agentId)
+        let session = await this.findSoloSession(userId, agentId)
+        if (!session) {
+            session = await this.sessionRepo.save(
+                this.sessionRepo.create({
+                    userId,
+                    agentId,
+                    vendor: agent.vendor,
+                    sdkSessionId: null,
+                    status: 'active',
+                    lastTurnAt: null
+                })
             )
         }
-        return { session, spec }
+        return { agent, session }
     }
 
     private errMsg(err: unknown): string {

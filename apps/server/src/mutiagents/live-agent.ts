@@ -8,7 +8,7 @@ import type { AgentAdapter, AgentVendor } from './adapter/index.js'
  */
 export interface LiveAgent {
     sessionId: string
-    specId: string
+    agentId: string
     vendor: AgentVendor
     adapter: AgentAdapter
     /** 是否有进行中的 send()；并发对话会被拒为 AGENT_BUSY */

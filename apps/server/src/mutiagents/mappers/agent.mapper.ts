@@ -1,45 +1,56 @@
 import type { AgentAdapterConfig } from '../adapter/index.js'
 import { getCapabilities } from '../adapter/index.js'
-import type { AgentSpec } from '../entities/agent-spec.entity.js'
+import type { Agent } from '../entities/agent.entity.js'
 import type { AgentSession } from '../entities/agent-session.entity.js'
 import type { AgentView } from '../dto/agent-view.dto.js'
 
 type ReasoningEffort = AgentAdapterConfig['reasoningEffort']
 
 /**
- * AgentSpec → AgentAdapterConfig。
+ * Agent → AgentAdapterConfig。
  *
- * apiKey 不存库，由调用方（Manager）从 ConfigService 注入。null 列归一为 undefined，
- * 以匹配 adapter config 的 optional 语义。
+ * apiKey / baseUrl 不存在 Agent 上，由调用方（Manager）从所引用 Provider 的
+ * resolveRuntimeConfig 注入。null 列归一为 undefined，以匹配 adapter config 的 optional 语义。
  */
-export function specToConfig(spec: AgentSpec, apiKey: string, idHint?: string): AgentAdapterConfig {
+export function agentToConfig(
+    agent: Agent,
+    apiKey: string,
+    baseUrl: string,
+    idHint?: string
+): AgentAdapterConfig {
     return {
         id: idHint,
-        model: spec.model,
-        workingDirectory: spec.workingDirectory,
+        model: agent.model,
+        workingDirectory: agent.workingDirectory,
         apiKey,
-        baseUrl: spec.baseUrl ?? undefined,
-        reasoningEffort: (spec.reasoningEffort as ReasoningEffort) ?? undefined,
-        systemPrompt: spec.systemPrompt ?? undefined,
-        skills: spec.skills ?? undefined,
-        mcpServers: spec.mcpServers ?? undefined,
-        allowedTools: spec.allowedTools ?? undefined,
-        permissionMode: spec.permissionMode ?? undefined
+        baseUrl,
+        reasoningEffort: (agent.reasoningEffort as ReasoningEffort) ?? undefined,
+        systemPrompt: agent.systemPrompt ?? undefined,
+        skills: agent.skills ?? undefined,
+        mcpServers: agent.mcpServers ?? undefined,
+        allowedTools: agent.allowedTools ?? undefined,
+        permissionMode: agent.permissionMode ?? undefined
     }
 }
 
-/** (session, spec) → 对外视图 */
-export function toAgentView(session: AgentSession, spec: AgentSpec): AgentView {
+/**
+ * (agent, 单聊会话?) → 对外视图。
+ *
+ * session 为 null（尚未开过会话）时 status 记为 `none`、无 lastTurnAt / live session。
+ */
+export function toAgentView(agent: Agent, session: AgentSession | null): AgentView {
     return {
-        sessionId: session.id,
-        specId: spec.id,
-        vendor: session.vendor,
-        model: spec.model,
-        workingDirectory: spec.workingDirectory,
-        status: session.status,
-        capabilities: getCapabilities(session.vendor),
-        hasLiveSession: session.sdkSessionId != null,
-        lastTurnAt: session.lastTurnAt ? session.lastTurnAt.toISOString() : null,
-        createdAt: session.createdAt.toISOString()
+        id: agent.id,
+        name: agent.name,
+        vendor: agent.vendor,
+        platformProviderId: agent.platformProviderId,
+        model: agent.model,
+        workingDirectory: agent.workingDirectory,
+        capabilities: getCapabilities(agent.vendor),
+        status: session ? session.status : 'none',
+        hasLiveSession: session?.sdkSessionId != null,
+        lastTurnAt: session?.lastTurnAt ? session.lastTurnAt.toISOString() : null,
+        createdAt: agent.createdAt.toISOString(),
+        updatedAt: agent.updatedAt.toISOString()
     }
 }

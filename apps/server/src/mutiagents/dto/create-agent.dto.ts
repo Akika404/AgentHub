@@ -15,14 +15,28 @@ const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 /**
  * 创建 Agent 的入参。
  *
+ * base_url / api_key 不在这里传：由 `platformProviderId` 引用用户自建的 Provider，
+ * 运行时从 platform-provider 服务取出。model 须取自该 Provider 的 modelList。
+ *
  * 注意：systemPrompt / skills / mcpServers 是否真正生效取决于 vendor 能力
- * （见 adapter.capabilities()）。Manager 在创建时会对不支持的组合显式报错，
- * 而非静默丢弃。
+ * （见 adapter.capabilities()）。Manager 在创建时会对不支持的组合、vendor 与
+ * Provider 类型不兼容、model 不在 Provider modelList 等情况显式报错，而非静默丢弃。
  */
 export class CreateAgentDto {
+    /** 展示名，用于在 AgentList / 群聊里区分多个 Agent */
+    @IsString()
+    @IsNotEmpty()
+    name!: string
+
     @IsIn(VENDORS)
     vendor!: AgentVendor
 
+    /** 引用的模型平台 id（platform_provider.id）；运行时据此取 baseUrl + apiKey */
+    @IsString()
+    @IsNotEmpty()
+    platformProviderId!: string
+
+    /** 选定的模型名，须属于所引用 Provider 的 modelList */
     @IsString()
     @IsNotEmpty()
     model!: string
@@ -56,8 +70,4 @@ export class CreateAgentDto {
     @IsOptional()
     @IsIn(REASONING_EFFORTS)
     reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-
-    @IsOptional()
-    @IsString()
-    baseUrl?: string
 }
