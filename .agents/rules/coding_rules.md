@@ -20,5 +20,5 @@ Do NOT automatically run tests in the following situations:
 
 # Think After Coding
 
-- If the changes cause the actual implementation to diverge from existing documentation(likes README.md), update the documentation to keep it consistent.
+- After completing any feature addition or modification, always check for related documentation (e.g., README.md, the project's /doc folder). If the changes cause the actual implementation to diverge from the existing docs, update them to keep everything consistent.
 - Explicitly call out any TODOs, known limitations, skipped edge cases, or follow-up work introduced by this change.
