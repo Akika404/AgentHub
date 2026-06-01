@@ -148,7 +148,7 @@ async function onSubmit(): Promise<void> {
   <Modal :open="open" title="新建 Agent" :width="560" @close="emit('close')">
     <div class="space-y-4">
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">名称</label>
+        <label class="block text-[12px] font-medium text-text-main mb-1.5">名称</label>
         <input
           v-model="form.name"
           type="text"
@@ -159,7 +159,7 @@ async function onSubmit(): Promise<void> {
 
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-[12px] text-text-muted mb-1.5">Vendor</label>
+          <label class="block text-[12px] font-medium text-text-main mb-1.5">Vendor</label>
           <select
             v-model="form.vendor"
             class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
@@ -168,7 +168,7 @@ async function onSubmit(): Promise<void> {
           </select>
         </div>
         <div>
-          <label class="block text-[12px] text-text-muted mb-1.5">PlatformProvider</label>
+          <label class="block text-[12px] font-medium text-text-main mb-1.5">PlatformProvider</label>
           <select
             v-model="form.platformProviderId"
             class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
@@ -185,7 +185,7 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">模型</label>
+        <label class="block text-[12px] font-medium text-text-main mb-1.5">模型</label>
         <select
           v-model="form.model"
           :disabled="modelOptions.length === 0"
@@ -205,7 +205,7 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">Agent 目录</label>
+        <label class="block text-[12px] font-medium text-text-main mb-1.5">Agent 目录</label>
         <input
           v-model="form.workingDirectory"
           type="text"
@@ -218,9 +218,9 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
+        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
           <span>System Prompt</span>
-          <span v-if="!caps.supportsSystemPrompt" class="text-[11px]"
+          <span v-if="!caps.supportsSystemPrompt" class="text-[11px] font-normal text-text-muted"
             >{{ form.vendor }} 不支持</span
           >
         </label>
@@ -235,9 +235,11 @@ async function onSubmit(): Promise<void> {
 
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
+          <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
             <span>Enabled Skills</span>
-            <span v-if="!caps.supportsSkills" class="text-[11px]">不支持</span>
+            <span v-if="!caps.supportsSkills" class="text-[11px] font-normal text-text-muted"
+              >不支持</span
+            >
           </label>
           <input
             v-model="form.skills"
@@ -249,7 +251,7 @@ async function onSubmit(): Promise<void> {
           <p class="mt-1 text-[11px] text-text-muted">按名称启用；导入文件夹会自动启用。</p>
         </div>
         <div>
-          <label class="block text-[12px] text-text-muted mb-1.5">Allowed Tools</label>
+          <label class="block text-[12px] font-medium text-text-main mb-1.5">Allowed Tools</label>
           <input
             v-model="form.allowedTools"
             type="text"
@@ -261,9 +263,11 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
+        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
           <span>Skill Folders</span>
-          <span v-if="!caps.supportsSkills" class="text-[11px]">不支持</span>
+          <span v-if="!caps.supportsSkills" class="text-[11px] font-normal text-text-muted"
+            >不支持</span
+          >
         </label>
         <input
           v-model="form.skillSourceDirectories"
@@ -276,9 +280,11 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
+        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
           <span>MCP Servers (JSON)</span>
-          <span v-if="!caps.supportsMcp" class="text-[11px]">{{ form.vendor }} 不支持</span>
+          <span v-if="!caps.supportsMcp" class="text-[11px] font-normal text-text-muted"
+            >{{ form.vendor }} 不支持</span
+          >
         </label>
         <textarea
           v-model="form.mcpServers"
