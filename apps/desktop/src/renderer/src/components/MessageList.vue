@@ -106,10 +106,10 @@ watch(
         :class="[
           'relative group rounded-[10px] -mx-4 px-4 py-3 transition-all duration-150 cursor-pointer',
           msg.pinned
-            ? 'border-l-2 border-[#f5b800] bg-[#fffbe6]/40 pl-5 -ml-5'
+            ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5'
             : '',
           highlightId === msg.id ? 'ring-2 ring-primary/40' : '',
-          activeId === msg.id ? 'bg-[#eaf1ff]/60 scale-[0.995]' : 'hover:bg-[#f5f6f7]/60'
+          activeId === msg.id ? 'bg-primary-soft/60 scale-[0.995]' : 'hover:bg-background/60'
         ]"
         @contextmenu="openMenu($event, msg)"
         @pointerdown="onItemPointerDown($event, msg.id)"
@@ -119,7 +119,7 @@ watch(
       >
         <span
           v-if="msg.pinned"
-          class="absolute -left-1 top-0 material-symbols-outlined text-[14px] text-[#f5b800]"
+          class="absolute -left-1 top-0 material-symbols-outlined text-[14px] text-warning"
           title="已Pin"
           >keep</span
         >

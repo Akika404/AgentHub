@@ -40,7 +40,7 @@ function onInputKey(event: KeyboardEvent): void {
     <div class="flex flex-col max-w-[80%] w-full">
       <div class="flex items-center space-x-2 mb-1 ml-1">
         <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
-        <span class="text-[12px] text-[#8f959e]">{{ formatTime(message.timestamp) }}</span>
+        <span class="text-[12px] text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
         class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-[14px] w-full max-w-lg shadow-card"
@@ -55,9 +55,9 @@ function onInputKey(event: KeyboardEvent): void {
                 'w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-[6px] text-left transition-colors group',
                 message.answered
                   ? message.answeredOptionId === opt.id
-                    ? 'bg-[#eaf1ff] border border-primary/40 cursor-default'
-                    : 'bg-[#f5f6f7] opacity-60 cursor-not-allowed'
-                  : 'bg-[#f5f6f7] hover:bg-[#eaf1ff] active:bg-[#dbe6ff] cursor-pointer'
+                    ? 'bg-primary-soft border border-primary/40 cursor-default'
+                    : 'bg-background opacity-60 cursor-not-allowed'
+                  : 'bg-background hover:bg-primary-soft active:bg-primary-softer cursor-pointer'
               ]"
               @click="onSelect(opt)"
             >
@@ -69,7 +69,7 @@ function onInputKey(event: KeyboardEvent): void {
               <span class="text-[13px] text-text-main flex-1">{{ opt.label }}</span>
               <span
                 v-if="!message.answered"
-                class="material-symbols-outlined text-[16px] text-[#8f959e] opacity-0 group-hover:opacity-100 transition-opacity"
+                class="material-symbols-outlined text-[16px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
                 >send</span
               >
               <span
@@ -85,7 +85,7 @@ function onInputKey(event: KeyboardEvent): void {
           >
             <input
               v-model="draft"
-              class="flex-1 bg-transparent border-none p-0 text-[13px] text-text-main placeholder-[#8f959e] focus:ring-0 focus:outline-none"
+              class="flex-1 bg-transparent border-none p-0 text-[13px] text-text-main placeholder-text-muted focus:ring-0 focus:outline-none"
               :placeholder="message.placeholder ?? '在此输入您的意见或需求...'"
               type="text"
               @keydown="onInputKey"
@@ -93,7 +93,7 @@ function onInputKey(event: KeyboardEvent): void {
             <button
               type="button"
               :disabled="!draft.trim()"
-              class="flex items-center justify-center w-6 h-6 rounded-[4px] text-primary hover:bg-[#eaf1ff] disabled:text-[#c4c8cf] disabled:hover:bg-transparent transition-colors"
+              class="flex items-center justify-center w-6 h-6 rounded-[4px] text-primary hover:bg-primary-soft disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
               @click="submitDraft"
             >
               <span class="material-symbols-outlined text-[18px]">send</span>

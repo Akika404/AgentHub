@@ -54,7 +54,7 @@ async function onSubmit(): Promise<void> {
     <div class="w-[380px] bg-surface rounded-[12px] shadow-card border border-surface-border p-8">
       <div class="flex flex-col items-center mb-6">
         <div
-          class="w-12 h-12 rounded-[12px] bg-gradient-to-br from-primary to-[#7b61ff] flex items-center justify-center text-white mb-3"
+          class="w-12 h-12 rounded-[12px] bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white mb-3"
         >
           <span class="material-symbols-outlined text-[26px]">hub</span>
         </div>
@@ -115,7 +115,7 @@ async function onSubmit(): Promise<void> {
           />
         </div>
 
-        <p v-if="error" class="text-[12px] text-red-500">{{ error }}</p>
+        <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
 
         <button
           type="submit"

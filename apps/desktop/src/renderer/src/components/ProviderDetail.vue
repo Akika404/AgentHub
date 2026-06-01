@@ -75,7 +75,7 @@ async function onRefresh(): Promise<void> {
           </button>
           <button
             type="button"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-red-500 hover:bg-red-50 text-[12px] font-medium transition-colors"
+            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-[12px] font-medium transition-colors"
             @click="emit('delete')"
           >
             <span class="material-symbols-outlined text-[16px]">delete</span>
@@ -121,7 +121,7 @@ async function onRefresh(): Promise<void> {
         <span
           v-if="testResult"
           class="text-[12px]"
-          :class="testResult.ok ? 'text-green-600' : 'text-red-500'"
+          :class="testResult.ok ? 'text-success' : 'text-danger'"
         >
           {{
             testResult.ok
@@ -131,7 +131,7 @@ async function onRefresh(): Promise<void> {
               : `失败：${testResult.message ?? '未知原因'}`
           }}
         </span>
-        <span v-if="error" class="text-[12px] text-red-500">{{ error }}</span>
+        <span v-if="error" class="text-[12px] text-danger">{{ error }}</span>
       </div>
 
       <section class="mt-6">

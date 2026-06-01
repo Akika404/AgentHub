@@ -12,7 +12,7 @@ const emit = defineEmits<{
 
 <template>
   <aside
-    class="w-[68px] h-full flex flex-col items-center py-4 border-r border-surface-border bg-[#f2f3f5] flex-shrink-0 z-20"
+    class="w-[68px] h-full flex flex-col items-center py-4 border-r border-surface-border bg-surface-hover flex-shrink-0 z-20"
   >
     <div class="flex-1 flex flex-col items-center space-y-4 w-full">
       <div class="flex items-center justify-center w-full mb-4">

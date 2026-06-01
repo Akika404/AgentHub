@@ -142,7 +142,7 @@ onMounted(load)
           <button
             type="button"
             :disabled="deleting"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-red-500 hover:bg-red-50 text-[12px] font-medium transition-colors disabled:opacity-60"
+            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-[12px] font-medium transition-colors disabled:opacity-60"
             @click="onDelete"
           >
             <span class="material-symbols-outlined text-[16px]">delete</span>
@@ -223,7 +223,7 @@ onMounted(load)
 
     <p
       v-if="error"
-      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-red-50 text-red-600 text-[12px] px-4 py-2 rounded-[8px] border border-red-200 z-50"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-[12px] px-4 py-2 rounded-[8px] border border-danger-border z-50"
     >
       {{ error }}
     </p>

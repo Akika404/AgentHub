@@ -82,7 +82,7 @@ async function onLogout(): Promise<void> {
     <button
       type="button"
       class="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white font-semibold text-[14px] focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-      :class="user?.avatar ? 'bg-surface-hover' : 'bg-gradient-to-br from-primary to-[#7b61ff]'"
+      :class="user?.avatar ? 'bg-surface-hover' : 'bg-gradient-to-br from-primary to-accent'"
       :title="userToAvatar(user)?.name ?? '账号'"
       @click="toggleMenu"
     >
@@ -125,7 +125,7 @@ async function onLogout(): Promise<void> {
       </button>
       <button
         type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-500 hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-danger hover:bg-surface-hover transition-colors"
         @click="onLogout"
       >
         <span class="material-symbols-outlined text-[18px]">logout</span>
@@ -143,7 +143,7 @@ async function onLogout(): Promise<void> {
         class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         @keydown.enter="saveNickname"
       />
-      <p v-if="nicknameError" class="text-[12px] text-red-500 mt-2">{{ nicknameError }}</p>
+      <p v-if="nicknameError" class="text-[12px] text-danger mt-2">{{ nicknameError }}</p>
       <template #footer>
         <button
           type="button"

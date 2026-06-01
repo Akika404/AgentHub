@@ -6,7 +6,7 @@ defineProps<{ message: SystemMessage }>()
 
 <template>
   <div class="flex justify-center">
-    <span class="bg-[#f2f3f5] text-[#8f959e] text-[12px] px-3 py-1 rounded-[6px]">
+    <span class="bg-surface-hover text-text-muted text-[12px] px-3 py-1 rounded-[6px]">
       {{ message.text }}
     </span>
   </div>

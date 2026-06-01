@@ -45,15 +45,15 @@ function onJump(msg: ChatMessage): void {
 <template>
   <div
     v-if="latest"
-    class="border-b border-surface-border bg-[#fffbe6] flex-shrink-0"
+    class="border-b border-surface-border bg-warning-soft flex-shrink-0"
   >
     <button
       type="button"
-      class="w-full flex items-center space-x-2 px-4 py-2 text-left hover:bg-[#fff5c2] transition-colors"
-      :class="{ 'cursor-default hover:bg-[#fffbe6]': pinned.length <= 1 }"
+      class="w-full flex items-center space-x-2 px-4 py-2 text-left hover:bg-warning-soft-hover transition-colors"
+      :class="{ 'cursor-default hover:bg-warning-soft': pinned.length <= 1 }"
       @click="toggle"
     >
-      <span class="material-symbols-outlined text-[18px] text-[#f5b800]">keep</span>
+      <span class="material-symbols-outlined text-[18px] text-warning">keep</span>
       <div class="flex-1 min-w-0 flex items-center space-x-2">
         <span class="text-[12px] font-semibold text-text-main flex-shrink-0">
           {{ senderName(latest) }}：
@@ -65,19 +65,19 @@ function onJump(msg: ChatMessage): void {
       </span>
       <span
         v-if="pinned.length > 1"
-        class="material-symbols-outlined text-[18px] text-[#8f959e] transition-transform"
+        class="material-symbols-outlined text-[18px] text-text-muted transition-transform"
         :class="{ 'rotate-180': expanded }"
         >expand_more</span
       >
     </button>
-    <ul v-if="expanded && pinned.length > 1" class="border-t border-[#f5e5a0] bg-white">
+    <ul v-if="expanded && pinned.length > 1" class="border-t border-warning-border bg-white">
       <li
         v-for="msg in pinned"
         :key="msg.id"
-        class="flex items-start space-x-2 px-4 py-2 border-b border-[#f5f6f7] last:border-b-0 hover:bg-[#fffbe6] cursor-pointer transition-colors"
+        class="flex items-start space-x-2 px-4 py-2 border-b border-background last:border-b-0 hover:bg-warning-soft cursor-pointer transition-colors"
         @click="onJump(msg)"
       >
-        <span class="material-symbols-outlined text-[16px] text-[#f5b800] mt-0.5">keep</span>
+        <span class="material-symbols-outlined text-[16px] text-warning mt-0.5">keep</span>
         <div class="flex-1 min-w-0">
           <div class="text-[12px] font-semibold text-text-main">{{ senderName(msg) }}</div>
           <div class="text-[12px] text-text-muted line-clamp-2 break-words">
@@ -86,7 +86,7 @@ function onJump(msg: ChatMessage): void {
         </div>
         <button
           type="button"
-          class="text-[#8f959e] hover:text-text-main p-0.5 rounded-[4px] hover:bg-[#eaecef] transition-colors flex-shrink-0"
+          class="text-text-muted hover:text-text-main p-0.5 rounded-[4px] hover:bg-gray-150 transition-colors flex-shrink-0"
           title="取消Pin"
           @click="onUnpin($event, msg)"
         >

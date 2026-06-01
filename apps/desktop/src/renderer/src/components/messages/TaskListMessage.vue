@@ -12,7 +12,7 @@ defineProps<{ message: TaskListMessage }>()
     <div class="flex flex-col max-w-[80%] w-full">
       <div class="flex items-center space-x-2 mb-1 ml-1">
         <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
-        <span class="text-[12px] text-[#8f959e]">{{ formatTime(message.timestamp) }}</span>
+        <span class="text-[12px] text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
         class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-[14px] w-full max-w-md shadow-card"
@@ -38,7 +38,7 @@ defineProps<{ message: TaskListMessage }>()
             </span>
             <span
               v-else
-              class="w-[18px] h-[18px] rounded-full border-[2px] border-[#dee0e3] bg-white flex items-center justify-center"
+              class="w-[18px] h-[18px] rounded-full border-[2px] border-surface-border bg-white flex items-center justify-center"
             ></span>
             <span class="text-[14px]">{{ task.title }}</span>
           </li>

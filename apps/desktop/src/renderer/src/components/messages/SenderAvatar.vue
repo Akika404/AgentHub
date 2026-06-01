@@ -5,9 +5,9 @@ defineProps<{ sender: SenderInfo }>()
 
 const accentClasses: Record<NonNullable<SenderInfo['accent']>, string> = {
   primary: 'bg-primary/10 text-primary',
-  violet: 'bg-[#f0f0ff] text-[#7b61ff] border border-[#e5e5ff]',
-  green: 'bg-[#e8f6e8] text-[#34c759] border border-[#cdeccd]',
-  neutral: 'bg-white border border-surface-border text-[#34c759]'
+  violet: 'bg-accent-soft text-accent border border-accent-border',
+  green: 'bg-success-soft text-success border border-success-border',
+  neutral: 'bg-white border border-surface-border text-success'
 }
 </script>
 

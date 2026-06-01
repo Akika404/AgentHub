@@ -157,7 +157,7 @@ async function onSubmit(): Promise<void> {
           class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y"
         />
       </div>
-      <p v-if="error" class="text-[12px] text-red-500">{{ error }}</p>
+      <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
     </div>
 
     <template #footer>

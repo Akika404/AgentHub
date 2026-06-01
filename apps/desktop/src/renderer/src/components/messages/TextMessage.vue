@@ -24,7 +24,7 @@ const isSelf = (): boolean =>
         </div>
         {{ message.text }}
       </div>
-      <span class="text-[12px] text-[#8f959e] mt-1">{{ formatTime(message.timestamp) }}</span>
+      <span class="text-[12px] text-text-muted mt-1">{{ formatTime(message.timestamp) }}</span>
     </div>
     <SenderAvatar :sender="message.sender" />
   </div>
@@ -33,10 +33,10 @@ const isSelf = (): boolean =>
     <div class="flex flex-col max-w-[80%]">
       <div class="flex items-center space-x-2 mb-1 ml-1">
         <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
-        <span class="text-[12px] text-[#8f959e]">{{ formatTime(message.timestamp) }}</span>
+        <span class="text-[12px] text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-[#f2f3f5] p-3 rounded-[8px] rounded-tl-sm text-[14px] leading-[22px] whitespace-pre-wrap break-words"
+        class="bg-surface-hover p-3 rounded-[8px] rounded-tl-sm text-[14px] leading-[22px] whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"

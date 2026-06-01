@@ -44,7 +44,7 @@ function onKey(event: KeyboardEvent): void {
     <div class="flex flex-col">
       <div
         v-if="replyTo"
-        class="mb-2 flex items-start justify-between bg-[#f5f6f7] border-l-2 border-primary rounded-[6px] px-3 py-2"
+        class="mb-2 flex items-start justify-between bg-background border-l-2 border-primary rounded-[6px] px-3 py-2"
       >
         <div class="min-w-0 flex-1">
           <div class="text-[12px] font-semibold text-text-main">回复 {{ replyTo.senderName }}</div>
@@ -54,7 +54,7 @@ function onKey(event: KeyboardEvent): void {
         </div>
         <button
           type="button"
-          class="ml-2 text-[#8f959e] hover:text-text-main p-0.5 rounded-[4px] hover:bg-[#eaecef] transition-colors"
+          class="ml-2 text-text-muted hover:text-text-main p-0.5 rounded-[4px] hover:bg-gray-150 transition-colors"
           @click="emit('cancel-reply')"
         >
           <span class="material-symbols-outlined text-[18px]">close</span>
@@ -64,20 +64,20 @@ function onKey(event: KeyboardEvent): void {
         <textarea
           ref="inputRef"
           v-model="text"
-          class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-[14px] text-text-main placeholder-[#8f959e] bg-transparent leading-[22px]"
+          class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-[14px] text-text-main placeholder-text-muted bg-transparent leading-[22px]"
           placeholder="Type a message or /command..."
           @keydown="onKey"
         />
       </div>
       <div class="flex items-center justify-between py-2">
-        <div class="flex items-center space-x-2 text-[#8f959e]">
+        <div class="flex items-center space-x-2 text-text-muted">
           <button
-            class="hover:text-text-main hover:bg-[#f2f3f5] p-1.5 rounded-[6px] transition-colors flex items-center"
+            class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
           >
             <span class="material-symbols-outlined text-[20px]">attach_file</span>
           </button>
           <button
-            class="hover:text-text-main hover:bg-[#f2f3f5] p-1.5 rounded-[6px] transition-colors flex items-center"
+            class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
           >
             <span class="material-symbols-outlined text-[20px]">code</span>
           </button>

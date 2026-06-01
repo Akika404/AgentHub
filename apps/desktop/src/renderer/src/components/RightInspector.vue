@@ -26,9 +26,9 @@ const tree = computed<TreeNode[]>(() => {
 })
 
 const dotClasses: Record<NetworkNodeStatus, string> = {
-  active: 'bg-[#34c759]',
+  active: 'bg-success',
   working: 'bg-primary',
-  idle: 'bg-[#dee0e3]'
+  idle: 'bg-surface-border'
 }
 </script>
 
@@ -36,13 +36,13 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
   <aside
     class="w-[300px] h-full border-l border-surface-border bg-surface flex flex-col flex-shrink-0 z-10"
   >
-    <div class="flex p-1 bg-[#f2f3f5] m-4 rounded-[6px]">
+    <div class="flex p-1 bg-surface-hover m-4 rounded-[6px]">
       <button
         class="flex-1 py-1 text-[13px] font-medium rounded-[4px] transition-all"
         :class="
           tab === 'status'
             ? 'bg-white text-text-main shadow-tab'
-            : 'text-[#8f959e] hover:text-text-main'
+            : 'text-text-muted hover:text-text-main'
         "
         @click="tab = 'status'"
       >
@@ -53,7 +53,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
         :class="
           tab === 'workspace'
             ? 'bg-white text-text-main shadow-tab'
-            : 'text-[#8f959e] hover:text-text-main'
+            : 'text-text-muted hover:text-text-main'
         "
         @click="tab = 'workspace'"
       >

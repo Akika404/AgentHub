@@ -295,7 +295,7 @@ async function onSubmit(): Promise<void> {
         />
       </div>
 
-      <p v-if="error" class="text-[12px] text-red-500">{{ error }}</p>
+      <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
     </div>
 
     <template #footer>

@@ -55,8 +55,10 @@ export default {
         'warning-soft': '#fffbe6',
         'warning-soft-hover': '#fff5c2',
         'warning-border': '#f5e5a0',
-        danger: '#e54545',
-        'danger-soft': '#fdeaea',
+        danger: '#ef4444', // = tailwind red-500 (the error color already in use)
+        'danger-soft': '#fef2f2', // = red-50
+        'danger-border': '#fecaca', // = red-200
+        'danger-strong': '#dc2626', // = red-600 (banner/strong error text)
         accent: '#7b61ff', // violet avatar/brand accent
         'accent-soft': '#f0f0ff',
         'accent-border': '#e5e5ff'
