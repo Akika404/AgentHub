@@ -6,6 +6,7 @@ import TextMessageView from './messages/TextMessage.vue'
 import TaskListMessageView from './messages/TaskListMessage.vue'
 import OptionsMessageView from './messages/OptionsMessage.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
+import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -99,15 +100,21 @@ watch(
 
 <template>
   <div ref="scrollRef" class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-    <div v-if="loading" class="text-center text-text-muted text-base">加载中...</div>
+    <div v-if="loading" class="space-y-6">
+      <div v-for="i in 4" :key="i" class="flex space-x-3">
+        <BaseSkeleton class="w-9 h-9 flex-shrink-0" />
+        <div class="flex-1 space-y-2 max-w-[60%]">
+          <BaseSkeleton class="h-3 w-24" />
+          <BaseSkeleton class="h-12 w-full" />
+        </div>
+      </div>
+    </div>
     <template v-for="msg in messages" :key="msg.id">
       <div
         :ref="(el) => setItemRef(msg.id, el as Element | null)"
         :class="[
           'relative group rounded-lg -mx-4 px-4 py-3 transition-all duration-150 cursor-pointer',
-          msg.pinned
-            ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5'
-            : '',
+          msg.pinned ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5' : '',
           highlightId === msg.id ? 'ring-2 ring-primary/40' : '',
           activeId === msg.id ? 'bg-primary-soft/60 scale-[0.995]' : 'hover:bg-background/60'
         ]"

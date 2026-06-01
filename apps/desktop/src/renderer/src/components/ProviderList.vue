@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { PROVIDER_TYPE_LABELS, type PlatformProviderView } from '@agenthub/shared'
 import BaseButton from './ui/BaseButton.vue'
+import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 defineProps<{
   providers: PlatformProviderView[]
@@ -22,7 +23,12 @@ const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'add'): void }>(
       </BaseButton>
     </header>
     <div class="flex-1 overflow-y-auto p-2">
-      <p v-if="loading" class="text-center text-text-muted text-sm py-6">加载中…</p>
+      <div v-if="loading" class="space-y-1">
+        <div v-for="i in 5" :key="i" class="px-3 py-2.5 space-y-2">
+          <BaseSkeleton class="h-3.5 w-2/3" />
+          <BaseSkeleton class="h-3 w-2/5" />
+        </div>
+      </div>
       <p v-else-if="providers.length === 0" class="text-center text-text-muted text-sm py-6">
         还没有 Provider，点击「添加」。
       </p>

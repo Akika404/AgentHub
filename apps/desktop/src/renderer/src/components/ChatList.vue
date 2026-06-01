@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChatSummary } from '../api'
+import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 defineProps<{
   chats: ChatSummary[]
@@ -39,7 +40,15 @@ const emit = defineEmits<{
       </button>
     </div>
     <div class="flex-1 overflow-y-auto py-1">
-      <div v-if="loading" class="px-4 py-3 text-text-muted text-base">加载中...</div>
+      <div v-if="loading">
+        <div v-for="i in 6" :key="i" class="px-3 mx-2 py-2 flex items-center space-x-3">
+          <BaseSkeleton class="w-10 h-10 flex-shrink-0" />
+          <div class="flex-1 space-y-2">
+            <BaseSkeleton class="h-3 w-1/2" />
+            <BaseSkeleton class="h-3 w-3/4" />
+          </div>
+        </div>
+      </div>
       <div
         v-for="chat in chats"
         :key="chat.id"
