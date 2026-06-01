@@ -78,7 +78,7 @@ async function onRefresh(): Promise<void> {
       </div>
 
       <section
-        class="bg-surface rounded-[10px] border border-surface-border divide-y divide-surface-border"
+        class="bg-surface rounded-lg border border-surface-border divide-y divide-surface-border"
       >
         <div class="flex px-4 py-3">
           <span class="w-28 flex-shrink-0 text-sm text-text-muted">Base URL</span>
@@ -119,19 +119,19 @@ async function onRefresh(): Promise<void> {
         <h3 class="text-sm text-text-muted mb-2">模型列表（{{ provider.modelList.length }}）</h3>
         <div
           v-if="provider.modelList.length"
-          class="flex flex-wrap gap-2 bg-surface rounded-[10px] border border-surface-border p-4"
+          class="flex flex-wrap gap-2 bg-surface rounded-lg border border-surface-border p-4"
         >
           <span
             v-for="m in provider.modelList"
             :key="m"
-            class="px-2.5 py-1 rounded-[6px] bg-surface-hover text-sm text-text-main font-mono"
+            class="px-2.5 py-1 rounded bg-surface-hover text-sm text-text-main font-mono"
           >
             {{ m }}
           </span>
         </div>
         <p
           v-else
-          class="bg-surface rounded-[10px] border border-surface-border p-4 text-sm text-text-muted"
+          class="bg-surface rounded-lg border border-surface-border p-4 text-sm text-text-muted"
         >
           暂无模型，点击「刷新模型」从上游拉取。
         </p>

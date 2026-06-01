@@ -45,7 +45,7 @@ function onKey(event: KeyboardEvent): void {
     <div class="flex flex-col">
       <div
         v-if="replyTo"
-        class="mb-2 flex items-start justify-between bg-background border-l-2 border-primary rounded-[6px] px-3 py-2"
+        class="mb-2 flex items-start justify-between bg-background border-l-2 border-primary rounded px-3 py-2"
       >
         <div class="min-w-0 flex-1">
           <div class="text-sm font-semibold text-text-main">回复 {{ replyTo.senderName }}</div>
@@ -55,7 +55,7 @@ function onKey(event: KeyboardEvent): void {
         </div>
         <button
           type="button"
-          class="ml-2 text-text-muted hover:text-text-main p-0.5 rounded-[4px] hover:bg-gray-150 transition-colors"
+          class="ml-2 text-text-muted hover:text-text-main p-0.5 rounded-sm hover:bg-gray-150 transition-colors"
           @click="emit('cancel-reply')"
         >
           <span class="material-symbols-outlined text-2xl">close</span>
@@ -80,7 +80,7 @@ function onKey(event: KeyboardEvent): void {
           </BaseButton>
         </div>
         <button
-          class="bg-primary text-white px-5 py-1.5 rounded-[6px] text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
+          class="bg-primary text-white px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
           :disabled="!text.trim()"
           @click="submit"
         >

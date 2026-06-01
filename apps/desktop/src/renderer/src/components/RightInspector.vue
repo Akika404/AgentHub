@@ -36,9 +36,9 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
   <aside
     class="w-[300px] h-full border-l border-surface-border bg-surface flex flex-col flex-shrink-0 z-10"
   >
-    <div class="flex p-1 bg-surface-hover m-4 rounded-[6px]">
+    <div class="flex p-1 bg-surface-hover m-4 rounded">
       <button
-        class="flex-1 py-1 text-base font-medium rounded-[4px] transition-all"
+        class="flex-1 py-1 text-base font-medium rounded-sm transition-all"
         :class="
           tab === 'status'
             ? 'bg-white text-text-main shadow-tab'
@@ -49,7 +49,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
         Status
       </button>
       <button
-        class="flex-1 py-1 text-base font-medium rounded-[4px] transition-all"
+        class="flex-1 py-1 text-base font-medium rounded-sm transition-all"
         :class="
           tab === 'workspace'
             ? 'bg-white text-text-main shadow-tab'

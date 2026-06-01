@@ -43,7 +43,7 @@ function onInputKey(event: KeyboardEvent): void {
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-md w-full max-w-lg shadow-card"
+        class="bg-surface border border-surface-border p-4 rounded-md rounded-tl-sm text-md w-full max-w-lg shadow-card"
       >
         <p class="text-text-main mb-3 leading-[22px]">{{ message.text }}</p>
         <ul class="space-y-2">
@@ -52,7 +52,7 @@ function onInputKey(event: KeyboardEvent): void {
               type="button"
               :disabled="message.answered"
               :class="[
-                'w-full flex items-center space-x-2.5 px-3 py-2.5 rounded-[6px] text-left transition-colors group',
+                'w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-left transition-colors group',
                 message.answered
                   ? message.answeredOptionId === opt.id
                     ? 'bg-primary-soft border border-primary/40 cursor-default'
@@ -81,7 +81,7 @@ function onInputKey(event: KeyboardEvent): void {
           </li>
           <li
             v-if="!message.answered"
-            class="flex items-center space-x-2 bg-white border border-surface-border px-3 py-2 rounded-[6px] focus-within:border-primary transition-colors"
+            class="flex items-center space-x-2 bg-white border border-surface-border px-3 py-2 rounded focus-within:border-primary transition-colors"
           >
             <input
               v-model="draft"
@@ -93,7 +93,7 @@ function onInputKey(event: KeyboardEvent): void {
             <button
               type="button"
               :disabled="!draft.trim()"
-              class="flex items-center justify-center w-6 h-6 rounded-[4px] text-primary hover:bg-primary-soft disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
+              class="flex items-center justify-center w-6 h-6 rounded-sm text-primary hover:bg-primary-soft disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
               @click="submitDraft"
             >
               <span class="material-symbols-outlined text-2xl">send</span>

@@ -81,7 +81,7 @@ onMounted(load)
           v-for="s in SECTIONS"
           :key="s.key"
           type="button"
-          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-base transition-colors"
+          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-base transition-colors"
           :class="
             section === s.key
               ? 'bg-surface-active text-primary'
@@ -118,7 +118,7 @@ onMounted(load)
 
     <p
       v-if="error"
-      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-[8px] border border-danger-border z-50"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-md border border-danger-border z-50"
     >
       {{ error }}
     </p>

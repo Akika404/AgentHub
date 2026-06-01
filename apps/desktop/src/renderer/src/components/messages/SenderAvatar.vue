@@ -13,7 +13,7 @@ const accentClasses: Record<NonNullable<SenderInfo['accent']>, string> = {
 
 <template>
   <div
-    class="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0 text-md font-semibold overflow-hidden"
+    class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 text-md font-semibold overflow-hidden"
     :class="sender.avatarDataUrl ? '' : accentClasses[sender.accent ?? 'neutral']"
   >
     <img

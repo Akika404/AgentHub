@@ -25,14 +25,14 @@ const emit = defineEmits<{
           search
         </span>
         <input
-          class="w-full h-8 pl-8 pr-3 text-md leading-none bg-surface-hover border border-transparent rounded-[6px] focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-text-muted"
+          class="w-full h-8 pl-8 pr-3 text-md leading-none bg-surface-hover border border-transparent rounded focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-text-muted"
           placeholder="搜索"
           type="text"
           @input="emit('search', ($event.target as HTMLInputElement).value)"
         />
       </div>
       <button
-        class="w-8 h-8 flex items-center justify-center bg-surface-hover rounded-[6px] hover:bg-gray-200 text-text-muted transition-colors"
+        class="w-8 h-8 flex items-center justify-center bg-surface-hover rounded hover:bg-gray-200 text-text-muted transition-colors"
         title="新建会话"
       >
         <span class="material-symbols-outlined text-2xl">add</span>
@@ -43,12 +43,12 @@ const emit = defineEmits<{
       <div
         v-for="chat in chats"
         :key="chat.id"
-        class="px-3 mx-2 rounded-[8px] flex items-center space-x-3 cursor-pointer transition-colors group py-2 mb-1"
+        class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2 mb-1"
         :class="chat.id === activeChatId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
         @click="emit('select', chat.id)"
       >
         <div
-          class="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0"
+          class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0"
           :class="
             chat.avatar.kind === 'initials'
               ? 'bg-primary/10 text-primary font-semibold text-md'

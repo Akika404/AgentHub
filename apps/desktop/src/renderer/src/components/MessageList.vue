@@ -104,7 +104,7 @@ watch(
       <div
         :ref="(el) => setItemRef(msg.id, el as Element | null)"
         :class="[
-          'relative group rounded-[10px] -mx-4 px-4 py-3 transition-all duration-150 cursor-pointer',
+          'relative group rounded-lg -mx-4 px-4 py-3 transition-all duration-150 cursor-pointer',
           msg.pinned
             ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5'
             : '',

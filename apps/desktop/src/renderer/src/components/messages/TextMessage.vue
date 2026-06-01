@@ -13,11 +13,11 @@ const isSelf = (): boolean =>
   <div v-if="isSelf()" class="flex justify-end space-x-3">
     <div class="flex flex-col items-end max-w-[70%]">
       <div
-        class="bg-primary text-white p-3 rounded-[8px] rounded-tr-sm text-md leading-[22px] whitespace-pre-wrap break-words"
+        class="bg-primary text-white p-3 rounded-md rounded-tr-sm text-md leading-[22px] whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"
-          class="mb-2 px-2.5 py-1.5 rounded-[6px] bg-white/15 border-l-2 border-white/60 text-sm leading-[18px]"
+          class="mb-2 px-2.5 py-1.5 rounded bg-white/15 border-l-2 border-white/60 text-sm leading-[18px]"
         >
           <div class="font-semibold opacity-90">回复 {{ message.replyTo.senderName }}</div>
           <div class="opacity-80 line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
@@ -36,11 +36,11 @@ const isSelf = (): boolean =>
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface-hover p-3 rounded-[8px] rounded-tl-sm text-md leading-[22px] whitespace-pre-wrap break-words"
+        class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md leading-[22px] whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"
-          class="mb-2 px-2.5 py-1.5 rounded-[6px] bg-white border-l-2 border-primary text-sm leading-[18px] text-text-muted"
+          class="mb-2 px-2.5 py-1.5 rounded bg-white border-l-2 border-primary text-sm leading-[18px] text-text-muted"
         >
           <div class="font-semibold text-text-main">回复 {{ message.replyTo.senderName }}</div>
           <div class="line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>

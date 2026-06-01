@@ -25,7 +25,7 @@ withDefaults(
     :type="type"
     :class="[
       'inline-flex items-center justify-center gap-1 transition-colors active:scale-[0.97] motion-reduce:transform-none disabled:opacity-60 disabled:pointer-events-none',
-      icon ? 'p-1.5 rounded-[6px]' : 'rounded-md',
+      icon ? 'p-1.5 rounded' : 'rounded-md',
       !icon &&
         (size === 'sm'
           ? 'h-8 px-3 text-sm'

@@ -101,7 +101,7 @@ async function onLogout(): Promise<void> {
 
     <div
       v-if="menuOpen"
-      class="absolute left-[52px] top-0 z-50 w-44 bg-surface border border-surface-border rounded-[8px] shadow-card py-1.5"
+      class="absolute left-[52px] top-0 z-50 w-44 bg-surface border border-surface-border rounded-md shadow-card py-1.5"
     >
       <div class="px-3 py-1.5 border-b border-surface-border mb-1">
         <p class="text-base font-medium text-text-main truncate">

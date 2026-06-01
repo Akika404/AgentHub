@@ -30,7 +30,7 @@ const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'add'): void }>(
         v-for="p in providers"
         :key="p.id"
         type="button"
-        class="w-full text-left px-3 py-2.5 rounded-[8px] mb-1 transition-colors"
+        class="w-full text-left px-3 py-2.5 rounded-md mb-1 transition-colors"
         :class="p.id === selectedId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
         @click="emit('select', p.id)"
       >

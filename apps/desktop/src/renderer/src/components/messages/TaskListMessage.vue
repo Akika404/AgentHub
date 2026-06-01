@@ -15,14 +15,14 @@ defineProps<{ message: TaskListMessage }>()
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-md w-full max-w-md shadow-card"
+        class="bg-surface border border-surface-border p-4 rounded-md rounded-tl-sm text-md w-full max-w-md shadow-card"
       >
         <div class="font-semibold text-text-main mb-3 text-md">{{ message.heading }}</div>
         <ul class="space-y-1.5">
           <li
             v-for="task in message.tasks"
             :key="task.id"
-            class="flex items-center space-x-2 text-text-main bg-white border border-surface-border rounded-[8px] px-3 py-1.5"
+            class="flex items-center space-x-2 text-text-main bg-white border border-surface-border rounded-md px-3 py-1.5"
           >
             <span
               v-if="task.status === 'in-progress'"

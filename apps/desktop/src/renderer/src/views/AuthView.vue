@@ -53,10 +53,10 @@ async function onSubmit(): Promise<void> {
 
 <template>
   <div class="w-full h-full flex items-center justify-center bg-background">
-    <div class="w-[380px] bg-surface rounded-[12px] shadow-card border border-surface-border p-8">
+    <div class="w-[380px] bg-surface rounded-xl shadow-card border border-surface-border p-8">
       <div class="flex flex-col items-center mb-6">
         <div
-          class="w-12 h-12 rounded-[12px] bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white mb-3"
+          class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white mb-3"
         >
           <span class="material-symbols-outlined text-4xl">hub</span>
         </div>
@@ -66,10 +66,10 @@ async function onSubmit(): Promise<void> {
         </p>
       </div>
 
-      <div class="flex bg-surface-hover rounded-[8px] p-1 mb-5">
+      <div class="flex bg-surface-hover rounded-md p-1 mb-5">
         <button
           type="button"
-          class="flex-1 h-8 rounded-[6px] text-base font-medium transition-colors"
+          class="flex-1 h-8 rounded text-base font-medium transition-colors"
           :class="mode === 'login' ? 'bg-surface text-primary shadow-tab' : 'text-text-muted'"
           @click="switchMode('login')"
         >
@@ -77,7 +77,7 @@ async function onSubmit(): Promise<void> {
         </button>
         <button
           type="button"
-          class="flex-1 h-8 rounded-[6px] text-base font-medium transition-colors"
+          class="flex-1 h-8 rounded text-base font-medium transition-colors"
           :class="mode === 'register' ? 'bg-surface text-primary shadow-tab' : 'text-text-muted'"
           @click="switchMode('register')"
         >

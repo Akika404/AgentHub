@@ -19,7 +19,7 @@ const emit = defineEmits<{
         <UserMenu :user="user" />
       </div>
       <button
-        class="w-12 flex flex-col items-center justify-center rounded-xl group transition-all h-10"
+        class="w-12 flex flex-col items-center justify-center rounded-md group transition-all h-10"
         :class="
           active === 'chat'
             ? 'bg-surface-active text-primary'
@@ -30,7 +30,7 @@ const emit = defineEmits<{
         <span class="material-symbols-outlined text-4xl">chat_bubble</span>
       </button>
       <button
-        class="w-12 flex flex-col items-center justify-center rounded-xl group transition-all h-10"
+        class="w-12 flex flex-col items-center justify-center rounded-md group transition-all h-10"
         :class="
           active === 'agents'
             ? 'bg-surface-active text-primary'
@@ -43,7 +43,7 @@ const emit = defineEmits<{
     </div>
     <div class="mt-auto flex flex-col items-center w-full">
       <button
-        class="w-12 flex flex-col items-center justify-center rounded-xl group transition-all h-10"
+        class="w-12 flex flex-col items-center justify-center rounded-md group transition-all h-10"
         :class="
           active === 'settings'
             ? 'bg-surface-active text-primary'

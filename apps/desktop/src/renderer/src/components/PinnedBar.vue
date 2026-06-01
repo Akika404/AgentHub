@@ -86,7 +86,7 @@ function onJump(msg: ChatMessage): void {
         </div>
         <button
           type="button"
-          class="text-text-muted hover:text-text-main p-0.5 rounded-[4px] hover:bg-gray-150 transition-colors flex-shrink-0"
+          class="text-text-muted hover:text-text-main p-0.5 rounded-sm hover:bg-gray-150 transition-colors flex-shrink-0"
           title="取消Pin"
           @click="onUnpin($event, msg)"
         >

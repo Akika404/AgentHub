@@ -107,7 +107,7 @@ onMounted(load)
           v-for="agent in agents"
           :key="agent.id"
           type="button"
-          class="w-full text-left px-3 py-2.5 rounded-[8px] mb-1 transition-colors"
+          class="w-full text-left px-3 py-2.5 rounded-md mb-1 transition-colors"
           :class="agent.id === selectedId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
           @click="selectedId = agent.id"
         >
@@ -143,7 +143,7 @@ onMounted(load)
         </div>
 
         <section
-          class="bg-surface rounded-[10px] border border-surface-border divide-y divide-surface-border"
+          class="bg-surface rounded-lg border border-surface-border divide-y divide-surface-border"
         >
           <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">Vendor</span>
@@ -202,7 +202,7 @@ onMounted(load)
         <section class="mt-4">
           <h3 class="text-sm text-text-muted mb-1.5">System Prompt</h3>
           <pre
-            class="bg-surface rounded-[10px] border border-surface-border p-4 text-base text-text-main whitespace-pre-wrap break-words font-mono min-h-[64px]"
+            class="bg-surface rounded-lg border border-surface-border p-4 text-base text-text-main whitespace-pre-wrap break-words font-mono min-h-[64px]"
             >{{ selected.systemPrompt || '—' }}</pre
           >
         </section>
@@ -215,7 +215,7 @@ onMounted(load)
 
     <p
       v-if="error"
-      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-[8px] border border-danger-border z-50"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-md border border-danger-border z-50"
     >
       {{ error }}
     </p>

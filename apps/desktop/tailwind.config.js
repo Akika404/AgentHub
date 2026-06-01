@@ -64,13 +64,13 @@ export default {
         'accent-soft': '#f0f0ff',
         'accent-border': '#e5e5ff'
       },
-      // Radius scale. `md`/`lg` are added now (unused names → no-op); the full
-      // intentional ramp (sm 4 / DEFAULT 6 / xl 12) lands in the craft phase.
+      // Radius scale.
       borderRadius: {
+        sm: '4px',
+        DEFAULT: '6px',
         md: '8px',
         lg: '10px',
-        xl: '8px',
-        '2xl': '8px'
+        xl: '12px'
       },
       // Soft, text-tinted elevation (rgba 31,35,41 not pure black). `sm/md/lg`
       // are the real scale; `card`/`tab` keep their old values until the craft
