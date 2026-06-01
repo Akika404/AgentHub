@@ -4,12 +4,14 @@ import { ValidationPipe, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { apiReference } from '@scalar/nestjs-api-reference'
-import type { Request, Response } from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import { AppModule } from './app.module.js'
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js'
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js'
 import { BusinessException } from './common/exceptions/business.exception.js'
 import { ErrorCode } from './common/exceptions/error-code.js'
+
+const httpLogger = new Logger('HTTP')
 
 /**
  * 挂载 API 文档（Scalar UI）。
@@ -44,6 +46,22 @@ async function bootstrap(): Promise<void> {
     const app = await NestFactory.create(AppModule)
     const config = app.get(ConfigService)
 
+    app.use((req: Request, res: Response, next: NextFunction) => {
+        if (!(req.originalUrl ?? req.url).startsWith('/api')) {
+            next()
+            return
+        }
+
+        const startedAt = Date.now()
+        const route = req.originalUrl ?? req.url
+
+        res.on('finish', () => {
+            const durationMs = Date.now() - startedAt
+            httpLogger.log(`${req.method} ${route} ${res.statusCode} ${durationMs}ms`)
+        })
+
+        next()
+    })
     app.setGlobalPrefix('api')
     app.useGlobalPipes(
         new ValidationPipe({
