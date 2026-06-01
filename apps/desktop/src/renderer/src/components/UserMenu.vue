@@ -4,6 +4,7 @@ import type { UserView } from '@agenthub/shared'
 import { ApiError } from '../api'
 import { logout, updateProfile, userToAvatar } from '../stores/auth'
 import Modal from './Modal.vue'
+import BaseInput from './ui/BaseInput.vue'
 
 const props = defineProps<{ user: UserView | null }>()
 
@@ -135,12 +136,11 @@ async function onLogout(): Promise<void> {
 
     <Modal :open="nicknameOpen" title="更新昵称" :width="380" @close="nicknameOpen = false">
       <label class="block text-sm text-text-muted mb-1.5">昵称</label>
-      <input
+      <BaseInput
         v-model="nickname"
         type="text"
         maxlength="64"
         placeholder="留空则清除昵称"
-        class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         @keydown.enter="saveNickname"
       />
       <p v-if="nicknameError" class="text-sm text-danger mt-2">{{ nicknameError }}</p>

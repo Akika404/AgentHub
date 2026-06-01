@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { ApiError } from '../api'
 import { login, register } from '../stores/auth'
+import BaseInput from '../components/ui/BaseInput.vue'
 
 type Mode = 'login' | 'register'
 
@@ -86,32 +87,29 @@ async function onSubmit(): Promise<void> {
       <form class="space-y-3.5" @submit.prevent="onSubmit">
         <div>
           <label class="block text-sm text-text-muted mb-1.5">账号</label>
-          <input
+          <BaseInput
             v-model="form.account"
             type="text"
             autocomplete="username"
             placeholder="字母、数字、下划线或连字符"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
         <div>
           <label class="block text-sm text-text-muted mb-1.5">密码</label>
-          <input
+          <BaseInput
             v-model="form.password"
             type="password"
             :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
             placeholder="请输入密码"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
         <div v-if="mode === 'register'">
           <label class="block text-sm text-text-muted mb-1.5">确认密码</label>
-          <input
+          <BaseInput
             v-model="form.confirm"
             type="password"
             autocomplete="new-password"
             placeholder="请再次输入密码"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
 

@@ -10,6 +10,9 @@ import {
 } from '@agenthub/shared'
 import { ApiError, providerApi } from '../api'
 import Modal from './Modal.vue'
+import BaseInput from './ui/BaseInput.vue'
+import BaseSelect from './ui/BaseSelect.vue'
+import BaseTextarea from './ui/BaseTextarea.vue'
 
 const props = defineProps<{
   open: boolean
@@ -107,31 +110,23 @@ async function onSubmit(): Promise<void> {
     <div class="space-y-4">
       <div>
         <label class="block text-sm text-text-muted mb-1.5">平台名称</label>
-        <input
-          v-model="form.platformName"
-          type="text"
-          placeholder="如：我的 OpenAI"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-        />
+        <BaseInput v-model="form.platformName" type="text" placeholder="如：我的 OpenAI" />
       </div>
       <div>
         <label class="block text-sm text-text-muted mb-1.5">协议类型</label>
-        <select
-          v-model="form.type"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
-        >
+        <BaseSelect v-model="form.type">
           <option v-for="t in PROVIDER_TYPES" :key="t" :value="t">
             {{ PROVIDER_TYPE_LABELS[t] }}
           </option>
-        </select>
+        </BaseSelect>
       </div>
       <div>
         <label class="block text-sm text-text-muted mb-1.5">Base URL</label>
-        <input
+        <BaseInput
           v-model="form.baseUrl"
+          mono
           type="text"
           placeholder="https://api.openai.com/v1"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
       <div>
@@ -139,23 +134,18 @@ async function onSubmit(): Promise<void> {
           API Key
           <span v-if="isEdit()" class="text-text-muted">（留空保留原密钥）</span>
         </label>
-        <input
+        <BaseInput
           v-model="form.apiKey"
+          mono
           type="password"
           :placeholder="isEdit() ? '••••••••' : 'sk-...'"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
       <div>
         <label class="block text-sm text-text-muted mb-1.5">
           模型列表 <span class="text-text-muted">（每行一个，可留空后用「刷新模型」拉取）</span>
         </label>
-        <textarea
-          v-model="form.modelList"
-          rows="3"
-          placeholder="gpt-4o&#10;gpt-4o-mini"
-          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y"
-        />
+        <BaseTextarea v-model="form.modelList" mono rows="3" placeholder="gpt-4o&#10;gpt-4o-mini" />
       </div>
       <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>
