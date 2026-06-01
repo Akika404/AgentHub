@@ -84,7 +84,7 @@ function onPick(item: MenuItem): void {
     <div
       v-if="open"
       data-context-menu
-      class="fixed z-50 bg-white border border-surface-border rounded-md shadow-card py-1"
+      class="fixed z-50 bg-white border border-gray-150 rounded-md shadow-md py-1"
       :style="{ ...position, width: `${MENU_WIDTH}px` }"
       @contextmenu.prevent
     >

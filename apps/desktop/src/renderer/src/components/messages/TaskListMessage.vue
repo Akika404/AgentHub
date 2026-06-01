@@ -15,7 +15,7 @@ defineProps<{ message: TaskListMessage }>()
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-md rounded-tl-sm text-md w-full max-w-md shadow-card"
+        class="bg-surface border border-surface-border p-4 rounded-md rounded-tl-sm text-md w-full max-w-md shadow-sm"
       >
         <div class="font-semibold text-text-main mb-3 text-md">{{ message.heading }}</div>
         <ul class="space-y-1.5">

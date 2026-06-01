@@ -41,7 +41,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
         class="flex-1 py-1 text-base font-medium rounded-sm transition-all"
         :class="
           tab === 'status'
-            ? 'bg-white text-text-main shadow-tab'
+            ? 'bg-white text-text-main shadow-sm'
             : 'text-text-muted hover:text-text-main'
         "
         @click="tab = 'status'"
@@ -52,7 +52,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
         class="flex-1 py-1 text-base font-medium rounded-sm transition-all"
         :class="
           tab === 'workspace'
-            ? 'bg-white text-text-main shadow-tab'
+            ? 'bg-white text-text-main shadow-sm'
             : 'text-text-muted hover:text-text-main'
         "
         @click="tab = 'workspace'"

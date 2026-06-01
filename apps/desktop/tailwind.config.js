@@ -72,15 +72,12 @@ export default {
         lg: '10px',
         xl: '12px'
       },
-      // Soft, text-tinted elevation (rgba 31,35,41 not pure black). `sm/md/lg`
-      // are the real scale; `card`/`tab` keep their old values until the craft
-      // phase flips them to `sm`.
+      // Soft, text-tinted elevation (rgba 31,35,41 not pure black) — sm for
+      // resting cards, md for dropdowns, lg for the modal.
       boxShadow: {
         sm: '0 1px 2px rgba(31,35,41,0.04), 0 1px 1px rgba(31,35,41,0.03)',
         md: '0 2px 8px rgba(31,35,41,0.06), 0 1px 3px rgba(31,35,41,0.04)',
-        lg: '0 8px 24px rgba(31,35,41,0.10), 0 2px 6px rgba(31,35,41,0.06)',
-        card: '0 1px 4px rgba(0,0,0,0.02)',
-        tab: '0 1px 3px rgba(0,0,0,0.04)'
+        lg: '0 8px 24px rgba(31,35,41,0.10), 0 2px 6px rgba(31,35,41,0.06)'
       },
       transitionTimingFunction: {
         soft: 'cubic-bezier(0.16,1,0.3,1)'

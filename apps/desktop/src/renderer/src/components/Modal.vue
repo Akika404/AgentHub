@@ -30,7 +30,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       @mousedown.self="emit('close')"
     >
       <div
-        class="bg-surface rounded-lg shadow-card border border-surface-border w-full flex flex-col max-h-[85vh]"
+        class="bg-surface rounded-lg shadow-lg border border-gray-150 w-full flex flex-col max-h-[85vh]"
         :style="{ maxWidth: `${width}px` }"
       >
         <header
