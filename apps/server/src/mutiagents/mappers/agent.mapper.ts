@@ -21,6 +21,7 @@ export function agentToConfig(
     return {
         id: idHint,
         model: agent.model,
+        agentHomeDirectory: agent.agentHomeDirectory,
         workingDirectory: agent.workingDirectory,
         apiKey,
         baseUrl,
@@ -45,6 +46,7 @@ export function toAgentView(agent: Agent, session: AgentSession | null): AgentVi
         vendor: agent.vendor,
         platformProviderId: agent.platformProviderId,
         model: agent.model,
+        agentHomeDirectory: agent.agentHomeDirectory,
         workingDirectory: agent.workingDirectory,
         capabilities: getCapabilities(agent.vendor),
         status: session ? session.status : 'none',

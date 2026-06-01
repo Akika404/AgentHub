@@ -168,6 +168,12 @@ onMounted(load)
             }}</span>
           </div>
           <div class="flex px-4 py-3">
+            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">Agent 目录</span>
+            <span class="text-[13px] text-text-main font-mono break-all">{{
+              selected.agentHomeDirectory
+            }}</span>
+          </div>
+          <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">工作目录</span>
             <span class="text-[13px] text-text-main font-mono break-all">{{
               selected.workingDirectory

@@ -16,7 +16,7 @@
 -- --------------------------------------------------------
 -- Table: agent —— 用户创建的一个虚拟员工（持久化配置）
 -- 归属某个用户（userId），进入该用户的 AgentList。配置在创建时即确定：
--- vendor、引用的 Provider（platformProviderId）+ 选定 model、工作目录、systemPrompt、
+-- vendor、引用的 Provider（platformProviderId）+ 选定 model、Agent 私有目录、工作目录、systemPrompt、
 -- skills、mcp、tools 等。**不存 apiKey / baseUrl**（运行时从所引用 Provider 取）。
 -- 一个 Agent 可被多个会话复用。
 -- --------------------------------------------------------
@@ -29,6 +29,7 @@ CREATE TABLE `agent`
   `vendor`             varchar(16)   NOT NULL COMMENT 'Agent 厂商：claude / codex；决定用哪个 Agent SDK 驱动',
   `platformProviderId` varchar(36)   NOT NULL COMMENT '引用的模型平台 id（逻辑外键到 platform_provider.id）；运行时据此取 baseUrl + apiKey',
   `model`              varchar(128)  NOT NULL COMMENT '选定的模型名，取自所引用 Provider 的 modelList',
+  `agentHomeDirectory` varchar(1024) NOT NULL COMMENT 'Agent 私有持久目录；存放该 Agent 独立的 .claude/skills 等配置',
   `workingDirectory`   varchar(1024) NOT NULL COMMENT '工作目录，agent 实际操作文件系统的根路径',
   `systemPrompt`       text COMMENT '系统提示词；可空。Claude 走 options.systemPrompt，Codex 不支持（创建时拦截而非静默丢弃）',
   `skills`             json                   DEFAULT NULL COMMENT '预加载技能；JSON，取值为字符串 "all" 或技能名数组；Codex 不支持',

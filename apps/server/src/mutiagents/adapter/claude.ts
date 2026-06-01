@@ -1,5 +1,6 @@
 import type { McpServerConfig, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { join } from 'node:path'
 import type {
     AgentAdapter,
     AgentAdapterConfig,
@@ -158,6 +159,8 @@ export class ClaudeAdapter implements AgentAdapter {
         // 仅 bypass 时附带 allowDangerouslySkipPermissions；其它模式留给 phase-2 接 canUseTool。
         const permissionMode = this.config.permissionMode ?? 'bypassPermissions'
 
+        const claudeConfigDir = join(this.config.agentHomeDirectory, '.claude')
+
         // 构造 Claude SDK 选项
         const opts: Options = {
             cwd: this.config.workingDirectory,
@@ -165,11 +168,12 @@ export class ClaudeAdapter implements AgentAdapter {
             allowedTools: this.config.allowedTools ?? DEFAULT_CLAUDE_TOOLS,
             permissionMode,
             allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
-            settingSources: [],
+            settingSources: ['user', 'project'],
             abortController,
             env: {
                 ...process.env,
                 ...this.config.env,
+                CLAUDE_CONFIG_DIR: claudeConfigDir,
                 ANTHROPIC_API_KEY: this.config.apiKey,
                 ...(this.config.baseUrl ? { ANTHROPIC_BASE_URL: this.config.baseUrl } : {})
             }

@@ -21,6 +21,7 @@ const form = reactive({
   platformProviderId: '',
   model: '',
   workingDirectory: '',
+  skillSourceDirectories: '',
   systemPrompt: '',
   skills: '',
   mcpServers: '',
@@ -49,6 +50,7 @@ function reset(): void {
   form.platformProviderId = ''
   form.model = ''
   form.workingDirectory = ''
+  form.skillSourceDirectories = ''
   form.systemPrompt = ''
   form.skills = ''
   form.mcpServers = ''
@@ -89,7 +91,7 @@ function buildPayload(): CreateAgentPayload | string {
   if (!form.name.trim()) return '请输入名称'
   if (!form.platformProviderId) return '请选择 PlatformProvider'
   if (!form.model) return '请选择模型'
-  if (!form.workingDirectory.trim()) return '请输入工作目录'
+  if (!form.workingDirectory.trim()) return '请输入 Agent 目录'
 
   const payload: CreateAgentPayload = {
     name: form.name.trim(),
@@ -101,6 +103,9 @@ function buildPayload(): CreateAgentPayload | string {
 
   if (caps.value.supportsSystemPrompt && form.systemPrompt.trim()) {
     payload.systemPrompt = form.systemPrompt
+  }
+  if (caps.value.supportsSkills && form.skillSourceDirectories.trim()) {
+    payload.skillSourceDirectories = parseList(form.skillSourceDirectories)
   }
   if (caps.value.supportsSkills && form.skills.trim()) {
     const skills = form.skills.trim()
@@ -200,13 +205,16 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">工作目录</label>
+        <label class="block text-[12px] text-text-muted mb-1.5">Agent 目录</label>
         <input
           v-model="form.workingDirectory"
           type="text"
-          placeholder="/path/to/workspace"
+          placeholder="/path/to/agent-home"
           class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
+        <p class="mt-1 text-[11px] text-text-muted">
+          单聊时作为工作目录；Agent 私有 skills 会放在这里的 .claude/skills。
+        </p>
       </div>
 
       <div>
@@ -228,7 +236,7 @@ async function onSubmit(): Promise<void> {
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
-            <span>Skills</span>
+            <span>Enabled Skills</span>
             <span v-if="!caps.supportsSkills" class="text-[11px]">不支持</span>
           </label>
           <input
@@ -238,6 +246,7 @@ async function onSubmit(): Promise<void> {
             placeholder="all 或 逗号分隔"
             class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
           />
+          <p class="mt-1 text-[11px] text-text-muted">按名称启用；导入文件夹会自动启用。</p>
         </div>
         <div>
           <label class="block text-[12px] text-text-muted mb-1.5">Allowed Tools</label>
@@ -247,7 +256,23 @@ async function onSubmit(): Promise<void> {
             placeholder="逗号分隔，可选"
             class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
+          <p class="mt-1 text-[11px] text-text-muted">置空即为保持默认。</p>
         </div>
+      </div>
+
+      <div>
+        <label class="flex items-center justify-between text-[12px] text-text-muted mb-1.5">
+          <span>Skill Folders</span>
+          <span v-if="!caps.supportsSkills" class="text-[11px]">不支持</span>
+        </label>
+        <input
+          v-model="form.skillSourceDirectories"
+          :disabled="!caps.supportsSkills"
+          type="text"
+          placeholder="/path/to/skill 或 /path/to/.claude/skills，逗号分隔"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
+        />
+        <p class="mt-1 text-[11px] text-text-muted">创建时复制到 Agent 目录的 .claude/skills。</p>
       </div>
 
       <div>

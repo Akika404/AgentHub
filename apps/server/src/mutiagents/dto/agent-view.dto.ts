@@ -20,6 +20,8 @@ export interface AgentView {
     /** 引用的模型平台 id */
     platformProviderId: string
     model: string
+    /** Agent 私有持久目录；单聊时默认也作为工作目录 */
+    agentHomeDirectory: string
     workingDirectory: string
     /** 该 vendor 的能力描述（厂商不对称声明） */
     capabilities: AgentCapabilities

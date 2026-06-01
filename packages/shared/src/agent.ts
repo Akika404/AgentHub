@@ -74,6 +74,8 @@ export interface AgentView {
   /** referenced platform_provider.id */
   platformProviderId: string
   model: string
+  /** Agent-private persisted home directory; single-chat cwd defaults to this. */
+  agentHomeDirectory: string
   workingDirectory: string
   /** vendor capability description */
   capabilities: AgentCapabilities
@@ -104,8 +106,11 @@ export interface CreateAgentPayload {
   vendor: AgentVendor
   platformProviderId: string
   model: string
+  agentHomeDirectory?: string
   workingDirectory: string
   systemPrompt?: string
+  /** Local skill directories to copy into this Agent's private `.claude/skills`. */
+  skillSourceDirectories?: string[]
   skills?: 'all' | string[]
   mcpServers?: Record<string, unknown>
   allowedTools?: string[]

@@ -45,9 +45,24 @@ export class CreateAgentDto {
     @IsNotEmpty()
     workingDirectory!: string
 
+    /** Agent 私有持久目录；不传时默认等于 workingDirectory */
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    agentHomeDirectory?: string
+
     @IsOptional()
     @IsString()
     systemPrompt?: string
+
+    /**
+     * 待导入的本地 Skill 文件夹路径。每个路径可以是单个含 SKILL.md 的 skill 目录，
+     * 也可以是包含多个 skill 子目录的 skills 根目录；导入后会复制到 agentHomeDirectory/.claude/skills。
+     */
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    skillSourceDirectories?: string[]
 
     /** "all" 或技能名数组。形状为联合类型，用 @Allow 放行白名单，由 Manager 校验语义 */
     @IsOptional()

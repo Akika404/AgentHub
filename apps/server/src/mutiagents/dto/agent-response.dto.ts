@@ -59,6 +59,11 @@ export class AgentViewDto implements AgentView {
     @ApiProperty({ description: '模型名' })
     model!: string
 
+    @ApiProperty({
+        description: 'Agent 私有持久目录；存放该 Agent 独立的 .claude/skills 等配置'
+    })
+    agentHomeDirectory!: string
+
     @ApiProperty({ description: 'Agent 操作文件系统的根目录' })
     workingDirectory!: string
 
@@ -93,7 +98,10 @@ export class AgentViewDto implements AgentView {
 
     @ApiProperty({
         nullable: true,
-        oneOf: [{ type: 'string', enum: ['all'] }, { type: 'array', items: { type: 'string' } }],
+        oneOf: [
+            { type: 'string', enum: ['all'] },
+            { type: 'array', items: { type: 'string' } }
+        ],
         description: '"all" 或技能名数组；未配置为 null'
     })
     skills!: 'all' | string[] | null

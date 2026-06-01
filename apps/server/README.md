@@ -27,16 +27,16 @@ apps/server/
 
 ## 关键依赖（对应 Java 概念）
 
-| 依赖                                                         | 作用                     | Spring 类比                               |
-|------------------------------------------------------------|------------------------|-----------------------------------------|
+| 依赖                                                       | 作用                       | Spring 类比                             |
+| ---------------------------------------------------------- | -------------------------- | --------------------------------------- |
 | `@nestjs/core` `@nestjs/common` `@nestjs/platform-express` | NestJS 核心 + Express 适配 | `spring-boot-starter-web`               |
 | `@nestjs/config`                                           | `.env` / 配置注入          | `application.yml` + `@Value`            |
-| `@nestjs/typeorm` `typeorm` `mysql2`                       | ORM + MySQL 驱动         | `spring-data-jpa` + `mysql-connector-j` |
-| `ioredis`                                                  | Redis 客户端              | `Lettuce` / `Jedis`                     |
+| `@nestjs/typeorm` `typeorm` `mysql2`                       | ORM + MySQL 驱动           | `spring-data-jpa` + `mysql-connector-j` |
+| `ioredis`                                                  | Redis 客户端               | `Lettuce` / `Jedis`                     |
 | `class-validator` `class-transformer`                      | DTO 校验/转换              | `Hibernate Validator`                   |
 | `@nestjs/jwt`                                              | JWT 签发/校验              | `jjwt` / `spring-security-jwt`          |
 | `bcrypt`                                                   | 密码哈希                   | `BCryptPasswordEncoder`                 |
-| `reflect-metadata`                                         | 装饰器元数据                 | 由 Spring AOP 内部处理                       |
+| `reflect-metadata`                                         | 装饰器元数据               | 由 Spring AOP 内部处理                  |
 
 ## 常用命令
 
@@ -68,8 +68,7 @@ import { REDIS_CLIENT } from '../redis/redis.module'
 
 @Injectable()
 export class FooService {
-    constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {
-    }
+    constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 }
 ```
 
@@ -102,14 +101,14 @@ src/user/
 
 ### 接口（前缀 `/api`，成功响应统一信封 `{ code, message, data, timestamp }`）
 
-| 方法     | 路径                   | 功能                                 | 鉴权 |
-|--------|----------------------|------------------------------------|----|
-| POST   | `/api/user/register` | 注册（`account` + `password`），不自动登录   | 否  |
-| POST   | `/api/user/login`    | 登录，返回 `{ token, expiresIn, user }` | 否  |
-| POST   | `/api/user/logout`   | 退出登录，当前 token 加入黑名单即时失效            | 是  |
-| GET    | `/api/user/me`       | 获取当前用户信息                           | 是  |
-| POST   | `/api/user/update`   | 更新当前用户资料（部分更新 `nickname` / `avatar`） | 是  |
-| DELETE | `/api/user/me`       | 注销账号（逻辑删除），并吊销当前 token             | 是  |
+| 方法   | 路径                 | 功能                                               | 鉴权 |
+| ------ | -------------------- | -------------------------------------------------- | ---- |
+| POST   | `/api/user/register` | 注册（`account` + `password`），不自动登录         | 否   |
+| POST   | `/api/user/login`    | 登录，返回 `{ token, expiresIn, user }`            | 否   |
+| POST   | `/api/user/logout`   | 退出登录，当前 token 加入黑名单即时失效            | 是   |
+| GET    | `/api/user/me`       | 获取当前用户信息                                   | 是   |
+| POST   | `/api/user/update`   | 更新当前用户资料（部分更新 `nickname` / `avatar`） | 是   |
+| DELETE | `/api/user/me`       | 注销账号（逻辑删除），并吊销当前 token             | 是   |
 
 - `account` = 登录名（唯一不可变）；`nickname` = 展示名；`email` / `avatar` 注册后可选补充。
 - `POST /api/user/update` 为部分更新：字段省略保留原值、显式传 `null` 清空；当前仅开放 `nickname` / `avatar`（`account` 不可变、`email` 暂未开放、`password` 应走独立的校验旧密码接口）。
@@ -129,12 +128,12 @@ src/user/
 
 ### 错误码（见 `common/exceptions/error-code.ts`）
 
-| 码                          | HTTP | 含义                   |
-|----------------------------|------|----------------------|
-| `2001 UNAUTHORIZED`        | 401  | 缺少/无效/已失效的 token     |
+| 码                         | HTTP | 含义                                     |
+| -------------------------- | ---- | ---------------------------------------- |
+| `2001 UNAUTHORIZED`        | 401  | 缺少/无效/已失效的 token                 |
 | `2003 INVALID_CREDENTIALS` | 401  | 账号或密码错误（不区分具体原因，防枚举） |
-| `2004 ACCOUNT_DEACTIVATED` | 403  | 账号已注销                |
-| `4001 CONFLICT`            | 409  | 账号/邮箱已存在             |
+| `2004 ACCOUNT_DEACTIVATED` | 403  | 账号已注销                               |
+| `4001 CONFLICT`            | 409  | 账号/邮箱已存在                          |
 
 ### 已知限制
 
@@ -164,15 +163,15 @@ src/platform-provider/
 
 ### 接口（前缀 `/api`，成功响应统一信封 `{ code, message, data, timestamp }`，全部需鉴权）
 
-| 方法     | 路径                                           | 功能                                                 |
-|--------|----------------------------------------------|----------------------------------------------------|
-| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）               |
-| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                                 |
-| GET    | `/api/platform-providers/:id`                | 查询单个详情                                             |
-| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                            |
+| 方法   | 路径                                         | 功能                                                      |
+| ------ | -------------------------------------------- | --------------------------------------------------------- |
+| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）           |
+| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                               |
+| GET    | `/api/platform-providers/:id`                | 查询单个详情                                              |
+| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                     |
 | DELETE | `/api/platform-providers/:id`                | 删除（硬删除）                                            |
 | POST   | `/api/platform-providers/:id/test`           | 测试连接，返回 `{ ok, latencyMs, modelCount?, message? }` |
-| POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                            |
+| POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                        |
 
 - 字段：`platformName` 展示名、`baseUrl` 上游地址、`apiKey` 密钥、`modelList` 模型名数组、`type` 协议类型。
 - `type` 取值：`openai-chat-completions` / `openai-responses` / `anthropic`（前端自行映射「OpenAI(Chat Completions)」等展示名）。
@@ -199,13 +198,13 @@ src/platform-provider/
 
 ### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
 
-| 码                        | HTTP | 含义                            |
-|--------------------------|------|-------------------------------|
-| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token              |
+| 码                       | HTTP | 含义                                    |
+| ------------------------ | ---- | --------------------------------------- |
+| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token                |
 | `3000 VALIDATION_FAILED` | 400  | 入参校验失败（如 `baseUrl` 非 http(s)） |
-| `4000 NOT_FOUND`         | 404  | Provider 不存在或非本人              |
-| `4001 CONFLICT`          | 409  | 同名 Provider 已存在               |
-| `5000 UPSTREAM_ERROR`    | 502  | 上游不可达或返回非 2xx                 |
+| `4000 NOT_FOUND`         | 404  | Provider 不存在或非本人                 |
+| `4001 CONFLICT`          | 409  | 同名 Provider 已存在                    |
+| `5000 UPSTREAM_ERROR`    | 502  | 上游不可达或返回非 2xx                  |
 
 ### 已知限制
 
@@ -244,7 +243,7 @@ src/mutiagents/
 ### 三层模型
 
 - **Agent**（`agent` 表）：用户拥有的不变配置——`name`、`vendor`（claude/codex）、`platformProviderId` + `model`
-  、工作目录、systemPrompt、skills、mcp、tools 等。**不存 `apiKey` / `baseUrl`**。
+  、Agent 私有目录、工作目录、systemPrompt、skills、mcp、tools 等。**不存 `apiKey` / `baseUrl`**。
 - **AgentSession**（`agent_session` 表）：会话句柄——`userId` + `agentId` + `sdkSessionId` + 状态，持久化以扛进程重启。
 - **LiveAgent**（进程内存，不入库）：内存中的 adapter 活实例 + 并发锁 + LRU 时间戳。
 
@@ -257,18 +256,25 @@ src/mutiagents/
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法         | 路径                                         | 功能                               |
-|------------|--------------------------------------------|----------------------------------|
+| 方法       | 路径                                       | 功能                                          |
+| ---------- | ------------------------------------------ | --------------------------------------------- |
 | POST       | `/api/agents`                              | 创建 Agent 配置（不开会话），返回 `AgentView` |
-| GET        | `/api/agents`                              | 列出当前用户的 AgentList                |
-| GET        | `/api/agents/:agentId`                     | 查询单个 Agent                       |
-| DELETE     | `/api/agents/:agentId`                     | 删除 Agent（连同其会话）                  |
-| GET `@Sse` | `/api/agents/:agentId/converse?prompt=...` | 单聊（懒加载会话），SSE 推 `AgentEvent`     |
-| POST       | `/api/agents/:agentId/suspend`             | 暂存单聊会话（从内存驱逐，可恢复）                |
-| POST       | `/api/agents/:agentId/restore`             | 恢复单聊会话并预热活实例                     |
-| POST       | `/api/agents/:agentId/clear`               | 清空单聊会话（丢弃句柄，下次开新会话）              |
+| GET        | `/api/agents`                              | 列出当前用户的 AgentList                      |
+| GET        | `/api/agents/:agentId`                     | 查询单个 Agent                                |
+| DELETE     | `/api/agents/:agentId`                     | 删除 Agent（连同其会话）                      |
+| GET `@Sse` | `/api/agents/:agentId/converse?prompt=...` | 单聊（懒加载会话），SSE 推 `AgentEvent`       |
+| POST       | `/api/agents/:agentId/suspend`             | 暂存单聊会话（从内存驱逐，可恢复）            |
+| POST       | `/api/agents/:agentId/restore`             | 恢复单聊会话并预热活实例                      |
+| POST       | `/api/agents/:agentId/clear`               | 清空单聊会话（丢弃句柄，下次开新会话）        |
 
 - 所有操作按 `@CurrentUser()` 隔离，非本人 Agent 一律 `NOT_FOUND`。
+- 创建 Agent 时，`agentHomeDirectory` 不传则默认等于 `workingDirectory`；Claude Agent 会在该私有目录下创建
+  `.claude/skills`。`skillSourceDirectories` 是 create-only 输入，支持传入单个含 `SKILL.md` 的 skill 目录、`.claude/skills`
+  根目录，或包含多个 skill 子目录的目录；后端会复制到 `agentHomeDirectory/.claude/skills/<skill-name>`，并把导入的 skill
+  名称并入 `skills` 启用列表。
+- Claude 运行时设置 `CLAUDE_CONFIG_DIR=<agentHomeDirectory>/.claude` 且 `settingSources=['user','project']`：`user`
+  source 加载 Agent 私有 skills，`project` source 加载当前 `workingDirectory` 的项目级 `CLAUDE.md` / `.claude/settings.json`。
+  因此未来群聊把 `workingDirectory` 切到群聊项目目录时，Agent 私有 skills 仍可加载。
 - SSE 路由用 `@SkipEnvelope()`；浏览器原生 `EventSource` 不便带 `Authorization` 头，前端需用 fetch-stream 或后续支持 query
   token。
 
@@ -287,13 +293,13 @@ src/mutiagents/
 
 ### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
 
-| 码                        | HTTP | 含义                          |
-|--------------------------|------|-----------------------------|
-| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token            |
-| `3001 BAD_REQUEST`       | 400  | vendor↔Provider 类型不兼容等入参错误  |
-| `4000 NOT_FOUND`         | 404  | Agent 不存在或非本人               |
+| 码                       | HTTP | 含义                                         |
+| ------------------------ | ---- | -------------------------------------------- |
+| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token                     |
+| `3001 BAD_REQUEST`       | 400  | vendor↔Provider 类型不兼容等入参错误         |
+| `4000 NOT_FOUND`         | 404  | Agent 不存在或非本人                         |
 | `5001 AGENT_UNAVAILABLE` | 503  | 运行时凭证解析失败（如被引用 Provider 已删） |
-| `5002 AGENT_BUSY`        | 409  | 会话已有进行中的 turn               |
+| `5002 AGENT_BUSY`        | 409  | 会话已有进行中的 turn                        |
 
 ### 已知限制
 
@@ -303,8 +309,9 @@ src/mutiagents/
 - **权限审批**：本期 auto-approve（Claude `bypassPermissions` / Codex `approvalPolicy:"never"`），已留
   `config.permissionMode` + `canUseTool` seam，交互审批为 phase-2。
 - **厂商不对称**：Codex 不支持 systemPrompt / skills / MCP（见 `capabilities()`），创建时显式拒绝。
+- Claude `skills` 是启用过滤器而不是安装 API；AgentHub 通过 `skillSourceDirectories` 在创建时把本地 skill 文件夹复制到该
+  Agent 私有目录，再把名称传给 SDK。
 - `clear()` 仅逻辑清空：SDK 落盘的旧会话文件不删除（disk 增长、旧会话技术上仍可 resume）→ phase-2 清理任务。
-- 前端 / `packages/shared` 的 Agent 契约（`id`/`name`/`platformProviderId`，无 `sessionId`）需另行更新。
 
 ## 下一步建议
 

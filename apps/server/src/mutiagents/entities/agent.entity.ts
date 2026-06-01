@@ -12,7 +12,7 @@ import type { AgentPermissionMode, AgentVendor } from '../adapter/index.js'
  * Agent — 用户创建的一个虚拟员工（持久化配置，进入该用户的 AgentList）。
  *
  * 归属某个用户（`userId`，逻辑外键到 user.id），按它做数据隔离。配置在创建时即确定：
- * vendor、引用的 Provider（`platformProviderId`）+ 选定 model、工作目录、systemPrompt、
+ * vendor、引用的 Provider（`platformProviderId`）+ 选定 model、Agent 私有目录、工作目录、systemPrompt、
  * skills、mcp、tools 等。**不存 apiKey / baseUrl**——运行时按 `platformProviderId` 从
  * platform_provider 取（见 PlatformProviderService.resolveRuntimeConfig）。
  * 一个 Agent 可被多个会话（agent_session）复用。
@@ -42,6 +42,10 @@ export class Agent {
     /** 选定的模型名，取自所引用 Provider 的 modelList */
     @Column({ type: 'varchar', length: 128 })
     model!: string
+
+    /** Agent 私有持久目录；存放其独立的 .claude/skills 等配置。 */
+    @Column({ type: 'varchar', length: 1024 })
+    agentHomeDirectory!: string
 
     @Column({ type: 'varchar', length: 1024 })
     workingDirectory!: string

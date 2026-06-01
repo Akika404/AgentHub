@@ -1,6 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
+import { cp, mkdir, readdir, readFile, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { basename, join, resolve } from 'node:path'
 import { In, Repository } from 'typeorm'
 import { createAgent, getCapabilities, type AgentEvent, type AgentVendor } from './adapter/index.js'
 import { Agent } from './entities/agent.entity.js'
@@ -71,11 +74,29 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
      */
     async createAgent(userId: string, dto: CreateAgentDto): Promise<AgentView> {
         this.assertConfigSupported(dto)
+        this.assertSkillsShape(dto.skills)
 
         // 取所引用 Provider 的运行时配置：顺带校验其存在且归属本人（否则 NOT_FOUND）
-        const provider = await this.providerService.resolveRuntimeConfig(userId, dto.platformProviderId)
+        const provider = await this.providerService.resolveRuntimeConfig(
+            userId,
+            dto.platformProviderId
+        )
         this.assertVendorProviderCompatible(dto.vendor, provider.type)
         this.assertModelInList(dto.model, provider.modelList)
+
+        const workingDirectory = this.normalizeDirectoryPath(dto.workingDirectory)
+        const agentHomeDirectory = this.normalizeDirectoryPath(
+            dto.agentHomeDirectory ?? dto.workingDirectory
+        )
+        await this.ensureRuntimeDirectories(dto.vendor, workingDirectory, agentHomeDirectory)
+        const importedSkillNames =
+            dto.vendor === 'claude'
+                ? await this.importSkillSourceDirectories(
+                      dto.skillSourceDirectories ?? [],
+                      agentHomeDirectory
+                  )
+                : []
+        const skills = this.mergeSkills(dto.skills, importedSkillNames)
 
         const agent = this.agentRepo.create({
             userId,
@@ -83,9 +104,10 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             vendor: dto.vendor,
             platformProviderId: dto.platformProviderId,
             model: dto.model,
-            workingDirectory: dto.workingDirectory,
+            agentHomeDirectory,
+            workingDirectory,
             systemPrompt: dto.systemPrompt ?? null,
-            skills: dto.skills ?? null,
+            skills,
             mcpServers: dto.mcpServers ?? null,
             allowedTools: dto.allowedTools ?? null,
             permissionMode: dto.permissionMode ?? null,
@@ -97,7 +119,10 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     /** 列出当前用户的全部 Agent（AgentList），附带各自单聊会话的运行时状态。 */
     async list(userId: string): Promise<AgentView[]> {
-        const agents = await this.agentRepo.find({ where: { userId }, order: { createdAt: 'DESC' } })
+        const agents = await this.agentRepo.find({
+            where: { userId },
+            order: { createdAt: 'DESC' }
+        })
         if (agents.length === 0) return []
         const sessions = await this.sessionRepo.find({
             where: { agentId: In(agents.map((a) => a.id)) }
@@ -221,10 +246,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         this.registry.delete(session.id) // 必须驱逐：活实例内部仍持有旧会话上下文
         session.sdkSessionId = null
         session.status = 'cleared'
-        await this.sessionRepo.update(
-            { id: session.id },
-            { sdkSessionId: null, status: 'cleared' }
-        )
+        await this.sessionRepo.update({ id: session.id }, { sdkSessionId: null, status: 'cleared' })
         return toAgentView(agent, session)
     }
 
@@ -240,6 +262,178 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     }
 
     // ─────────────────────────── 内部工具 ───────────────────────────
+
+    private normalizeDirectoryPath(path: string): string {
+        const trimmed = path.trim()
+        if (!trimmed) throw BusinessException.badRequest('Directory path cannot be empty')
+        if (trimmed === '~') return homedir()
+        if (trimmed.startsWith('~/')) return resolve(homedir(), trimmed.slice(2))
+        return resolve(trimmed)
+    }
+
+    private async ensureRuntimeDirectories(
+        vendor: AgentVendor,
+        workingDirectory: string,
+        agentHomeDirectory: string
+    ): Promise<void> {
+        try {
+            await mkdir(workingDirectory, { recursive: true })
+            await mkdir(agentHomeDirectory, { recursive: true })
+            if (vendor === 'claude') {
+                await mkdir(this.agentSkillsRoot(agentHomeDirectory), { recursive: true })
+            }
+        } catch (err) {
+            throw BusinessException.badRequest(
+                `Failed to prepare Agent directories: ${this.errMsg(err)}`,
+                { workingDirectory, agentHomeDirectory }
+            )
+        }
+    }
+
+    private agentSkillsRoot(agentHomeDirectory: string): string {
+        return join(agentHomeDirectory, '.claude', 'skills')
+    }
+
+    private async importSkillSourceDirectories(
+        sourceDirectories: string[],
+        agentHomeDirectory: string
+    ): Promise<string[]> {
+        const importedNames: string[] = []
+        const seen = new Set<string>()
+        for (const raw of sourceDirectories) {
+            const sourceRoot = this.normalizeDirectoryPath(raw)
+            const skillDirs = await this.collectSkillDirectories(sourceRoot)
+            for (const skillDir of skillDirs) {
+                const skill = await this.readSkillMetadata(skillDir)
+                if (seen.has(skill.name)) {
+                    throw BusinessException.badRequest(`Duplicate skill name "${skill.name}"`, {
+                        skillName: skill.name,
+                        sourceDirectory: skillDir
+                    })
+                }
+                seen.add(skill.name)
+                const destination = join(this.agentSkillsRoot(agentHomeDirectory), skill.name)
+                try {
+                    await cp(skillDir, destination, {
+                        recursive: true,
+                        errorOnExist: true,
+                        force: false
+                    })
+                } catch (err) {
+                    throw BusinessException.badRequest(
+                        `Failed to import skill "${skill.name}": ${this.errMsg(err)}`,
+                        { skillName: skill.name, sourceDirectory: skillDir, destination }
+                    )
+                }
+                importedNames.push(skill.name)
+            }
+        }
+        return importedNames
+    }
+
+    private async collectSkillDirectories(sourceRoot: string): Promise<string[]> {
+        if (await this.hasSkillFile(sourceRoot)) return [sourceRoot]
+
+        const claudeSkillsRoot = join(sourceRoot, '.claude', 'skills')
+        if (await this.isDirectory(claudeSkillsRoot)) {
+            return this.collectChildSkillDirectories(claudeSkillsRoot)
+        }
+
+        const childSkillDirs = await this.collectChildSkillDirectories(sourceRoot)
+        if (childSkillDirs.length > 0) return childSkillDirs
+
+        throw BusinessException.badRequest(
+            `Skill directory "${sourceRoot}" must contain SKILL.md or skill subdirectories`
+        )
+    }
+
+    private async collectChildSkillDirectories(parent: string): Promise<string[]> {
+        try {
+            const entries = await readdir(parent, { withFileTypes: true })
+            const skillDirs: string[] = []
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue
+                const child = join(parent, entry.name)
+                if (await this.hasSkillFile(child)) skillDirs.push(child)
+            }
+            return skillDirs
+        } catch (err) {
+            throw BusinessException.badRequest(
+                `Cannot read skill directory "${parent}": ${this.errMsg(err)}`
+            )
+        }
+    }
+
+    private async readSkillMetadata(skillDirectory: string): Promise<{ name: string }> {
+        const skillFile = join(skillDirectory, 'SKILL.md')
+        let content: string
+        try {
+            content = await readFile(skillFile, 'utf8')
+        } catch (err) {
+            throw BusinessException.badRequest(
+                `Cannot read skill file "${skillFile}": ${this.errMsg(err)}`
+            )
+        }
+
+        const rawName = this.extractSkillName(content) ?? basename(skillDirectory)
+        const name = rawName.trim()
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
+            throw BusinessException.badRequest(
+                `Skill name "${name}" must contain only letters, numbers, ".", "_" or "-"`,
+                { skillDirectory, skillFile }
+            )
+        }
+        return { name }
+    }
+
+    private extractSkillName(content: string): string | null {
+        const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+        if (!frontmatter) return null
+        const nameLine = frontmatter[1].match(/^name:\s*(.+?)\s*$/m)
+        if (!nameLine) return null
+        return nameLine[1].replace(/^['"]|['"]$/g, '')
+    }
+
+    private async hasSkillFile(directory: string): Promise<boolean> {
+        try {
+            const s = await stat(join(directory, 'SKILL.md'))
+            return s.isFile()
+        } catch {
+            return false
+        }
+    }
+
+    private async isDirectory(path: string): Promise<boolean> {
+        try {
+            const s = await stat(path)
+            return s.isDirectory()
+        } catch {
+            return false
+        }
+    }
+
+    private assertSkillsShape(skills: CreateAgentDto['skills']): void {
+        if (skills === undefined) return
+        if (skills === 'all') return
+        if (Array.isArray(skills) && skills.every((s) => typeof s === 'string')) return
+        throw BusinessException.badRequest('skills must be "all" or an array of skill names')
+    }
+
+    private mergeSkills(
+        requested: CreateAgentDto['skills'],
+        importedSkillNames: string[]
+    ): 'all' | string[] | null {
+        if (requested === 'all') return 'all'
+        const names = new Set<string>()
+        if (Array.isArray(requested)) {
+            for (const name of requested) {
+                const trimmed = name.trim()
+                if (trimmed) names.add(trimmed)
+            }
+        }
+        for (const name of importedSkillNames) names.add(name)
+        return names.size > 0 ? [...names] : null
+    }
 
     /** 取活实例；缺失则按 Agent 配置重建并 resume。用 in-flight 去重避免并发重复构造。 */
     private async getOrRehydrate(session: AgentSession): Promise<LiveAgent> {
@@ -371,7 +565,14 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const caps = getCapabilities(dto.vendor)
         const unsupported: string[] = []
         if (dto.systemPrompt && !caps.supportsSystemPrompt) unsupported.push('systemPrompt')
-        if (dto.skills && !caps.supportsSkills) unsupported.push('skills')
+        if (
+            (dto.skills ||
+                (dto.skillSourceDirectories !== undefined &&
+                    dto.skillSourceDirectories.length > 0)) &&
+            !caps.supportsSkills
+        ) {
+            unsupported.push('skills')
+        }
         if (dto.mcpServers && !caps.supportsMcp) unsupported.push('mcpServers')
         if (unsupported.length > 0) {
             throw BusinessException.agentUnavailable(

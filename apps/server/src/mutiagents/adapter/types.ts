@@ -97,6 +97,8 @@ export interface AgentAdapterConfig {
     id?: string
     /** 模型名 */
     model: string
+    /** Agent 私有持久目录；Claude 用于隔离 CLAUDE_CONFIG_DIR / 私有 skills */
+    agentHomeDirectory: string
     /** 工作目录（agent 实际操作文件系统的根） */
     workingDirectory: string
     /** API key */
@@ -115,6 +117,7 @@ export interface AgentAdapterConfig {
     systemPrompt?: string
     /**
      * 预加载的 skills。Claude 走 options.skills（"all" 或名称数组）；
+     * skill 文件本身需由上层放到可发现目录（本项目使用 per-agent CLAUDE_CONFIG_DIR）。
      * Codex 无 skills 概念，capabilities().supportsSkills 为 false。
      */
     skills?: 'all' | string[]
