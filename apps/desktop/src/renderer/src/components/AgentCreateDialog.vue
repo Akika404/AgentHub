@@ -12,6 +12,7 @@ import Modal from './Modal.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
+import BaseButton from './ui/BaseButton.vue'
 
 const props = defineProps<{ open: boolean; providers: PlatformProviderView[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'created'): void }>()
@@ -282,21 +283,10 @@ async function onSubmit(): Promise<void> {
     </div>
 
     <template #footer>
-      <button
-        type="button"
-        class="h-9 px-4 rounded-[8px] text-base text-text-main hover:bg-surface-hover transition-colors"
-        @click="emit('close')"
-      >
-        取消
-      </button>
-      <button
-        type="button"
-        :disabled="submitting"
-        class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60"
-        @click="onSubmit"
-      >
+      <BaseButton variant="ghost" @click="emit('close')">取消</BaseButton>
+      <BaseButton :disabled="submitting" @click="onSubmit">
         {{ submitting ? '创建中…' : '创建' }}
-      </button>
+      </BaseButton>
     </template>
   </Modal>
 </template>

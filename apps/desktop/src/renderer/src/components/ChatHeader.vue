@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ChatDetail } from '../api'
+import BaseButton from './ui/BaseButton.vue'
 
 defineProps<{ detail: ChatDetail | null }>()
 </script>
@@ -23,16 +24,12 @@ defineProps<{ detail: ChatDetail | null }>()
       </span>
     </div>
     <div class="flex items-center space-x-3 text-text-muted">
-      <button
-        class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors"
-      >
+      <BaseButton variant="ghost" icon>
         <span class="material-symbols-outlined text-3xl">search</span>
-      </button>
-      <button
-        class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors"
-      >
+      </BaseButton>
+      <BaseButton variant="ghost" icon>
         <span class="material-symbols-outlined text-3xl">more_horiz</span>
-      </button>
+      </BaseButton>
     </div>
   </header>
 </template>

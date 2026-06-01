@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PROVIDER_TYPE_LABELS, type PlatformProviderView } from '@agenthub/shared'
+import BaseButton from './ui/BaseButton.vue'
 
 defineProps<{
   providers: PlatformProviderView[]
@@ -15,14 +16,10 @@ const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'add'): void }>(
       class="h-14 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
     >
       <span class="text-base font-medium text-text-main">Provider 列表</span>
-      <button
-        type="button"
-        class="flex items-center gap-1 h-7 px-2.5 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-colors"
-        @click="emit('add')"
-      >
+      <BaseButton size="sm" @click="emit('add')">
         <span class="material-symbols-outlined text-lg">add</span>
         添加
-      </button>
+      </BaseButton>
     </header>
     <div class="flex-1 overflow-y-auto p-2">
       <p v-if="loading" class="text-center text-text-muted text-sm py-6">加载中…</p>

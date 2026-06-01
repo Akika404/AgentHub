@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { ApiError } from '../api'
 import { login, register } from '../stores/auth'
 import BaseInput from '../components/ui/BaseInput.vue'
+import BaseButton from '../components/ui/BaseButton.vue'
 
 type Mode = 'login' | 'register'
 
@@ -115,13 +116,9 @@ async function onSubmit(): Promise<void> {
 
         <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 
-        <button
-          type="submit"
-          :disabled="submitting"
-          class="w-full h-10 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
+        <BaseButton type="submit" size="lg" block :disabled="submitting">
           {{ submitting ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录' }}
-        </button>
+        </BaseButton>
       </form>
     </div>
   </div>

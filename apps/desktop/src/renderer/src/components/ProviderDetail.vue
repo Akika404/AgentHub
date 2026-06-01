@@ -6,6 +6,7 @@ import {
   type ProviderTestResult
 } from '@agenthub/shared'
 import { ApiError, providerApi } from '../api'
+import BaseButton from './ui/BaseButton.vue'
 
 const props = defineProps<{ provider: PlatformProviderView }>()
 const emit = defineEmits<{
@@ -65,22 +66,14 @@ async function onRefresh(): Promise<void> {
           <p class="text-sm text-text-muted mt-1">{{ PROVIDER_TYPE_LABELS[provider.type] }}</p>
         </div>
         <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-text-main hover:bg-surface-hover text-sm font-medium transition-colors"
-            @click="emit('edit')"
-          >
+          <BaseButton variant="secondary" size="sm" @click="emit('edit')">
             <span class="material-symbols-outlined text-xl">edit</span>
             编辑
-          </button>
-          <button
-            type="button"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-sm font-medium transition-colors"
-            @click="emit('delete')"
-          >
+          </BaseButton>
+          <BaseButton variant="danger" size="sm" @click="emit('delete')">
             <span class="material-symbols-outlined text-xl">delete</span>
             删除
-          </button>
+          </BaseButton>
         </div>
       </div>
 
@@ -93,31 +86,19 @@ async function onRefresh(): Promise<void> {
         </div>
         <div class="flex px-4 py-3">
           <span class="w-28 flex-shrink-0 text-sm text-text-muted">API Key</span>
-          <span class="text-base text-text-main font-mono">{{
-            provider.apiKeyMasked ?? '—'
-          }}</span>
+          <span class="text-base text-text-main font-mono">{{ provider.apiKeyMasked ?? '—' }}</span>
         </div>
       </section>
 
       <div class="flex items-center gap-2 mt-4">
-        <button
-          type="button"
-          :disabled="testing"
-          class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-text-main hover:bg-surface-hover text-sm font-medium transition-colors disabled:opacity-60"
-          @click="onTest"
-        >
+        <BaseButton variant="secondary" size="sm" :disabled="testing" @click="onTest">
           <span class="material-symbols-outlined text-xl">wifi_tethering</span>
           {{ testing ? '测试中…' : '测试连接' }}
-        </button>
-        <button
-          type="button"
-          :disabled="refreshing"
-          class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-text-main hover:bg-surface-hover text-sm font-medium transition-colors disabled:opacity-60"
-          @click="onRefresh"
-        >
+        </BaseButton>
+        <BaseButton variant="secondary" size="sm" :disabled="refreshing" @click="onRefresh">
           <span class="material-symbols-outlined text-xl">refresh</span>
           {{ refreshing ? '刷新中…' : '刷新模型' }}
-        </button>
+        </BaseButton>
         <span
           v-if="testResult"
           class="text-sm"
@@ -135,9 +116,7 @@ async function onRefresh(): Promise<void> {
       </div>
 
       <section class="mt-6">
-        <h3 class="text-sm text-text-muted mb-2">
-          模型列表（{{ provider.modelList.length }}）
-        </h3>
+        <h3 class="text-sm text-text-muted mb-2">模型列表（{{ provider.modelList.length }}）</h3>
         <div
           v-if="provider.modelList.length"
           class="flex flex-wrap gap-2 bg-surface rounded-[10px] border border-surface-border p-4"

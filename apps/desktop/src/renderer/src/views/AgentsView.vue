@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import type { AgentRuntimeStatus, AgentView, PlatformProviderView } from '@agenthub/shared'
 import { ApiError, agentApi, providerApi } from '../api'
 import AgentCreateDialog from '../components/AgentCreateDialog.vue'
+import BaseButton from '../components/ui/BaseButton.vue'
 
 const agents = ref<AgentView[]>([])
 const providers = ref<PlatformProviderView[]>([])
@@ -92,14 +93,10 @@ onMounted(load)
         class="h-16 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
       >
         <h1 class="font-semibold text-text-main text-lg">Agent 管理</h1>
-        <button
-          type="button"
-          class="flex items-center gap-1 h-8 px-3 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-colors"
-          @click="createOpen = true"
-        >
+        <BaseButton size="sm" @click="createOpen = true">
           <span class="material-symbols-outlined text-xl">add</span>
           新建
-        </button>
+        </BaseButton>
       </header>
       <div class="flex-1 overflow-y-auto p-2">
         <p v-if="loading" class="text-center text-text-muted text-sm py-6">加载中…</p>
@@ -139,15 +136,10 @@ onMounted(load)
               {{ selected.vendor }} · {{ STATUS_LABELS[selected.status] }}
             </p>
           </div>
-          <button
-            type="button"
-            :disabled="deleting"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-sm font-medium transition-colors disabled:opacity-60"
-            @click="onDelete"
-          >
+          <BaseButton variant="danger" size="sm" :disabled="deleting" @click="onDelete">
             <span class="material-symbols-outlined text-xl">delete</span>
             删除
-          </button>
+          </BaseButton>
         </div>
 
         <section

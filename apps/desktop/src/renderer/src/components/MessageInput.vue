@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { MessageReplyRef } from '../api'
+import BaseButton from './ui/BaseButton.vue'
 
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
@@ -71,16 +72,12 @@ function onKey(event: KeyboardEvent): void {
       </div>
       <div class="flex items-center justify-between py-2">
         <div class="flex items-center space-x-2 text-text-muted">
-          <button
-            class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
-          >
+          <BaseButton variant="ghost" icon>
             <span class="material-symbols-outlined text-3xl">attach_file</span>
-          </button>
-          <button
-            class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
-          >
+          </BaseButton>
+          <BaseButton variant="ghost" icon>
             <span class="material-symbols-outlined text-3xl">code</span>
-          </button>
+          </BaseButton>
         </div>
         <button
           class="bg-primary text-white px-5 py-1.5 rounded-[6px] text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"

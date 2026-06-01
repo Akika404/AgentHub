@@ -5,6 +5,7 @@ import { ApiError } from '../api'
 import { logout, updateProfile, userToAvatar } from '../stores/auth'
 import Modal from './Modal.vue'
 import BaseInput from './ui/BaseInput.vue'
+import BaseButton from './ui/BaseButton.vue'
 
 const props = defineProps<{ user: UserView | null }>()
 
@@ -145,21 +146,10 @@ async function onLogout(): Promise<void> {
       />
       <p v-if="nicknameError" class="text-sm text-danger mt-2">{{ nicknameError }}</p>
       <template #footer>
-        <button
-          type="button"
-          class="h-9 px-4 rounded-[8px] text-base text-text-main hover:bg-surface-hover transition-colors"
-          @click="nicknameOpen = false"
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          :disabled="saving"
-          class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60"
-          @click="saveNickname"
-        >
+        <BaseButton variant="ghost" @click="nicknameOpen = false">取消</BaseButton>
+        <BaseButton :disabled="saving" @click="saveNickname">
           {{ saving ? '保存中…' : '保存' }}
-        </button>
+        </BaseButton>
       </template>
     </Modal>
   </div>

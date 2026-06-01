@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
+import BaseButton from './ui/BaseButton.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -39,13 +40,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <slot name="header">
             <h2 class="font-semibold text-text-main text-lg">{{ title }}</h2>
           </slot>
-          <button
-            type="button"
-            class="text-text-muted hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors"
-            @click="emit('close')"
-          >
+          <BaseButton variant="ghost" icon @click="emit('close')">
             <span class="material-symbols-outlined text-3xl">close</span>
-          </button>
+          </BaseButton>
         </header>
         <div class="px-5 py-4 overflow-y-auto">
           <slot />
