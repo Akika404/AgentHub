@@ -99,41 +99,43 @@ async function onLogout(): Promise<void> {
 
     <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChange" />
 
-    <div
-      v-if="menuOpen"
-      class="absolute left-[52px] top-0 z-50 w-44 bg-surface border border-gray-150 rounded-md shadow-md py-1.5"
-    >
-      <div class="px-3 py-1.5 border-b border-surface-border mb-1">
-        <p class="text-base font-medium text-text-main truncate">
-          {{ userToAvatar(user)?.name ?? '账号' }}
-        </p>
-        <p v-if="user" class="text-xs text-text-muted truncate">@{{ user.account }}</p>
+    <Transition name="pop">
+      <div
+        v-if="menuOpen"
+        class="absolute left-[52px] top-0 z-50 w-44 bg-surface border border-gray-150 rounded-md shadow-md py-1.5"
+      >
+        <div class="px-3 py-1.5 border-b border-surface-border mb-1">
+          <p class="text-base font-medium text-text-main truncate">
+            {{ userToAvatar(user)?.name ?? '账号' }}
+          </p>
+          <p v-if="user" class="text-xs text-text-muted truncate">@{{ user.account }}</p>
+        </div>
+        <button
+          type="button"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
+          @click="openNickname"
+        >
+          <span class="material-symbols-outlined text-2xl text-text-muted">edit</span>
+          <span>更新昵称</span>
+        </button>
+        <button
+          type="button"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
+          @click="pickAvatar"
+        >
+          <span class="material-symbols-outlined text-2xl text-text-muted">image</span>
+          <span>更换头像</span>
+        </button>
+        <button
+          type="button"
+          class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-danger hover:bg-surface-hover transition-colors"
+          @click="onLogout"
+        >
+          <span class="material-symbols-outlined text-2xl">logout</span>
+          <span>退出登录</span>
+        </button>
       </div>
-      <button
-        type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
-        @click="openNickname"
-      >
-        <span class="material-symbols-outlined text-2xl text-text-muted">edit</span>
-        <span>更新昵称</span>
-      </button>
-      <button
-        type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
-        @click="pickAvatar"
-      >
-        <span class="material-symbols-outlined text-2xl text-text-muted">image</span>
-        <span>更换头像</span>
-      </button>
-      <button
-        type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-danger hover:bg-surface-hover transition-colors"
-        @click="onLogout"
-      >
-        <span class="material-symbols-outlined text-2xl">logout</span>
-        <span>退出登录</span>
-      </button>
-    </div>
+    </Transition>
 
     <Modal :open="nicknameOpen" title="更新昵称" :width="380" @close="nicknameOpen = false">
       <label class="block text-sm text-text-muted mb-1.5">昵称</label>

@@ -56,3 +56,52 @@ body {
     'opsz' 24;
   user-select: none;
 }
+
+/* Modal: backdrop fades in, the card pops up gently. */
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 180ms ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+.modal-enter-active .modal-card,
+.modal-leave-active .modal-card {
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+}
+.modal-enter-from .modal-card,
+.modal-leave-to .modal-card {
+  transform: translateY(6px) scale(0.98);
+  opacity: 0;
+}
+
+/* Popovers (dropdown / context menus): quick scale + fade. */
+.pop-enter-active {
+  transition:
+    opacity 120ms ease,
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pop-leave-active {
+  transition:
+    opacity 90ms ease,
+    transform 90ms ease;
+}
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-enter-active,
+  .modal-leave-active,
+  .modal-enter-active .modal-card,
+  .modal-leave-active .modal-card,
+  .pop-enter-active,
+  .pop-leave-active {
+    transition: none;
+  }
+}

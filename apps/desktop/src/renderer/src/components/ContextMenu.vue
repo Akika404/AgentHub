@@ -81,24 +81,26 @@ function onPick(item: MenuItem): void {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      data-context-menu
-      class="fixed z-50 bg-white border border-gray-150 rounded-md shadow-md py-1"
-      :style="{ ...position, width: `${MENU_WIDTH}px` }"
-      @contextmenu.prevent
-    >
-      <button
-        v-for="item in items"
-        :key="item.id"
-        type="button"
-        :disabled="item.disabled"
-        class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
-        @click="onPick(item)"
+    <Transition name="pop">
+      <div
+        v-if="open"
+        data-context-menu
+        class="fixed z-50 bg-white border border-gray-150 rounded-md shadow-md py-1"
+        :style="{ ...position, width: `${MENU_WIDTH}px` }"
+        @contextmenu.prevent
       >
-        <span class="material-symbols-outlined text-2xl text-text-muted">{{ item.icon }}</span>
-        <span class="flex-1">{{ item.label }}</span>
-      </button>
-    </div>
+        <button
+          v-for="item in items"
+          :key="item.id"
+          type="button"
+          :disabled="item.disabled"
+          class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
+          @click="onPick(item)"
+        >
+          <span class="material-symbols-outlined text-2xl text-text-muted">{{ item.icon }}</span>
+          <span class="flex-1">{{ item.label }}</span>
+        </button>
+      </div>
+    </Transition>
   </Teleport>
 </template>
