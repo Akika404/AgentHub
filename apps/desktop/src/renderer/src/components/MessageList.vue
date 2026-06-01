@@ -99,7 +99,7 @@ watch(
 
 <template>
   <div ref="scrollRef" class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-    <div v-if="loading" class="text-center text-text-muted text-[13px]">加载中...</div>
+    <div v-if="loading" class="text-center text-text-muted text-base">加载中...</div>
     <template v-for="msg in messages" :key="msg.id">
       <div
         :ref="(el) => setItemRef(msg.id, el as Element | null)"
@@ -119,7 +119,7 @@ watch(
       >
         <span
           v-if="msg.pinned"
-          class="absolute -left-1 top-0 material-symbols-outlined text-[14px] text-warning"
+          class="absolute -left-1 top-0 material-symbols-outlined text-md text-warning"
           title="已Pin"
           >keep</span
         >

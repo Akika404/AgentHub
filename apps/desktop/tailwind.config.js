@@ -22,18 +22,19 @@ export default {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
       },
-      // Type scale [size, line-height]. 12px (sm) and 13px (base) are kept
+      // Type scale (size only — no bundled line-height, so it's a drop-in for
+      // the existing text-[Npx] utilities). 12px (sm) and 13px (base) are kept
       // distinct on purpose — they carry label-vs-body hierarchy.
       fontSize: {
-        xs: ['11px', '16px'],
-        sm: ['12px', '18px'],
-        base: ['13px', '20px'],
-        md: ['14px', '22px'],
-        lg: ['15px', '24px'],
-        xl: ['16px', '24px'],
-        '2xl': ['18px', '26px'],
-        '3xl': ['20px', '28px'],
-        '4xl': ['26px', '32px']
+        xs: '11px',
+        sm: '12px',
+        base: '13px',
+        md: '14px',
+        lg: '15px',
+        xl: '16px',
+        '2xl': '18px',
+        '3xl': '20px',
+        '4xl': '24px' // nav icons; the lone 26px auth-hero folds here (-2px, login only)
       },
       colors: {
         primary: '#3370ff',

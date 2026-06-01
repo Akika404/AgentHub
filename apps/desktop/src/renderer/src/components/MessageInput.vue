@@ -47,8 +47,8 @@ function onKey(event: KeyboardEvent): void {
         class="mb-2 flex items-start justify-between bg-background border-l-2 border-primary rounded-[6px] px-3 py-2"
       >
         <div class="min-w-0 flex-1">
-          <div class="text-[12px] font-semibold text-text-main">回复 {{ replyTo.senderName }}</div>
-          <div class="text-[12px] text-text-muted line-clamp-2 break-words">
+          <div class="text-sm font-semibold text-text-main">回复 {{ replyTo.senderName }}</div>
+          <div class="text-sm text-text-muted line-clamp-2 break-words">
             {{ replyTo.excerpt }}
           </div>
         </div>
@@ -57,14 +57,14 @@ function onKey(event: KeyboardEvent): void {
           class="ml-2 text-text-muted hover:text-text-main p-0.5 rounded-[4px] hover:bg-gray-150 transition-colors"
           @click="emit('cancel-reply')"
         >
-          <span class="material-symbols-outlined text-[18px]">close</span>
+          <span class="material-symbols-outlined text-2xl">close</span>
         </button>
       </div>
       <div class="p-1">
         <textarea
           ref="inputRef"
           v-model="text"
-          class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-[14px] text-text-main placeholder-text-muted bg-transparent leading-[22px]"
+          class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-md text-text-main placeholder-text-muted bg-transparent leading-[22px]"
           placeholder="Type a message or /command..."
           @keydown="onKey"
         />
@@ -74,21 +74,21 @@ function onKey(event: KeyboardEvent): void {
           <button
             class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
           >
-            <span class="material-symbols-outlined text-[20px]">attach_file</span>
+            <span class="material-symbols-outlined text-3xl">attach_file</span>
           </button>
           <button
             class="hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors flex items-center"
           >
-            <span class="material-symbols-outlined text-[20px]">code</span>
+            <span class="material-symbols-outlined text-3xl">code</span>
           </button>
         </div>
         <button
-          class="bg-primary text-white px-5 py-1.5 rounded-[6px] text-[13px] font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
+          class="bg-primary text-white px-5 py-1.5 rounded-[6px] text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
           :disabled="!text.trim()"
           @click="submit"
         >
           <span>发送&nbsp;</span>
-          <span class="material-symbols-outlined text-[16px]">send</span>
+          <span class="material-symbols-outlined text-xl">send</span>
         </button>
       </div>
     </div>

@@ -74,14 +74,14 @@ onMounted(load)
     <!-- settings sidebar -->
     <div class="w-[200px] flex-shrink-0 border-r border-surface-border bg-surface flex flex-col">
       <header class="h-16 px-4 flex items-center border-b border-surface-border flex-shrink-0">
-        <h1 class="font-semibold text-text-main text-[15px]">设置</h1>
+        <h1 class="font-semibold text-text-main text-lg">设置</h1>
       </header>
       <nav class="p-2">
         <button
           v-for="s in SECTIONS"
           :key="s.key"
           type="button"
-          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-[13px] transition-colors"
+          class="w-full flex items-center gap-2.5 px-3 py-2 rounded-[8px] text-base transition-colors"
           :class="
             section === s.key
               ? 'bg-surface-active text-primary'
@@ -89,7 +89,7 @@ onMounted(load)
           "
           @click="section = s.key"
         >
-          <span class="material-symbols-outlined text-[18px]">{{ s.icon }}</span>
+          <span class="material-symbols-outlined text-2xl">{{ s.icon }}</span>
           {{ s.label }}
         </button>
       </nav>
@@ -111,14 +111,14 @@ onMounted(load)
         @delete="onDelete"
         @refreshed="load"
       />
-      <div v-else class="flex-1 flex items-center justify-center text-text-muted text-[13px]">
+      <div v-else class="flex-1 flex items-center justify-center text-text-muted text-base">
         {{ loading ? '加载中…' : '选择或添加一个 Provider' }}
       </div>
     </template>
 
     <p
       v-if="error"
-      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-[12px] px-4 py-2 rounded-[8px] border border-danger-border z-50"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-[8px] border border-danger-border z-50"
     >
       {{ error }}
     </p>

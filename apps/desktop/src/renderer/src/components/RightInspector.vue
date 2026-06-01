@@ -38,7 +38,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
   >
     <div class="flex p-1 bg-surface-hover m-4 rounded-[6px]">
       <button
-        class="flex-1 py-1 text-[13px] font-medium rounded-[4px] transition-all"
+        class="flex-1 py-1 text-base font-medium rounded-[4px] transition-all"
         :class="
           tab === 'status'
             ? 'bg-white text-text-main shadow-tab'
@@ -49,7 +49,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
         Status
       </button>
       <button
-        class="flex-1 py-1 text-[13px] font-medium rounded-[4px] transition-all"
+        class="flex-1 py-1 text-base font-medium rounded-[4px] transition-all"
         :class="
           tab === 'workspace'
             ? 'bg-white text-text-main shadow-tab'
@@ -62,8 +62,8 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
     </div>
 
     <div v-if="tab === 'status'" class="flex-1 overflow-y-auto px-5 py-2">
-      <div class="text-[14px] font-semibold text-text-main mb-5">当前协作网络</div>
-      <div v-if="!tree.length" class="text-[13px] text-text-muted">暂无协作节点</div>
+      <div class="text-md font-semibold text-text-main mb-5">当前协作网络</div>
+      <div v-if="!tree.length" class="text-base text-text-muted">暂无协作节点</div>
       <div class="space-y-1">
         <template v-for="root in tree" :key="root.id">
           <div class="flex items-center space-x-2.5 py-1">
@@ -74,7 +74,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
                 root.status === 'active' ? 'animate-pulse-ring' : ''
               ]"
             ></div>
-            <span class="text-[14px] font-medium text-text-main">{{ root.name }}</span>
+            <span class="text-md font-medium text-text-main">{{ root.name }}</span>
           </div>
           <div
             v-if="root.children.length"
@@ -86,7 +86,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
                   class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                   :class="dotClasses[child.status]"
                 ></span>
-                <span class="text-[13px] text-text-main">{{ child.name }}</span>
+                <span class="text-base text-text-main">{{ child.name }}</span>
               </div>
               <div
                 v-if="child.children.length"
@@ -101,7 +101,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
                     class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     :class="dotClasses[grand.status]"
                   ></span>
-                  <span class="text-[13px] text-text-main">{{ grand.name }}</span>
+                  <span class="text-base text-text-main">{{ grand.name }}</span>
                 </div>
               </div>
             </div>
@@ -110,7 +110,7 @@ const dotClasses: Record<NetworkNodeStatus, string> = {
       </div>
     </div>
 
-    <div v-else class="flex-1 overflow-y-auto px-5 py-2 text-[13px] text-text-muted">
+    <div v-else class="flex-1 overflow-y-auto px-5 py-2 text-base text-text-muted">
       WorkSpace 暂未实现
     </div>
   </aside>

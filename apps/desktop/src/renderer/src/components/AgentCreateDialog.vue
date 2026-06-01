@@ -148,48 +148,48 @@ async function onSubmit(): Promise<void> {
   <Modal :open="open" title="新建 Agent" :width="560" @close="emit('close')">
     <div class="space-y-4">
       <div>
-        <label class="block text-[12px] font-medium text-text-main mb-1.5">名称</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">名称</label>
         <input
           v-model="form.name"
           type="text"
           placeholder="如：后端工程师"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-[12px] font-medium text-text-main mb-1.5">Vendor</label>
+          <label class="block text-sm font-medium text-text-main mb-1.5">Vendor</label>
           <select
             v-model="form.vendor"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           >
             <option v-for="v in VENDORS" :key="v" :value="v">{{ v }}</option>
           </select>
         </div>
         <div>
-          <label class="block text-[12px] font-medium text-text-main mb-1.5">PlatformProvider</label>
+          <label class="block text-sm font-medium text-text-main mb-1.5">PlatformProvider</label>
           <select
             v-model="form.platformProviderId"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           >
             <option value="" disabled>请选择</option>
             <option v-for="p in compatibleProviders" :key="p.id" :value="p.id">
               {{ p.platformName }}
             </option>
           </select>
-          <p v-if="compatibleProviders.length === 0" class="text-[11px] text-text-muted mt-1">
+          <p v-if="compatibleProviders.length === 0" class="text-xs text-text-muted mt-1">
             没有与 {{ form.vendor }} 兼容的 Provider，请先在「设置」中添加。
           </p>
         </div>
       </div>
 
       <div>
-        <label class="block text-[12px] font-medium text-text-main mb-1.5">模型</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">模型</label>
         <select
           v-model="form.model"
           :disabled="modelOptions.length === 0"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
         >
           <option value="" disabled>
             {{ modelOptions.length ? '请选择' : '该 Provider 暂无模型' }}
@@ -198,29 +198,29 @@ async function onSubmit(): Promise<void> {
         </select>
         <p
           v-if="selectedProvider && modelOptions.length === 0"
-          class="text-[11px] text-text-muted mt-1"
+          class="text-xs text-text-muted mt-1"
         >
           该 Provider 的模型列表为空，可在「设置」中「刷新模型」后再试。
         </p>
       </div>
 
       <div>
-        <label class="block text-[12px] font-medium text-text-main mb-1.5">Agent 目录</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">Agent 目录</label>
         <input
           v-model="form.workingDirectory"
           type="text"
           placeholder="/path/to/agent-home"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
-        <p class="mt-1 text-[11px] text-text-muted">
+        <p class="mt-1 text-xs text-text-muted">
           单聊时作为工作目录；Agent 私有 skills 会放在这里的 .claude/skills。
         </p>
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
+        <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
           <span>System Prompt</span>
-          <span v-if="!caps.supportsSystemPrompt" class="text-[11px] font-normal text-text-muted"
+          <span v-if="!caps.supportsSystemPrompt" class="text-xs font-normal text-text-muted"
             >{{ form.vendor }} 不支持</span
           >
         </label>
@@ -229,15 +229,15 @@ async function onSubmit(): Promise<void> {
           :disabled="!caps.supportsSystemPrompt"
           rows="3"
           placeholder="可选"
-          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y disabled:bg-surface-hover disabled:text-text-muted"
+          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y disabled:bg-surface-hover disabled:text-text-muted"
         />
       </div>
 
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
+          <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
             <span>Enabled Skills</span>
-            <span v-if="!caps.supportsSkills" class="text-[11px] font-normal text-text-muted"
+            <span v-if="!caps.supportsSkills" class="text-xs font-normal text-text-muted"
               >不支持</span
             >
           </label>
@@ -246,26 +246,26 @@ async function onSubmit(): Promise<void> {
             :disabled="!caps.supportsSkills"
             type="text"
             placeholder="all 或 逗号分隔"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
           />
-          <p class="mt-1 text-[11px] text-text-muted">按名称启用；导入文件夹会自动启用。</p>
+          <p class="mt-1 text-xs text-text-muted">按名称启用；导入文件夹会自动启用。</p>
         </div>
         <div>
-          <label class="block text-[12px] font-medium text-text-main mb-1.5">Allowed Tools</label>
+          <label class="block text-sm font-medium text-text-main mb-1.5">Allowed Tools</label>
           <input
             v-model="form.allowedTools"
             type="text"
             placeholder="逗号分隔，可选"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
-          <p class="mt-1 text-[11px] text-text-muted">置空即为保持默认。</p>
+          <p class="mt-1 text-xs text-text-muted">置空即为保持默认。</p>
         </div>
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
+        <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
           <span>Skill Folders</span>
-          <span v-if="!caps.supportsSkills" class="text-[11px] font-normal text-text-muted"
+          <span v-if="!caps.supportsSkills" class="text-xs font-normal text-text-muted"
             >不支持</span
           >
         </label>
@@ -274,15 +274,15 @@ async function onSubmit(): Promise<void> {
           :disabled="!caps.supportsSkills"
           type="text"
           placeholder="/path/to/skill 或 /path/to/.claude/skills，逗号分隔"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition disabled:bg-surface-hover disabled:text-text-muted"
         />
-        <p class="mt-1 text-[11px] text-text-muted">创建时复制到 Agent 目录的 .claude/skills。</p>
+        <p class="mt-1 text-xs text-text-muted">创建时复制到 Agent 目录的 .claude/skills。</p>
       </div>
 
       <div>
-        <label class="flex items-center justify-between text-[12px] font-medium text-text-main mb-1.5">
+        <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
           <span>MCP Servers (JSON)</span>
-          <span v-if="!caps.supportsMcp" class="text-[11px] font-normal text-text-muted"
+          <span v-if="!caps.supportsMcp" class="text-xs font-normal text-text-muted"
             >{{ form.vendor }} 不支持</span
           >
         </label>
@@ -291,17 +291,17 @@ async function onSubmit(): Promise<void> {
           :disabled="!caps.supportsMcp"
           rows="3"
           placeholder='可选，如 {"fs": {"command": "..."}}'
-          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y disabled:bg-surface-hover disabled:text-text-muted"
+          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y disabled:bg-surface-hover disabled:text-text-muted"
         />
       </div>
 
-      <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>
 
     <template #footer>
       <button
         type="button"
-        class="h-9 px-4 rounded-[8px] text-[13px] text-text-main hover:bg-surface-hover transition-colors"
+        class="h-9 px-4 rounded-[8px] text-base text-text-main hover:bg-surface-hover transition-colors"
         @click="emit('close')"
       >
         取消
@@ -309,7 +309,7 @@ async function onSubmit(): Promise<void> {
       <button
         type="button"
         :disabled="submitting"
-        class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-[13px] font-medium transition-colors disabled:opacity-60"
+        class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60"
         @click="onSubmit"
       >
         {{ submitting ? '创建中…' : '创建' }}

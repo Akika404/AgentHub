@@ -91,19 +91,19 @@ onMounted(load)
       <header
         class="h-16 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
       >
-        <h1 class="font-semibold text-text-main text-[15px]">Agent 管理</h1>
+        <h1 class="font-semibold text-text-main text-lg">Agent 管理</h1>
         <button
           type="button"
-          class="flex items-center gap-1 h-8 px-3 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-[12px] font-medium transition-colors"
+          class="flex items-center gap-1 h-8 px-3 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-colors"
           @click="createOpen = true"
         >
-          <span class="material-symbols-outlined text-[16px]">add</span>
+          <span class="material-symbols-outlined text-xl">add</span>
           新建
         </button>
       </header>
       <div class="flex-1 overflow-y-auto p-2">
-        <p v-if="loading" class="text-center text-text-muted text-[12px] py-6">加载中…</p>
-        <p v-else-if="agents.length === 0" class="text-center text-text-muted text-[12px] py-6">
+        <p v-if="loading" class="text-center text-text-muted text-sm py-6">加载中…</p>
+        <p v-else-if="agents.length === 0" class="text-center text-text-muted text-sm py-6">
           还没有 Agent，点击「新建」创建一个。
         </p>
         <button
@@ -115,15 +115,15 @@ onMounted(load)
           @click="selectedId = agent.id"
         >
           <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
-            <span class="flex-1 text-[13px] font-medium text-text-main truncate">{{
+            <span class="material-symbols-outlined text-2xl text-primary">smart_toy</span>
+            <span class="flex-1 text-base font-medium text-text-main truncate">{{
               agent.name
             }}</span>
           </div>
           <div class="flex items-center gap-2 mt-1 pl-6">
-            <span class="text-[11px] text-text-muted">{{ agent.vendor }}</span>
-            <span class="text-[11px] text-text-muted">·</span>
-            <span class="text-[11px] text-text-muted">{{ STATUS_LABELS[agent.status] }}</span>
+            <span class="text-xs text-text-muted">{{ agent.vendor }}</span>
+            <span class="text-xs text-text-muted">·</span>
+            <span class="text-xs text-text-muted">{{ STATUS_LABELS[agent.status] }}</span>
           </div>
         </button>
       </div>
@@ -134,18 +134,18 @@ onMounted(load)
       <div v-if="selected" class="max-w-[720px] mx-auto p-6">
         <div class="flex items-start justify-between mb-6">
           <div>
-            <h2 class="text-[18px] font-semibold text-text-main">{{ selected.name }}</h2>
-            <p class="text-[12px] text-text-muted mt-1">
+            <h2 class="text-2xl font-semibold text-text-main">{{ selected.name }}</h2>
+            <p class="text-sm text-text-muted mt-1">
               {{ selected.vendor }} · {{ STATUS_LABELS[selected.status] }}
             </p>
           </div>
           <button
             type="button"
             :disabled="deleting"
-            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-[12px] font-medium transition-colors disabled:opacity-60"
+            class="flex items-center gap-1 h-9 px-3 rounded-[8px] border border-surface-border text-danger hover:bg-danger-soft text-sm font-medium transition-colors disabled:opacity-60"
             @click="onDelete"
           >
-            <span class="material-symbols-outlined text-[16px]">delete</span>
+            <span class="material-symbols-outlined text-xl">delete</span>
             删除
           </button>
         </div>
@@ -154,34 +154,34 @@ onMounted(load)
           class="bg-surface rounded-[10px] border border-surface-border divide-y divide-surface-border"
         >
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">Vendor</span>
-            <span class="text-[13px] text-text-main">{{ selected.vendor }}</span>
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">Vendor</span>
+            <span class="text-base text-text-main">{{ selected.vendor }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">模型</span>
-            <span class="text-[13px] text-text-main">{{ selected.model }}</span>
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">模型</span>
+            <span class="text-base text-text-main">{{ selected.model }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">PlatformProvider</span>
-            <span class="text-[13px] text-text-main">{{
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">PlatformProvider</span>
+            <span class="text-base text-text-main">{{
               providerName(selected.platformProviderId)
             }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">Agent 目录</span>
-            <span class="text-[13px] text-text-main font-mono break-all">{{
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">Agent 目录</span>
+            <span class="text-base text-text-main font-mono break-all">{{
               selected.agentHomeDirectory
             }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">工作目录</span>
-            <span class="text-[13px] text-text-main font-mono break-all">{{
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">工作目录</span>
+            <span class="text-base text-text-main font-mono break-all">{{
               selected.workingDirectory
             }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">能力</span>
-            <span class="text-[13px] text-text-main">
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">能力</span>
+            <span class="text-base text-text-main">
               {{
                 [
                   selected.capabilities.supportsSystemPrompt ? 'systemPrompt' : null,
@@ -194,36 +194,36 @@ onMounted(load)
             </span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">Skills</span>
-            <span class="text-[13px] text-text-main break-all">{{ skillsText(selected) }}</span>
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">Skills</span>
+            <span class="text-base text-text-main break-all">{{ skillsText(selected) }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">MCP</span>
-            <span class="text-[13px] text-text-main break-all">{{ mcpText(selected) }}</span>
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">MCP</span>
+            <span class="text-base text-text-main break-all">{{ mcpText(selected) }}</span>
           </div>
           <div class="flex px-4 py-3">
-            <span class="w-32 flex-shrink-0 text-[12px] text-text-muted">Allowed Tools</span>
-            <span class="text-[13px] text-text-main break-all">{{ toolsText(selected) }}</span>
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">Allowed Tools</span>
+            <span class="text-base text-text-main break-all">{{ toolsText(selected) }}</span>
           </div>
         </section>
 
         <section class="mt-4">
-          <h3 class="text-[12px] text-text-muted mb-1.5">System Prompt</h3>
+          <h3 class="text-sm text-text-muted mb-1.5">System Prompt</h3>
           <pre
-            class="bg-surface rounded-[10px] border border-surface-border p-4 text-[13px] text-text-main whitespace-pre-wrap break-words font-mono min-h-[64px]"
+            class="bg-surface rounded-[10px] border border-surface-border p-4 text-base text-text-main whitespace-pre-wrap break-words font-mono min-h-[64px]"
             >{{ selected.systemPrompt || '—' }}</pre
           >
         </section>
       </div>
 
-      <div v-else class="h-full flex items-center justify-center text-text-muted text-[13px]">
+      <div v-else class="h-full flex items-center justify-center text-text-muted text-base">
         {{ loading ? '加载中…' : '选择左侧的 Agent 查看详情' }}
       </div>
     </div>
 
     <p
       v-if="error"
-      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-[12px] px-4 py-2 rounded-[8px] border border-danger-border z-50"
+      class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-danger-soft text-danger-strong text-sm px-4 py-2 rounded-[8px] border border-danger-border z-50"
     >
       {{ error }}
     </p>

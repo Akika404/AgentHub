@@ -39,11 +39,11 @@ function onInputKey(event: KeyboardEvent): void {
     <SenderAvatar :sender="message.sender" />
     <div class="flex flex-col max-w-[80%] w-full">
       <div class="flex items-center space-x-2 mb-1 ml-1">
-        <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
-        <span class="text-[12px] text-text-muted">{{ formatTime(message.timestamp) }}</span>
+        <span class="text-sm font-semibold text-text-main">{{ message.sender.name }}</span>
+        <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-[14px] w-full max-w-lg shadow-card"
+        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-md w-full max-w-lg shadow-card"
       >
         <p class="text-text-main mb-3 leading-[22px]">{{ message.text }}</p>
         <ul class="space-y-2">
@@ -62,19 +62,19 @@ function onInputKey(event: KeyboardEvent): void {
               @click="onSelect(opt)"
             >
               <span
-                class="material-symbols-outlined text-primary text-[18px] transition-transform"
+                class="material-symbols-outlined text-primary text-2xl transition-transform"
                 :class="{ 'group-hover:scale-110': !message.answered }"
                 >check_circle</span
               >
-              <span class="text-[13px] text-text-main flex-1">{{ opt.label }}</span>
+              <span class="text-base text-text-main flex-1">{{ opt.label }}</span>
               <span
                 v-if="!message.answered"
-                class="material-symbols-outlined text-[16px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                class="material-symbols-outlined text-xl text-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
                 >send</span
               >
               <span
                 v-else-if="message.answeredOptionId === opt.id"
-                class="material-symbols-outlined text-[16px] text-primary"
+                class="material-symbols-outlined text-xl text-primary"
                 >done</span
               >
             </button>
@@ -85,7 +85,7 @@ function onInputKey(event: KeyboardEvent): void {
           >
             <input
               v-model="draft"
-              class="flex-1 bg-transparent border-none p-0 text-[13px] text-text-main placeholder-text-muted focus:ring-0 focus:outline-none"
+              class="flex-1 bg-transparent border-none p-0 text-base text-text-main placeholder-text-muted focus:ring-0 focus:outline-none"
               :placeholder="message.placeholder ?? '在此输入您的意见或需求...'"
               type="text"
               @keydown="onInputKey"
@@ -96,7 +96,7 @@ function onInputKey(event: KeyboardEvent): void {
               class="flex items-center justify-center w-6 h-6 rounded-[4px] text-primary hover:bg-primary-soft disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
               @click="submitDraft"
             >
-              <span class="material-symbols-outlined text-[18px]">send</span>
+              <span class="material-symbols-outlined text-2xl">send</span>
             </button>
           </li>
         </ul>

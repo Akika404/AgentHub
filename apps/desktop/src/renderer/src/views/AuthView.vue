@@ -56,10 +56,10 @@ async function onSubmit(): Promise<void> {
         <div
           class="w-12 h-12 rounded-[12px] bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white mb-3"
         >
-          <span class="material-symbols-outlined text-[26px]">hub</span>
+          <span class="material-symbols-outlined text-4xl">hub</span>
         </div>
-        <h1 class="text-[18px] font-semibold text-text-main">AgentHub</h1>
-        <p class="text-[12px] text-text-muted mt-1">
+        <h1 class="text-2xl font-semibold text-text-main">AgentHub</h1>
+        <p class="text-sm text-text-muted mt-1">
           {{ mode === 'login' ? '登录以继续' : '创建你的账号' }}
         </p>
       </div>
@@ -67,7 +67,7 @@ async function onSubmit(): Promise<void> {
       <div class="flex bg-surface-hover rounded-[8px] p-1 mb-5">
         <button
           type="button"
-          class="flex-1 h-8 rounded-[6px] text-[13px] font-medium transition-colors"
+          class="flex-1 h-8 rounded-[6px] text-base font-medium transition-colors"
           :class="mode === 'login' ? 'bg-surface text-primary shadow-tab' : 'text-text-muted'"
           @click="switchMode('login')"
         >
@@ -75,7 +75,7 @@ async function onSubmit(): Promise<void> {
         </button>
         <button
           type="button"
-          class="flex-1 h-8 rounded-[6px] text-[13px] font-medium transition-colors"
+          class="flex-1 h-8 rounded-[6px] text-base font-medium transition-colors"
           :class="mode === 'register' ? 'bg-surface text-primary shadow-tab' : 'text-text-muted'"
           @click="switchMode('register')"
         >
@@ -85,42 +85,42 @@ async function onSubmit(): Promise<void> {
 
       <form class="space-y-3.5" @submit.prevent="onSubmit">
         <div>
-          <label class="block text-[12px] text-text-muted mb-1.5">账号</label>
+          <label class="block text-sm text-text-muted mb-1.5">账号</label>
           <input
             v-model="form.account"
             type="text"
             autocomplete="username"
             placeholder="字母、数字、下划线或连字符"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
         <div>
-          <label class="block text-[12px] text-text-muted mb-1.5">密码</label>
+          <label class="block text-sm text-text-muted mb-1.5">密码</label>
           <input
             v-model="form.password"
             type="password"
             :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
             placeholder="请输入密码"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
         <div v-if="mode === 'register'">
-          <label class="block text-[12px] text-text-muted mb-1.5">确认密码</label>
+          <label class="block text-sm text-text-muted mb-1.5">确认密码</label>
           <input
             v-model="form.confirm"
             type="password"
             autocomplete="new-password"
             placeholder="请再次输入密码"
-            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+            class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
           />
         </div>
 
-        <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
+        <p v-if="error" class="text-sm text-danger">{{ error }}</p>
 
         <button
           type="submit"
           :disabled="submitting"
-          class="w-full h-10 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-[13px] font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          class="w-full h-10 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {{ submitting ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录' }}
         </button>

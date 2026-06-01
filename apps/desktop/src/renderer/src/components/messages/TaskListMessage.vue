@@ -11,13 +11,13 @@ defineProps<{ message: TaskListMessage }>()
     <SenderAvatar :sender="message.sender" />
     <div class="flex flex-col max-w-[80%] w-full">
       <div class="flex items-center space-x-2 mb-1 ml-1">
-        <span class="text-[12px] font-semibold text-text-main">{{ message.sender.name }}</span>
-        <span class="text-[12px] text-text-muted">{{ formatTime(message.timestamp) }}</span>
+        <span class="text-sm font-semibold text-text-main">{{ message.sender.name }}</span>
+        <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-[14px] w-full max-w-md shadow-card"
+        class="bg-surface border border-surface-border p-4 rounded-[8px] rounded-tl-sm text-md w-full max-w-md shadow-card"
       >
-        <div class="font-semibold text-text-main mb-3 text-[14px]">{{ message.heading }}</div>
+        <div class="font-semibold text-text-main mb-3 text-md">{{ message.heading }}</div>
         <ul class="space-y-1.5">
           <li
             v-for="task in message.tasks"
@@ -34,13 +34,13 @@ defineProps<{ message: TaskListMessage }>()
               v-else-if="task.status === 'done'"
               class="w-[18px] h-[18px] rounded-full bg-primary flex items-center justify-center text-white"
             >
-              <span class="material-symbols-outlined text-[14px]">check</span>
+              <span class="material-symbols-outlined text-md">check</span>
             </span>
             <span
               v-else
               class="w-[18px] h-[18px] rounded-full border-[2px] border-surface-border bg-white flex items-center justify-center"
             ></span>
-            <span class="text-[14px]">{{ task.title }}</span>
+            <span class="text-md">{{ task.title }}</span>
           </li>
         </ul>
       </div>

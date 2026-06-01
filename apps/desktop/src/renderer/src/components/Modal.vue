@@ -37,14 +37,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           class="flex items-center justify-between px-5 h-14 border-b border-surface-border flex-shrink-0"
         >
           <slot name="header">
-            <h2 class="font-semibold text-text-main text-[15px]">{{ title }}</h2>
+            <h2 class="font-semibold text-text-main text-lg">{{ title }}</h2>
           </slot>
           <button
             type="button"
             class="text-text-muted hover:text-text-main hover:bg-surface-hover p-1.5 rounded-[6px] transition-colors"
             @click="emit('close')"
           >
-            <span class="material-symbols-outlined text-[20px]">close</span>
+            <span class="material-symbols-outlined text-3xl">close</span>
           </button>
         </header>
         <div class="px-5 py-4 overflow-y-auto">

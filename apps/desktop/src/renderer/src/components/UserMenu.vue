@@ -81,7 +81,7 @@ async function onLogout(): Promise<void> {
   <div ref="rootRef" class="relative flex items-center justify-center w-full">
     <button
       type="button"
-      class="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white font-semibold text-[14px] focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+      class="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white font-semibold text-md focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
       :class="user?.avatar ? 'bg-surface-hover' : 'bg-gradient-to-br from-primary to-accent'"
       :title="userToAvatar(user)?.name ?? '账号'"
       @click="toggleMenu"
@@ -102,52 +102,52 @@ async function onLogout(): Promise<void> {
       class="absolute left-[52px] top-0 z-50 w-44 bg-surface border border-surface-border rounded-[8px] shadow-card py-1.5"
     >
       <div class="px-3 py-1.5 border-b border-surface-border mb-1">
-        <p class="text-[13px] font-medium text-text-main truncate">
+        <p class="text-base font-medium text-text-main truncate">
           {{ userToAvatar(user)?.name ?? '账号' }}
         </p>
-        <p v-if="user" class="text-[11px] text-text-muted truncate">@{{ user.account }}</p>
+        <p v-if="user" class="text-xs text-text-muted truncate">@{{ user.account }}</p>
       </div>
       <button
         type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-text-main hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
         @click="openNickname"
       >
-        <span class="material-symbols-outlined text-[18px] text-text-muted">edit</span>
+        <span class="material-symbols-outlined text-2xl text-text-muted">edit</span>
         <span>更新昵称</span>
       </button>
       <button
         type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-text-main hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
         @click="pickAvatar"
       >
-        <span class="material-symbols-outlined text-[18px] text-text-muted">image</span>
+        <span class="material-symbols-outlined text-2xl text-text-muted">image</span>
         <span>更换头像</span>
       </button>
       <button
         type="button"
-        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-danger hover:bg-surface-hover transition-colors"
+        class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-danger hover:bg-surface-hover transition-colors"
         @click="onLogout"
       >
-        <span class="material-symbols-outlined text-[18px]">logout</span>
+        <span class="material-symbols-outlined text-2xl">logout</span>
         <span>退出登录</span>
       </button>
     </div>
 
     <Modal :open="nicknameOpen" title="更新昵称" :width="380" @close="nicknameOpen = false">
-      <label class="block text-[12px] text-text-muted mb-1.5">昵称</label>
+      <label class="block text-sm text-text-muted mb-1.5">昵称</label>
       <input
         v-model="nickname"
         type="text"
         maxlength="64"
         placeholder="留空则清除昵称"
-        class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+        class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base text-text-main outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         @keydown.enter="saveNickname"
       />
-      <p v-if="nicknameError" class="text-[12px] text-danger mt-2">{{ nicknameError }}</p>
+      <p v-if="nicknameError" class="text-sm text-danger mt-2">{{ nicknameError }}</p>
       <template #footer>
         <button
           type="button"
-          class="h-9 px-4 rounded-[8px] text-[13px] text-text-main hover:bg-surface-hover transition-colors"
+          class="h-9 px-4 rounded-[8px] text-base text-text-main hover:bg-surface-hover transition-colors"
           @click="nicknameOpen = false"
         >
           取消
@@ -155,7 +155,7 @@ async function onLogout(): Promise<void> {
         <button
           type="button"
           :disabled="saving"
-          class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-[13px] font-medium transition-colors disabled:opacity-60"
+          class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60"
           @click="saveNickname"
         >
           {{ saving ? '保存中…' : '保存' }}

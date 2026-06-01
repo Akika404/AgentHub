@@ -27,7 +27,7 @@ const emit = defineEmits<{
         "
         @click="emit('navigate', 'chat')"
       >
-        <span class="material-symbols-outlined text-[24px]">chat_bubble</span>
+        <span class="material-symbols-outlined text-4xl">chat_bubble</span>
       </button>
       <button
         class="w-12 flex flex-col items-center justify-center rounded-xl group transition-all h-10"
@@ -38,7 +38,7 @@ const emit = defineEmits<{
         "
         @click="emit('navigate', 'agents')"
       >
-        <span class="material-symbols-outlined text-[24px]">smart_toy</span>
+        <span class="material-symbols-outlined text-4xl">smart_toy</span>
       </button>
     </div>
     <div class="mt-auto flex flex-col items-center w-full">
@@ -51,7 +51,7 @@ const emit = defineEmits<{
         "
         @click="emit('navigate', 'settings')"
       >
-        <span class="material-symbols-outlined text-[24px]">settings</span>
+        <span class="material-symbols-outlined text-4xl">settings</span>
       </button>
     </div>
   </aside>

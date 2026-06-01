@@ -17,7 +17,7 @@ onMounted(initAuth)
 <template>
   <div class="flex w-full h-full bg-background">
     <template v-if="!authState.ready">
-      <div class="flex-1 flex items-center justify-center text-text-muted text-[13px]">
+      <div class="flex-1 flex items-center justify-center text-text-muted text-base">
         正在加载…
       </div>
     </template>

@@ -106,19 +106,19 @@ async function onSubmit(): Promise<void> {
   >
     <div class="space-y-4">
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">平台名称</label>
+        <label class="block text-sm text-text-muted mb-1.5">平台名称</label>
         <input
           v-model="form.platformName"
           type="text"
           placeholder="如：我的 OpenAI"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">协议类型</label>
+        <label class="block text-sm text-text-muted mb-1.5">协议类型</label>
         <select
           v-model="form.type"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         >
           <option v-for="t in PROVIDER_TYPES" :key="t" :value="t">
             {{ PROVIDER_TYPE_LABELS[t] }}
@@ -126,16 +126,16 @@ async function onSubmit(): Promise<void> {
         </select>
       </div>
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">Base URL</label>
+        <label class="block text-sm text-text-muted mb-1.5">Base URL</label>
         <input
           v-model="form.baseUrl"
           type="text"
           placeholder="https://api.openai.com/v1"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">
+        <label class="block text-sm text-text-muted mb-1.5">
           API Key
           <span v-if="isEdit()" class="text-text-muted">（留空保留原密钥）</span>
         </label>
@@ -143,27 +143,27 @@ async function onSubmit(): Promise<void> {
           v-model="form.apiKey"
           type="password"
           :placeholder="isEdit() ? '••••••••' : 'sk-...'"
-          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
+          class="w-full h-10 px-3 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition"
         />
       </div>
       <div>
-        <label class="block text-[12px] text-text-muted mb-1.5">
+        <label class="block text-sm text-text-muted mb-1.5">
           模型列表 <span class="text-text-muted">（每行一个，可留空后用「刷新模型」拉取）</span>
         </label>
         <textarea
           v-model="form.modelList"
           rows="3"
           placeholder="gpt-4o&#10;gpt-4o-mini"
-          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-[13px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y"
+          class="w-full px-3 py-2 rounded-[8px] border border-surface-border bg-surface text-base font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition resize-y"
         />
       </div>
-      <p v-if="error" class="text-[12px] text-danger">{{ error }}</p>
+      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>
 
     <template #footer>
       <button
         type="button"
-        class="h-9 px-4 rounded-[8px] text-[13px] text-text-main hover:bg-surface-hover transition-colors"
+        class="h-9 px-4 rounded-[8px] text-base text-text-main hover:bg-surface-hover transition-colors"
         @click="emit('close')"
       >
         取消
@@ -171,7 +171,7 @@ async function onSubmit(): Promise<void> {
       <button
         type="button"
         :disabled="submitting"
-        class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-[13px] font-medium transition-colors disabled:opacity-60"
+        class="h-9 px-4 rounded-[8px] bg-primary hover:bg-primary-hover text-white text-base font-medium transition-colors disabled:opacity-60"
         @click="onSubmit"
       >
         {{ submitting ? '保存中…' : '保存' }}

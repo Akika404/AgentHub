@@ -93,10 +93,10 @@ function onPick(item: MenuItem): void {
         :key="item.id"
         type="button"
         :disabled="item.disabled"
-        class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-[13px] text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
+        class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
         @click="onPick(item)"
       >
-        <span class="material-symbols-outlined text-[18px] text-text-muted">{{ item.icon }}</span>
+        <span class="material-symbols-outlined text-2xl text-text-muted">{{ item.icon }}</span>
         <span class="flex-1">{{ item.label }}</span>
       </button>
     </div>

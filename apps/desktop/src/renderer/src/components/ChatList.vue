@@ -20,12 +20,12 @@ const emit = defineEmits<{
     <div class="flex items-center space-x-2 h-16 px-4">
       <div class="relative flex-1 group">
         <span
-          class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[18px]"
+          class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-2xl"
         >
           search
         </span>
         <input
-          class="w-full h-8 pl-8 pr-3 text-[14px] leading-none bg-surface-hover border border-transparent rounded-[6px] focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-text-muted"
+          class="w-full h-8 pl-8 pr-3 text-md leading-none bg-surface-hover border border-transparent rounded-[6px] focus:outline-none focus:bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-text-muted"
           placeholder="搜索"
           type="text"
           @input="emit('search', ($event.target as HTMLInputElement).value)"
@@ -35,11 +35,11 @@ const emit = defineEmits<{
         class="w-8 h-8 flex items-center justify-center bg-surface-hover rounded-[6px] hover:bg-gray-200 text-text-muted transition-colors"
         title="新建会话"
       >
-        <span class="material-symbols-outlined text-[18px]">add</span>
+        <span class="material-symbols-outlined text-2xl">add</span>
       </button>
     </div>
     <div class="flex-1 overflow-y-auto py-1">
-      <div v-if="loading" class="px-4 py-3 text-text-muted text-[13px]">加载中...</div>
+      <div v-if="loading" class="px-4 py-3 text-text-muted text-base">加载中...</div>
       <div
         v-for="chat in chats"
         :key="chat.id"
@@ -51,21 +51,21 @@ const emit = defineEmits<{
           class="w-10 h-10 rounded-[8px] flex items-center justify-center flex-shrink-0"
           :class="
             chat.avatar.kind === 'initials'
-              ? 'bg-primary/10 text-primary font-semibold text-[14px]'
+              ? 'bg-primary/10 text-primary font-semibold text-md'
               : 'bg-surface-hover text-text-muted'
           "
         >
           <span v-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
-          <span v-else class="material-symbols-outlined text-[20px]">{{ chat.avatar.icon }}</span>
+          <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
         </div>
         <div class="flex-1 min-w-0">
           <div
-            class="font-medium truncate text-[14px]"
+            class="font-medium truncate text-md"
             :class="chat.id === activeChatId ? 'text-primary' : 'text-text-main'"
           >
             {{ chat.title }}
           </div>
-          <div class="text-text-muted truncate mt-0.5 text-[12px]">{{ chat.preview }}</div>
+          <div class="text-text-muted truncate mt-0.5 text-sm">{{ chat.preview }}</div>
         </div>
       </div>
     </div>
