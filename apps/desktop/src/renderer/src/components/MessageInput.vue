@@ -15,6 +15,7 @@ const emit = defineEmits<{
 
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const isComposing = ref(false)
 
 watch(
   () => props.replyTo,
@@ -24,15 +25,22 @@ watch(
 )
 
 function submit(): void {
-  if (props.disabled) return
+  if (props.disabled || isComposing.value) return
   const trimmed = text.value.trim()
   if (!trimmed) return
   emit('send', { text: trimmed, replyTo: props.replyTo ?? undefined })
   text.value = ''
 }
 
+function isComposingEvent(event: KeyboardEvent): boolean {
+  return isComposing.value || event.isComposing || event.key === 'Process' || event.keyCode === 229
+}
+
 function onKey(event: KeyboardEvent): void {
-  if (event.key === 'Enter' && !event.shiftKey) {
+  if (event.key === 'Enter' && event.shiftKey) return
+
+  if (event.key === 'Enter') {
+    if (isComposingEvent(event)) return
     event.preventDefault()
     submit()
   } else if (event.key === 'Escape' && props.replyTo) {
@@ -70,6 +78,8 @@ function onKey(event: KeyboardEvent): void {
           :disabled="disabled"
           class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-md text-text-main placeholder-text-muted bg-transparent leading-[22px]"
           placeholder="Type a message or /command..."
+          @compositionstart="isComposing = true"
+          @compositionend="isComposing = false"
           @keydown="onKey"
         />
       </div>
@@ -84,7 +94,7 @@ function onKey(event: KeyboardEvent): void {
         </div>
         <button
           class="bg-primary text-white px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
-          :disabled="disabled || !text.trim()"
+          :disabled="disabled || isComposing || !text.trim()"
           @click="submit"
         >
           <span>发送&nbsp;</span>

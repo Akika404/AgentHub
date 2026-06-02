@@ -12,6 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const draft = ref('')
+const isComposing = ref(false)
 
 function onSelect(option: OptionItem): void {
   if (props.message.answered) return
@@ -19,15 +20,20 @@ function onSelect(option: OptionItem): void {
 }
 
 function submitDraft(): void {
-  if (props.message.answered) return
+  if (props.message.answered || isComposing.value) return
   const text = draft.value.trim()
   if (!text) return
   emit('reply', { message: props.message, text })
   draft.value = ''
 }
 
+function isComposingEvent(event: KeyboardEvent): boolean {
+  return isComposing.value || event.isComposing || event.key === 'Process' || event.keyCode === 229
+}
+
 function onInputKey(event: KeyboardEvent): void {
   if (event.key === 'Enter' && !event.shiftKey) {
+    if (isComposingEvent(event)) return
     event.preventDefault()
     submitDraft()
   }
@@ -88,11 +94,13 @@ function onInputKey(event: KeyboardEvent): void {
               class="flex-1 bg-transparent border-none p-0 text-base text-text-main placeholder-text-muted focus:ring-0 focus:outline-none"
               :placeholder="message.placeholder ?? '在此输入您的意见或需求...'"
               type="text"
+              @compositionstart="isComposing = true"
+              @compositionend="isComposing = false"
               @keydown="onInputKey"
             />
             <button
               type="button"
-              :disabled="!draft.trim()"
+              :disabled="isComposing || !draft.trim()"
               class="flex items-center justify-center w-6 h-6 rounded-sm text-primary hover:bg-primary-soft disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
               @click="submitDraft"
             >
