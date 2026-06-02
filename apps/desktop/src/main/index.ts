@@ -7,7 +7,7 @@ import { registerApiProxy } from './api-proxy'
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1440,
+    width: 1280,
     height: 900,
     minWidth: 1100,
     minHeight: 700,
