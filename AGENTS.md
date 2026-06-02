@@ -57,7 +57,7 @@ When changing an API shape, edit it in `packages/shared/src/` so both ends pick 
 
 ## Coding Rules
 
-If there is no rules-related content in your context, you **MUST** read the shared project rules under:
+Before taking any action, if there is no rules-related content in your context, you **MUST** read the shared project rules under:
 - .agents/rules
 
 ## Submodule Rules
