@@ -9,7 +9,12 @@ import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
 
-const props = defineProps<{ open: boolean; agents: AgentView[] }>()
+const props = defineProps<{
+  open: boolean
+  agents: AgentView[]
+  loading?: boolean
+  loadError?: string | null
+}>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'created', chat: AgentChatView): void
@@ -24,11 +29,12 @@ const form = reactive({
 })
 
 const submitting = ref(false)
-const error = ref<string | null>(null)
+const submitError = ref<string | null>(null)
 
 const selectedAgent = computed(
   () => props.agents.find((agent) => agent.id === form.agentId) ?? null
 )
+const visibleError = computed(() => submitError.value ?? props.loadError ?? null)
 
 function reset(): void {
   const first = props.agents[0] ?? null
@@ -37,13 +43,21 @@ function reset(): void {
   form.workingDirectory = first?.workingDirectory ?? ''
   form.skillSourceDirectories = ''
   form.mcpServers = ''
-  error.value = null
+  submitError.value = null
 }
 
 watch(
   () => props.open,
   (open) => {
     if (open) reset()
+  }
+)
+
+watch(
+  () => props.agents,
+  () => {
+    if (!props.open || props.agents.some((agent) => agent.id === form.agentId)) return
+    reset()
   }
 )
 
@@ -101,18 +115,18 @@ function buildPayload(): CreateAgentChatPayload | string {
 async function onSubmit(): Promise<void> {
   const payload = buildPayload()
   if (typeof payload === 'string') {
-    error.value = payload
+    submitError.value = payload
     return
   }
 
-  error.value = null
+  submitError.value = null
   submitting.value = true
   try {
     const chat = await agentChatApi.create(payload)
     emit('created', chat)
     emit('close')
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : '创建失败，请重试'
+    submitError.value = err instanceof ApiError ? err.message : '创建失败，请重试'
   } finally {
     submitting.value = false
   }
@@ -122,13 +136,14 @@ async function onSubmit(): Promise<void> {
 <template>
   <Modal :open="open" title="创建聊天" :width="560" @close="emit('close')">
     <div class="space-y-4">
-      <p v-if="agents.length === 0" class="text-sm text-text-muted">
+      <p v-if="loading" class="text-sm text-text-muted">正在加载 Agent...</p>
+      <p v-else-if="agents.length === 0" class="text-sm text-text-muted">
         还没有可用 Agent。请先在「Agent 管理」里新建一个 Agent。
       </p>
 
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">Agent</label>
-        <BaseSelect v-model="form.agentId" :disabled="agents.length === 0">
+        <BaseSelect v-model="form.agentId" :disabled="loading || agents.length === 0">
           <option value="" disabled>请选择</option>
           <option v-for="agent in agents" :key="agent.id" :value="agent.id">
             {{ agent.name }} · {{ agent.vendor }} / {{ agent.model }}
@@ -198,12 +213,12 @@ async function onSubmit(): Promise<void> {
         />
       </div>
 
-      <p v-if="error" class="text-sm text-danger">{{ error }}</p>
+      <p v-if="visibleError" class="text-sm text-danger">{{ visibleError }}</p>
     </div>
 
     <template #footer>
       <BaseButton variant="ghost" @click="emit('close')">取消</BaseButton>
-      <BaseButton :disabled="submitting || agents.length === 0" @click="onSubmit">
+      <BaseButton :disabled="submitting || loading || agents.length === 0" @click="onSubmit">
         {{ submitting ? '创建中...' : '创建' }}
       </BaseButton>
     </template>

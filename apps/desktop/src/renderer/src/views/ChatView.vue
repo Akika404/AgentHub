@@ -15,7 +15,7 @@ import type {
   SenderInfo,
   TextMessage
 } from '../api'
-import { agentApi } from '../api'
+import { ApiError, agentApi } from '../api'
 import { agentChatApi, type AgentConverseStream } from '../api/agents'
 import { authState } from '../stores/auth'
 import { formatTime } from '../utils/format'
@@ -46,6 +46,8 @@ let activeLoadId = 0
 let currentStream: AgentConverseStream | null = null
 
 const chatsLoading = ref(false)
+const agentsLoading = ref(false)
+const agentsError = ref<string | null>(null)
 const messagesLoading = ref(false)
 const streaming = ref(false)
 const createChatOpen = ref(false)
@@ -208,6 +210,23 @@ async function loadWorkspace(): Promise<void> {
 
 async function refreshChats(): Promise<void> {
   agentChats.value = await agentChatApi.list()
+}
+
+async function refreshAgents(): Promise<void> {
+  agentsLoading.value = true
+  agentsError.value = null
+  try {
+    agents.value = await agentApi.list()
+  } catch (err) {
+    agentsError.value = err instanceof ApiError ? err.message : 'Agent 列表加载失败'
+  } finally {
+    agentsLoading.value = false
+  }
+}
+
+async function openCreateChatDialog(): Promise<void> {
+  createChatOpen.value = true
+  await refreshAgents()
 }
 
 async function loadMessages(chatId: string, silent = false): Promise<void> {
@@ -466,7 +485,7 @@ onUnmounted(() => {
       :active-chat-id="activeChatId"
       :loading="chatsLoading"
       @select="selectChat"
-      @create-chat="createChatOpen = true"
+      @create-chat="openCreateChatDialog"
     />
     <main class="flex-1 flex flex-col h-full bg-surface min-w-0 relative">
       <ChatHeader :detail="chatDetail" />
@@ -498,6 +517,8 @@ onUnmounted(() => {
     <AgentChatCreateDialog
       :open="createChatOpen"
       :agents="agents"
+      :loading="agentsLoading"
+      :load-error="agentsError"
       @close="createChatOpen = false"
       @created="onChatCreated"
     />
