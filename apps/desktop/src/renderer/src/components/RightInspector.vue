@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { AgentChatView, AgentTodoItem, NetworkNode, NetworkNodeStatus } from '../api'
+import AgentAvatar from './AgentAvatar.vue'
 
 const props = defineProps<{
   network: NetworkNode[]
@@ -100,13 +101,11 @@ function todoLabel(status: AgentTodoItem['status']): string {
       <template v-if="chat">
         <div class="pb-5 border-b border-surface-border">
           <div class="flex items-center space-x-3">
-            <div
-              class="w-10 h-10 rounded-md bg-surface-hover text-text-muted flex items-center justify-center"
-            >
-              <span class="material-symbols-outlined text-3xl">
-                {{ chat.agent.vendor === 'codex' ? 'terminal' : 'smart_toy' }}
-              </span>
-            </div>
+            <AgentAvatar
+              :name="chat.agent.name"
+              :avatar="chat.agent.avatar"
+              :color="chat.agent.color"
+            />
             <div class="min-w-0">
               <div class="text-md font-semibold text-text-main truncate">{{ chat.agent.name }}</div>
               <div class="text-sm text-text-muted truncate">

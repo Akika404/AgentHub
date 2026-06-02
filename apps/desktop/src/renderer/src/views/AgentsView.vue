@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { AgentView, PlatformProviderView } from '@agenthub/shared'
 import { ApiError, agentApi, providerApi } from '../api'
+import AgentAvatar from '../components/AgentAvatar.vue'
 import AgentCreateDialog from '../components/AgentCreateDialog.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseSkeleton from '../components/ui/BaseSkeleton.vue'
@@ -114,12 +115,12 @@ onMounted(load)
           @click="selectedId = agent.id"
         >
           <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-2xl text-primary">smart_toy</span>
+            <AgentAvatar :name="agent.name" :avatar="agent.avatar" :color="agent.color" size="sm" />
             <span class="flex-1 text-base font-medium text-text-main truncate">{{
               agent.name
             }}</span>
           </div>
-          <div class="flex items-center gap-2 mt-1 pl-6">
+          <div class="flex items-center gap-2 mt-1 pl-10">
             <span class="text-xs text-text-muted">{{ agent.vendor }}</span>
             <span class="text-xs text-text-muted">·</span>
             <span class="text-xs text-text-muted">{{ agent.model }}</span>
@@ -132,9 +133,19 @@ onMounted(load)
     <div class="flex-1 min-w-0 bg-background overflow-y-auto">
       <div v-if="selected" class="max-w-[720px] mx-auto p-6">
         <div class="flex items-start justify-between mb-6">
-          <div>
-            <h2 class="text-2xl font-semibold text-text-main">{{ selected.name }}</h2>
-            <p class="text-sm text-text-muted mt-1">{{ selected.vendor }} · {{ selected.model }}</p>
+          <div class="flex min-w-0 items-center gap-3">
+            <AgentAvatar
+              :name="selected.name"
+              :avatar="selected.avatar"
+              :color="selected.color"
+              size="lg"
+            />
+            <div class="min-w-0">
+              <h2 class="text-2xl font-semibold text-text-main truncate">{{ selected.name }}</h2>
+              <p class="text-sm text-text-muted mt-1">
+                {{ selected.vendor }} · {{ selected.model }}
+              </p>
+            </div>
           </div>
           <BaseButton variant="danger" size="sm" :disabled="deleting" @click="onDelete">
             <span class="material-symbols-outlined text-xl">delete</span>
@@ -148,6 +159,20 @@ onMounted(load)
           <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">Vendor</span>
             <span class="text-base text-text-main">{{ selected.vendor }}</span>
+          </div>
+          <div class="flex px-4 py-3">
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">头像</span>
+            <span class="text-base text-text-main">{{
+              selected.avatar ? '自定义头像' : '默认头像'
+            }}</span>
+          </div>
+          <div class="flex items-center px-4 py-3">
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">颜色标识</span>
+            <span
+              class="mr-2 h-4 w-4 rounded border border-surface-border"
+              :style="{ backgroundColor: selected.color }"
+            ></span>
+            <span class="text-base text-text-main font-mono">{{ selected.color }}</span>
           </div>
           <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">模型</span>

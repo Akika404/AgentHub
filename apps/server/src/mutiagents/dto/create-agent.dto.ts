@@ -1,7 +1,19 @@
-import { Allow, IsArray, IsIn, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator'
+import {
+    Allow,
+    IsArray,
+    IsIn,
+    IsNotEmpty,
+    IsObject,
+    IsOptional,
+    IsString,
+    Matches,
+    MaxLength
+} from 'class-validator'
 import type { AgentPermissionMode, AgentVendor } from '../adapter/index.js'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
+const AVATAR_MAX_LENGTH = 256 * 1024 // 256 KiB compact data URL
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 const PERMISSION_MODES: AgentPermissionMode[] = [
     'default',
     'acceptEdits',
@@ -27,6 +39,18 @@ export class CreateAgentDto {
     @IsString()
     @IsNotEmpty()
     name!: string
+
+    /** 头像 URL / 压缩后的 data URL；不传或传 null 时使用颜色 + 名称生成默认头像 */
+    @IsOptional()
+    @IsString()
+    @MaxLength(AVATAR_MAX_LENGTH)
+    avatar?: string | null
+
+    /** 默认头像和列表标识色；不传时使用产品默认蓝色 */
+    @IsOptional()
+    @IsString()
+    @Matches(HEX_COLOR_RE)
+    color?: string
 
     @IsIn(VENDORS)
     vendor!: AgentVendor

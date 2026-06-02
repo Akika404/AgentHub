@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { AgentChatView, AgentView, CreateAgentChatPayload } from '@agenthub/shared'
 import { ApiError } from '../api'
 import { agentChatApi } from '../api/agents'
+import AgentAvatar from './AgentAvatar.vue'
 import Modal from './Modal.vue'
 import BaseButton from './ui/BaseButton.vue'
 import BaseInput from './ui/BaseInput.vue'
@@ -149,6 +150,25 @@ async function onSubmit(): Promise<void> {
             {{ agent.name }} · {{ agent.vendor }} / {{ agent.model }}
           </option>
         </BaseSelect>
+        <div
+          v-if="selectedAgent"
+          class="mt-2 flex items-center gap-2 rounded-md bg-surface-hover p-2"
+        >
+          <AgentAvatar
+            :name="selectedAgent.name"
+            :avatar="selectedAgent.avatar"
+            :color="selectedAgent.color"
+            size="sm"
+          />
+          <div class="min-w-0">
+            <div class="text-base font-medium text-text-main truncate">
+              {{ selectedAgent.name }}
+            </div>
+            <div class="text-xs text-text-muted truncate">
+              {{ selectedAgent.vendor }} / {{ selectedAgent.model }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div>

@@ -128,6 +128,10 @@ export interface AgentView {
   id: string
   /** display name */
   name: string
+  /** avatar URL / compact data URL (<= 256 KiB); null falls back to initials */
+  avatar: string | null
+  /** hex color used for the fallback initials avatar and color marker */
+  color: string
   vendor: AgentVendor
   /** referenced platform_provider.id */
   platformProviderId: string
@@ -153,6 +157,8 @@ export interface AgentView {
 export interface AgentChatAgentSummary {
   id: string
   name: string
+  avatar: string | null
+  color: string
   vendor: AgentVendor
   model: string
   capabilities: AgentCapabilities
@@ -184,6 +190,8 @@ export interface AgentChatView {
  */
 export interface CreateAgentPayload {
   name: string
+  avatar?: string | null
+  color?: string
   vendor: AgentVendor
   platformProviderId: string
   model: string

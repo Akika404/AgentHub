@@ -22,6 +22,9 @@ import { BusinessException } from '../common/index.js'
 import { PlatformProviderService } from '../platform-provider/platform-provider.service.js'
 import type { ProviderType } from '../platform-provider/entities/platform-provider.entity.js'
 
+const DEFAULT_AGENT_COLOR = '#3370ff'
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
 /**
  * AgentManager — 用户虚拟员工的注册表与单 Agent 聊天生命周期管家。
  *
@@ -100,6 +103,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const agent = this.agentRepo.create({
             userId,
             name: dto.name,
+            avatar: dto.avatar ?? null,
+            color: this.normalizeColor(dto.color),
             vendor: dto.vendor,
             platformProviderId: dto.platformProviderId,
             model: dto.model,
@@ -349,6 +354,14 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             throw BusinessException.badRequest('Chat title cannot exceed 128 characters')
         }
         return trimmed
+    }
+
+    private normalizeColor(color: string | undefined): string {
+        const trimmed = color?.trim() ?? DEFAULT_AGENT_COLOR
+        if (!HEX_COLOR_RE.test(trimmed)) {
+            throw BusinessException.badRequest('Agent color must be a hex color like #3370ff')
+        }
+        return trimmed.toLowerCase()
     }
 
     private async ensureRuntimeDirectories(

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ChatSummary } from '../api'
+import { avatarTextColor } from '../utils/avatar'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 defineProps<{
@@ -118,14 +119,30 @@ onBeforeUnmount(() => {
         @click="emit('select', chat.id)"
       >
         <div
-          class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0"
+          class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden"
           :class="
-            chat.avatar.kind === 'initials'
-              ? 'bg-primary/10 text-primary font-semibold text-md'
-              : 'bg-surface-hover text-text-muted'
+            chat.avatar.avatarDataUrl
+              ? ''
+              : chat.avatar.kind === 'initials'
+                ? 'bg-primary/10 text-primary font-semibold text-md'
+                : 'bg-surface-hover text-text-muted'
+          "
+          :style="
+            !chat.avatar.avatarDataUrl && chat.avatar.kind === 'initials' && chat.avatar.color
+              ? {
+                  backgroundColor: chat.avatar.color,
+                  color: avatarTextColor(chat.avatar.color)
+                }
+              : undefined
           "
         >
-          <span v-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
+          <img
+            v-if="chat.avatar.avatarDataUrl"
+            :src="chat.avatar.avatarDataUrl"
+            :alt="chat.title"
+            class="h-full w-full object-cover"
+          />
+          <span v-else-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
           <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
         </div>
         <div class="flex-1 min-w-0">

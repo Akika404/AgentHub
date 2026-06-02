@@ -41,6 +41,8 @@ export function toAgentView(agent: Agent): AgentView {
     return {
         id: agent.id,
         name: agent.name,
+        avatar: agent.avatar,
+        color: agent.color,
         vendor: agent.vendor,
         platformProviderId: agent.platformProviderId,
         model: agent.model,
@@ -65,6 +67,8 @@ export function toAgentChatView(session: AgentSession, agent: Agent): AgentChatV
         agent: {
             id: agent.id,
             name: agent.name,
+            avatar: agent.avatar,
+            color: agent.color,
             vendor: agent.vendor,
             model: agent.model,
             capabilities: getCapabilities(agent.vendor)

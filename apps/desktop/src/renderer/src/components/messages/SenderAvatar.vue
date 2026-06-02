@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SenderInfo } from '../../api'
+import { avatarTextColor } from '../../utils/avatar'
 
 defineProps<{ sender: SenderInfo }>()
 
@@ -14,7 +15,12 @@ const accentClasses: Record<NonNullable<SenderInfo['accent']>, string> = {
 <template>
   <div
     class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 text-md font-semibold overflow-hidden"
-    :class="sender.avatarDataUrl ? '' : accentClasses[sender.accent ?? 'neutral']"
+    :class="sender.avatarDataUrl || sender.color ? '' : accentClasses[sender.accent ?? 'neutral']"
+    :style="
+      !sender.avatarDataUrl && sender.color
+        ? { backgroundColor: sender.color, color: avatarTextColor(sender.color) }
+        : undefined
+    "
   >
     <img
       v-if="sender.avatarDataUrl"

@@ -4,6 +4,8 @@ import type { AgentSessionStatus } from '../entities/agent-session.entity.js'
 export interface AgentChatAgentSummary {
     id: string
     name: string
+    avatar: string | null
+    color: string
     vendor: AgentVendor
     model: string
     capabilities: AgentCapabilities

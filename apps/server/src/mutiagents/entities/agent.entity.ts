@@ -31,6 +31,14 @@ export class Agent {
     @Column({ type: 'varchar', length: 64 })
     name!: string
 
+    /** 头像 URL 或压缩后的 data URL；为空时前端用 color + name 前两个字生成头像 */
+    @Column({ type: 'mediumtext', nullable: true })
+    avatar!: string | null
+
+    /** 颜色标识，用于默认头像与列表标记 */
+    @Column({ type: 'varchar', length: 7, default: '#3370ff' })
+    color!: string
+
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
 

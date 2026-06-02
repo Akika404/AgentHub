@@ -12,6 +12,10 @@ export interface AgentView {
     id: string
     /** 展示名 */
     name: string
+    /** 头像 URL / 压缩后的 data URL；null 时前端使用颜色 + 名称前两个字生成头像 */
+    avatar: string | null
+    /** 默认头像和列表标识色，形如 #3370ff */
+    color: string
     vendor: AgentVendor
     /** 引用的模型平台 id */
     platformProviderId: string

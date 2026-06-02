@@ -8,6 +8,8 @@ import {
   type PlatformProviderView
 } from '@agenthub/shared'
 import { ApiError, agentApi } from '../api'
+import { DEFAULT_AGENT_COLOR, createAvatarDataUrl, isHexColor } from '../utils/avatar'
+import AgentAvatar from './AgentAvatar.vue'
 import Modal from './Modal.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
@@ -18,9 +20,21 @@ const props = defineProps<{ open: boolean; providers: PlatformProviderView[] }>(
 const emit = defineEmits<{ (e: 'close'): void; (e: 'created'): void }>()
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
+const AGENT_COLORS = [
+  '#3370ff',
+  '#7b61ff',
+  '#0f9d58',
+  '#f59e0b',
+  '#ef4444',
+  '#0891b2',
+  '#475569',
+  '#be185d'
+]
 
 const form = reactive({
   name: '',
+  avatar: null as string | null,
+  color: DEFAULT_AGENT_COLOR,
   vendor: 'claude' as AgentVendor,
   platformProviderId: '',
   model: '',
@@ -33,9 +47,12 @@ const form = reactive({
 })
 
 const error = ref<string | null>(null)
+const avatarError = ref<string | null>(null)
 const submitting = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
 const caps = computed(() => VENDOR_CAPABILITIES[form.vendor])
+const previewColor = computed(() => (isHexColor(form.color) ? form.color : DEFAULT_AGENT_COLOR))
 
 /** Providers whose protocol type is compatible with the chosen vendor. */
 const compatibleProviders = computed(() =>
@@ -50,6 +67,8 @@ const modelOptions = computed(() => selectedProvider.value?.modelList ?? [])
 
 function reset(): void {
   form.name = ''
+  form.avatar = null
+  form.color = DEFAULT_AGENT_COLOR
   form.vendor = 'claude'
   form.platformProviderId = ''
   form.model = ''
@@ -60,6 +79,7 @@ function reset(): void {
   form.mcpServers = ''
   form.allowedTools = ''
   error.value = null
+  avatarError.value = null
 }
 
 watch(
@@ -93,12 +113,15 @@ function parseList(value: string): string[] {
 
 function buildPayload(): CreateAgentPayload | string {
   if (!form.name.trim()) return '请输入名称'
+  if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
   if (!form.platformProviderId) return '请选择 PlatformProvider'
   if (!form.model) return '请选择模型'
   if (!form.workingDirectory.trim()) return '请输入 Agent 目录'
 
   const payload: CreateAgentPayload = {
     name: form.name.trim(),
+    avatar: form.avatar,
+    color: form.color.toLowerCase(),
     vendor: form.vendor,
     platformProviderId: form.platformProviderId,
     model: form.model,
@@ -128,6 +151,39 @@ function buildPayload(): CreateAgentPayload | string {
   return payload
 }
 
+function selectColor(color: string): void {
+  form.color = color
+}
+
+function pickAvatar(): void {
+  avatarError.value = null
+  fileInput.value?.click()
+}
+
+function clearAvatar(): void {
+  form.avatar = null
+  avatarError.value = null
+}
+
+function onAvatarFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = '请选择图片文件'
+    return
+  }
+  void createAvatarDataUrl(file)
+    .then((avatar) => {
+      form.avatar = avatar
+      avatarError.value = null
+    })
+    .catch(() => {
+      avatarError.value = '头像图片过大或无法读取'
+    })
+}
+
 async function onSubmit(): Promise<void> {
   const result = buildPayload()
   if (typeof result === 'string') {
@@ -154,6 +210,70 @@ async function onSubmit(): Promise<void> {
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">名称</label>
         <BaseInput v-model="form.name" type="text" placeholder="如：后端工程师" />
+      </div>
+
+      <div class="rounded-md border border-surface-border bg-surface-hover/60 p-3">
+        <div class="flex items-start gap-3">
+          <AgentAvatar
+            :name="form.name || 'AG'"
+            :avatar="form.avatar"
+            :color="previewColor"
+            size="lg"
+          />
+          <div class="min-w-0 flex-1">
+            <label class="block text-sm font-medium text-text-main mb-1.5">
+              头像
+              <span class="font-normal text-text-muted">（可选）</span>
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <BaseButton variant="secondary" size="sm" @click="pickAvatar">
+                <span class="material-symbols-outlined text-xl">image</span>
+                选择头像
+              </BaseButton>
+              <BaseButton v-if="form.avatar" variant="ghost" size="sm" @click="clearAvatar">
+                <span class="material-symbols-outlined text-xl">close</span>
+                移除
+              </BaseButton>
+            </div>
+            <p class="mt-1 text-xs text-text-muted">
+              不选择头像时，使用颜色和名称前两个字生成默认头像。
+            </p>
+            <p v-if="avatarError" class="mt-1 text-xs text-danger">{{ avatarError }}</p>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="onAvatarFileChange"
+            />
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="block text-sm font-medium text-text-main mb-1.5">颜色标识</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-for="color in AGENT_COLORS"
+              :key="color"
+              type="button"
+              class="h-7 w-7 rounded-md border border-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary/30"
+              :class="form.color.toLowerCase() === color ? 'ring-2 ring-primary/40' : ''"
+              :style="{ backgroundColor: color }"
+              :title="color"
+              @click="selectColor(color)"
+            >
+              <span class="sr-only">{{ color }}</span>
+            </button>
+            <BaseInput
+              v-model="form.color"
+              class="max-w-[116px]"
+              :invalid="form.color.length > 0 && !isHexColor(form.color)"
+              type="text"
+              maxlength="7"
+              placeholder="#3370ff"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-3">

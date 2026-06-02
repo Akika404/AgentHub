@@ -8,19 +8,19 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 
 核心决策：
 
-- Agent 只保存可复用配置：vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
+- Agent 只保存可复用配置：展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
 - AgentSession 是一个具体单聊会话：title、workingDirectory、sessionHomeDirectory、sdkSessionId、有效 skills/MCP、status。
 - AgentMessage 按 `sessionId` 隔离 UI 消息历史。
 - LiveAgent 按 `session.id` 存在内存中，同一个 Agent 的不同聊天可以并行运行，只有同一 chat 会互斥。
 
 ## Model
 
-| 概念 | 存储 | 说明 |
-| --- | --- | --- |
-| Agent | `agent` | 用户拥有的 Agent 配置，不存 apiKey/baseUrl |
-| AgentSession | `agent_session` | 单 Agent 聊天会话和底层 SDK 句柄 |
-| AgentMessage | `agent_message` | 主聊天区可见文本历史，按 sessionId 隔离 |
-| LiveAgent | memory | adapter + busy + abort + LRU 时间戳 |
+| 概念         | 存储            | 说明                                       |
+| ------------ | --------------- | ------------------------------------------ |
+| Agent        | `agent`         | 用户拥有的 Agent 配置，不存 apiKey/baseUrl |
+| AgentSession | `agent_session` | 单 Agent 聊天会话和底层 SDK 句柄           |
+| AgentMessage | `agent_message` | 主聊天区可见文本历史，按 sessionId 隔离    |
+| LiveAgent    | memory          | adapter + busy + abort + LRU 时间戳        |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
 
@@ -28,19 +28,19 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 
 所有接口前缀为 `/api`，成功响应走统一信封，全部需 JWT。
 
-| Method | Path | 说明 |
-| --- | --- | --- |
-| `POST` | `/agents` | 创建 Agent 配置，不开聊天 |
-| `GET` | `/agents` | 当前用户 AgentList |
-| `GET` | `/agents/:agentId` | Agent 详情 |
-| `DELETE` | `/agents/:agentId` | 删除 Agent，并删除其所有聊天和消息 |
-| `POST` | `/agent-chats` | 创建单 Agent 聊天 |
-| `GET` | `/agent-chats` | 当前用户的聊天列表 |
-| `GET` | `/agent-chats/:chatId` | 聊天详情 |
-| `GET` | `/agent-chats/:chatId/messages` | 聊天消息历史 |
-| `GET @Sse` | `/agent-chats/:chatId/converse?prompt=` | 聊天 SSE 对话流 |
-| `POST` | `/agent-chats/:chatId/clear` | 清空聊天句柄和消息 |
-| `DELETE` | `/agent-chats/:chatId` | 删除聊天 |
+| Method     | Path                                    | 说明                               |
+| ---------- | --------------------------------------- | ---------------------------------- |
+| `POST`     | `/agents`                               | 创建 Agent 配置，不开聊天          |
+| `GET`      | `/agents`                               | 当前用户 AgentList                 |
+| `GET`      | `/agents/:agentId`                      | Agent 详情                         |
+| `DELETE`   | `/agents/:agentId`                      | 删除 Agent，并删除其所有聊天和消息 |
+| `POST`     | `/agent-chats`                          | 创建单 Agent 聊天                  |
+| `GET`      | `/agent-chats`                          | 当前用户的聊天列表                 |
+| `GET`      | `/agent-chats/:chatId`                  | 聊天详情                           |
+| `GET`      | `/agent-chats/:chatId/messages`         | 聊天消息历史                       |
+| `GET @Sse` | `/agent-chats/:chatId/converse?prompt=` | 聊天 SSE 对话流                    |
+| `POST`     | `/agent-chats/:chatId/clear`            | 清空聊天句柄和消息                 |
+| `DELETE`   | `/agent-chats/:chatId`                  | 删除聊天                           |
 
 ## Runtime Flow
 

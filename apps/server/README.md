@@ -243,7 +243,7 @@ src/mutiagents/
 
 ### 模型
 
-- **Agent**（`agent` 表）：可复用配置，包含 vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等；不存
+- **Agent**（`agent` 表）：可复用配置，包含展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等；不存
   `apiKey/baseUrl`。
 - **AgentSession**（`agent_session` 表）：一个单 Agent 聊天，包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、
   SDK 句柄和状态。
@@ -252,21 +252,21 @@ src/mutiagents/
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法       | 路径                                             | 功能                                  |
-| ---------- | ------------------------------------------------ | ------------------------------------- |
-| POST       | `/api/agents`                                    | 创建 Agent 配置，不开聊天             |
-| GET        | `/api/agents`                                    | 列出当前用户 AgentList                |
-| GET        | `/api/agents/:agentId`                           | 查询单个 Agent                        |
-| DELETE     | `/api/agents/:agentId`                           | 删除 Agent，并删除其全部聊天和消息    |
-| POST       | `/api/agent-chats`                               | 创建单 Agent 聊天                     |
-| GET        | `/api/agent-chats`                               | 列出当前用户单 Agent 聊天             |
-| GET        | `/api/agent-chats/:chatId`                       | 查询聊天详情                          |
-| GET        | `/api/agent-chats/:chatId/messages`              | 查询聊天消息历史                      |
-| GET `@Sse` | `/api/agent-chats/:chatId/converse?prompt=...`   | 聊天 SSE 对话流                       |
-| POST       | `/api/agent-chats/:chatId/clear`                 | 清空聊天句柄和 UI 消息历史            |
-| DELETE     | `/api/agent-chats/:chatId`                       | 删除聊天                              |
+| 方法       | 路径                                           | 功能                               |
+| ---------- | ---------------------------------------------- | ---------------------------------- |
+| POST       | `/api/agents`                                  | 创建 Agent 配置，不开聊天          |
+| GET        | `/api/agents`                                  | 列出当前用户 AgentList             |
+| GET        | `/api/agents/:agentId`                         | 查询单个 Agent                     |
+| DELETE     | `/api/agents/:agentId`                         | 删除 Agent，并删除其全部聊天和消息 |
+| POST       | `/api/agent-chats`                             | 创建单 Agent 聊天                  |
+| GET        | `/api/agent-chats`                             | 列出当前用户单 Agent 聊天          |
+| GET        | `/api/agent-chats/:chatId`                     | 查询聊天详情                       |
+| GET        | `/api/agent-chats/:chatId/messages`            | 查询聊天消息历史                   |
+| GET `@Sse` | `/api/agent-chats/:chatId/converse?prompt=...` | 聊天 SSE 对话流                    |
+| POST       | `/api/agent-chats/:chatId/clear`               | 清空聊天句柄和 UI 消息历史         |
+| DELETE     | `/api/agent-chats/:chatId`                     | 删除聊天                           |
 
-创建聊天时 `workingDirectory` 必填；system prompt 不在聊天上设置，运行时继承 Agent。Claude 聊天会把 Agent 原 skills 复制到会话私有
+Agent 可保存头像 data URL/URL 与颜色标识；未设置头像时，前端用颜色和名称前两个字生成默认头像。创建聊天时 `workingDirectory` 必填；system prompt 不在聊天上设置，运行时继承 Agent。Claude 聊天会把 Agent 原 skills 复制到会话私有
 home，再导入本聊天指定的 skill 文件夹；MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
 
 ### 数据库与限制

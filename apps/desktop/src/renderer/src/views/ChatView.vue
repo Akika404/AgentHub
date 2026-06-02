@@ -18,6 +18,7 @@ import type {
 import { ApiError, agentApi } from '../api'
 import { agentChatApi, type AgentConverseStream } from '../api/agents'
 import { authState } from '../stores/auth'
+import { agentInitials } from '../utils/avatar'
 import { formatTime } from '../utils/format'
 import ChatList from '../components/ChatList.vue'
 import ChatHeader from '../components/ChatHeader.vue'
@@ -67,8 +68,10 @@ const chats = computed<ChatSummary[]>(() =>
     preview: previewForChat(chat),
     kind: 'agent',
     avatar: {
-      kind: 'icon',
-      icon: chat.agent.vendor === 'codex' ? 'terminal' : 'smart_toy',
+      kind: 'initials',
+      text: agentInitials(chat.agent.name),
+      color: chat.agent.color,
+      avatarDataUrl: chat.agent.avatar ?? undefined,
       tone: chat.status === 'active' ? 'primary' : 'neutral'
     },
     active: chat.id === activeChatId.value
@@ -129,7 +132,9 @@ function agentSender(chat: AgentChatView): SenderInfo {
     id: chat.agent.id,
     name: chat.agent.name,
     role: 'agent',
-    icon: chat.agent.vendor === 'codex' ? 'terminal' : 'smart_toy',
+    initials: agentInitials(chat.agent.name),
+    color: chat.agent.color,
+    avatarDataUrl: chat.agent.avatar ?? undefined,
     accent: chat.agent.vendor === 'claude' ? 'green' : 'neutral'
   }
 }

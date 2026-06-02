@@ -17,12 +17,12 @@ Agent 多单聊会话 Spec
 
 ## 数据模型
 
-| 概念 | 含义 | 存储 |
-| --- | --- | --- |
-| Agent | 用户创建的 Agent 配置，如 vendor、model、Provider、默认目录、system prompt | MySQL `agent` |
-| AgentSession | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP | MySQL `agent_session` |
-| AgentMessage | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本 | MySQL `agent_message` |
-| LiveAgent | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt | 内存 Map |
+| 概念         | 含义                                                                                             | 存储                  |
+| ------------ | ------------------------------------------------------------------------------------------------ | --------------------- |
+| Agent        | 用户创建的 Agent 配置，如展示名、头像/颜色标识、vendor、model、Provider、默认目录、system prompt | MySQL `agent`         |
+| AgentSession | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP             | MySQL `agent_session` |
+| AgentMessage | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本                                        | MySQL `agent_message` |
+| LiveAgent    | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt                           | 内存 Map              |
 
 `agent_session` 是左侧聊天列表的数据源；`agent_message.sessionId` 是消息隔离边界。删除 Agent 会删除它的所有聊天和消息；删除聊天只删除该聊天的会话和消息。
 
@@ -30,16 +30,16 @@ Agent 多单聊会话 Spec
 
 所有接口前缀为 `/api`，并且需要 `Authorization: Bearer <token>`。
 
-| Method | Path | 说明 |
-| --- | --- | --- |
-| `GET` | `/agents` | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗 |
-| `POST` | `/agent-chats` | 创建单 Agent 聊天 |
-| `GET` | `/agent-chats` | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用 |
-| `GET` | `/agent-chats/:chatId` | 查询单个聊天 |
-| `GET` | `/agent-chats/:chatId/messages` | 查询该聊天 UI 消息历史，按时间升序 |
-| `GET @Sse` | `/agent-chats/:chatId/converse?prompt=...` | 与该聊天对话，返回 `AgentEvent` SSE 流 |
-| `POST` | `/agent-chats/:chatId/clear` | 清空该聊天 SDK 句柄和 UI 消息历史 |
-| `DELETE` | `/agent-chats/:chatId` | 删除该聊天 |
+| Method     | Path                                       | 说明                                                |
+| ---------- | ------------------------------------------ | --------------------------------------------------- |
+| `GET`      | `/agents`                                  | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗 |
+| `POST`     | `/agent-chats`                             | 创建单 Agent 聊天                                   |
+| `GET`      | `/agent-chats`                             | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用     |
+| `GET`      | `/agent-chats/:chatId`                     | 查询单个聊天                                        |
+| `GET`      | `/agent-chats/:chatId/messages`            | 查询该聊天 UI 消息历史，按时间升序                  |
+| `GET @Sse` | `/agent-chats/:chatId/converse?prompt=...` | 与该聊天对话，返回 `AgentEvent` SSE 流              |
+| `POST`     | `/agent-chats/:chatId/clear`               | 清空该聊天 SDK 句柄和 UI 消息历史                   |
+| `DELETE`   | `/agent-chats/:chatId`                     | 删除该聊天                                          |
 
 创建聊天入参：
 
@@ -59,7 +59,14 @@ interface CreateAgentChatPayload {
 interface AgentChatView {
   id: string
   agentId: string
-  agent: { id: string; name: string; vendor: AgentVendor; model: string }
+  agent: {
+    id: string
+    name: string
+    avatar: string | null
+    color: string
+    vendor: AgentVendor
+    model: string
+  }
   title: string | null
   workingDirectory: string
   sessionHomeDirectory: string

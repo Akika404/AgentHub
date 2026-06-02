@@ -13,6 +13,10 @@ export interface ChatAvatar {
   icon?: string
   /** tailwind background color class for the icon variant */
   tone?: 'primary' | 'neutral'
+  /** hex color for initials avatars */
+  color?: string
+  /** data URL of a user-uploaded avatar image; overrides icon/initials */
+  avatarDataUrl?: string
 }
 
 export interface ChatSummary {
@@ -35,6 +39,8 @@ export interface SenderInfo {
   initials?: string
   /** color theme for the bubble avatar */
   accent?: 'primary' | 'violet' | 'green' | 'neutral'
+  /** hex color for generated initials avatars */
+  color?: string
   /** data URL of a user-uploaded avatar image; overrides icon/initials */
   avatarDataUrl?: string
 }

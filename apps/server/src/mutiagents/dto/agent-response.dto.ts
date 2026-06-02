@@ -49,6 +49,16 @@ export class AgentViewDto implements AgentView {
     @ApiProperty({ description: '展示名' })
     name!: string
 
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '头像 URL / 压缩后的 data URL；为空时前端用颜色 + 名称前两个字生成默认头像'
+    })
+    avatar!: string | null
+
+    @ApiProperty({ example: '#3370ff', description: '默认头像和列表标识色' })
+    color!: string
+
     @ApiProperty({ enum: VENDORS, description: '厂商' })
     vendor!: AgentVendor
 
