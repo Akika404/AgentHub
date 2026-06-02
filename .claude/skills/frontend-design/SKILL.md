@@ -13,6 +13,7 @@ The user provides frontend requirements: a component, page, application, or inte
 When working in this repository's Electron/Vue desktop app:
 
 - Keep modal form field labels consistent: use `text-sm font-medium text-text-main` for the main label text, and `font-normal text-text-muted` for parenthetical helper text inside the label.
+- All modal dialogs and confirmation dialogs must blur the page behind them with a shared Gaussian backdrop effect. Prefer routing dialogs through the shared `Modal` component so "Create Chat", "New Agent", provider forms, nickname updates, and delete confirmations inherit the same blurred backdrop.
 - For shared select controls, keep the right-side indicator visually inset from the edge. Prefer an internal icon indicator such as Material Symbols `expand_more` placed around `right-3`, and reserve enough right padding on the select text, such as `pr-9`.
 
 ## Design Thinking
