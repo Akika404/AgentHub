@@ -18,6 +18,12 @@ import type {
 import { ApiError, agentApi } from '../api'
 import { agentChatApi, type AgentConverseStream } from '../api/agents'
 import { authState } from '../stores/auth'
+import {
+  isAgentRunMessage,
+  type AgentRunMessage,
+  type AgentRunStep,
+  type ChatDisplayMessage
+} from '../types/chatDisplay'
 import { agentInitials } from '../utils/avatar'
 import { formatTime } from '../utils/format'
 import ChatList from '../components/ChatList.vue'
@@ -41,10 +47,11 @@ interface AgentRuntimeState {
 const agentChats = ref<AgentChatView[]>([])
 const agents = ref<AgentView[]>([])
 const activeChatId = ref<string | null>(null)
-const messages = ref<ChatMessage[]>([])
-const messageCache = new Map<string, ChatMessage[]>()
+const messages = ref<ChatDisplayMessage[]>([])
+const messageCache = new Map<string, ChatDisplayMessage[]>()
 let activeLoadId = 0
 let currentStream: AgentConverseStream | null = null
+let currentRunMessageId: string | null = null
 
 const chatsLoading = ref(false)
 const agentsLoading = ref(false)
@@ -160,27 +167,25 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatM
   }
 }
 
-function appendMessage(chatId: string, message: ChatMessage): void {
+function appendMessage(chatId: string, message: ChatDisplayMessage): void {
   const cached = messageCache.get(chatId) ?? []
   const next = [...cached, message]
   messageCache.set(chatId, next)
   if (activeChatId.value === chatId) messages.value = next
 }
 
-function updateMessage(chatId: string, messageId: string, text: string): void {
+function updateCachedMessages(
+  chatId: string,
+  updater: (messages: ChatDisplayMessage[]) => ChatDisplayMessage[]
+): void {
   const cached = messageCache.get(chatId) ?? []
-  const next = cached.map((message) =>
-    message.id === messageId && message.kind === 'text' ? { ...message, text } : message
-  )
+  const next = updater(cached)
   messageCache.set(chatId, next)
   if (activeChatId.value === chatId) messages.value = next
 }
 
 function removeMessage(chatId: string, messageId: string): void {
-  const cached = messageCache.get(chatId) ?? []
-  const next = cached.filter((message) => message.id !== messageId)
-  messageCache.set(chatId, next)
-  if (activeChatId.value === chatId) messages.value = next
+  updateCachedMessages(chatId, (cached) => cached.filter((message) => message.id !== messageId))
 }
 
 function appendSystemMessage(chatId: string, text: string): void {
@@ -191,6 +196,132 @@ function appendSystemMessage(chatId: string, text: string): void {
     timestamp: new Date().toISOString(),
     text
   })
+}
+
+function runStepId(type: AgentRunStep['type']): string {
+  return `run-step-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+}
+
+function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
+  const message: AgentRunMessage = {
+    id: `m-agent-run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    chatId: chat.id,
+    kind: 'agent-run',
+    timestamp: new Date().toISOString(),
+    sender: agentSender(chat),
+    status: 'thinking',
+    steps: [
+      {
+        id: runStepId('thinking'),
+        type: 'thinking',
+        label: '思考中',
+        status: 'active'
+      }
+    ],
+    text: ''
+  }
+  currentRunMessageId = message.id
+  appendMessage(chat.id, message)
+  return message
+}
+
+function updateAgentRunMessage(
+  chatId: string,
+  updater: (message: AgentRunMessage) => AgentRunMessage
+): void {
+  if (!currentRunMessageId) return
+  updateCachedMessages(chatId, (cached) =>
+    cached.map((message) =>
+      message.id === currentRunMessageId && isAgentRunMessage(message) ? updater(message) : message
+    )
+  )
+}
+
+function startRunStep(
+  chatId: string,
+  type: AgentRunStep['type'],
+  label: string,
+  status: AgentRunMessage['status']
+): void {
+  updateAgentRunMessage(chatId, (message) => {
+    const last = message.steps[message.steps.length - 1]
+    if (last?.status === 'active' && last.type === type && last.label === label) {
+      return { ...message, status }
+    }
+
+    const steps = message.steps.map((step) =>
+      step.status === 'active' ? { ...step, status: 'completed' as const } : step
+    )
+    return {
+      ...message,
+      status,
+      steps: [...steps, { id: runStepId(type), type, label, status: 'active' }]
+    }
+  })
+}
+
+function completeActiveRunStep(chatId: string, failed = false): void {
+  updateAgentRunMessage(chatId, (message) => ({
+    ...message,
+    steps: message.steps.map((step) =>
+      step.status === 'active'
+        ? { ...step, status: failed ? ('failed' as const) : ('completed' as const) }
+        : step
+    )
+  }))
+}
+
+function updateAgentRunText(chatId: string, text: string): void {
+  completeActiveRunStep(chatId)
+  updateAgentRunMessage(chatId, (message) => ({ ...message, status: 'responding', text }))
+}
+
+function finishAgentRun(chatId: string, success: boolean): void {
+  completeActiveRunStep(chatId, !success)
+  updateAgentRunMessage(chatId, (message) => ({
+    ...message,
+    status: success ? 'done' : 'error'
+  }))
+  currentRunMessageId = null
+}
+
+function removeCurrentAgentRun(chatId: string): void {
+  if (!currentRunMessageId) return
+  removeMessage(chatId, currentRunMessageId)
+  currentRunMessageId = null
+}
+
+function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
+  switch (event.type) {
+    case 'thinking':
+      startRunStep(chat.id, 'thinking', '思考中', 'thinking')
+      return
+    case 'tool_use':
+      if (event.status === 'started') {
+        startRunStep(chat.id, 'tool', `正在调用 ${event.name}`, 'tool')
+      } else {
+        completeActiveRunStep(chat.id, event.status === 'failed')
+      }
+      return
+    case 'tool_result':
+      completeActiveRunStep(chat.id, Boolean(event.isError))
+      if (!event.isError) startRunStep(chat.id, 'thinking', '继续思考', 'thinking')
+      return
+    case 'text':
+      return
+    case 'turn_completed':
+      if (event.finalText) updateAgentRunText(chat.id, event.finalText)
+      completeActiveRunStep(chat.id)
+      return
+    case 'error':
+      completeActiveRunStep(chat.id, true)
+      updateAgentRunMessage(chat.id, (message) => ({ ...message, status: 'error' }))
+      return
+    case 'done':
+      if (event.finalText) updateAgentRunText(chat.id, event.finalText)
+      finishAgentRun(chat.id, event.success)
+      return
+  }
 }
 
 async function loadWorkspace(): Promise<void> {
@@ -205,6 +336,7 @@ async function loadWorkspace(): Promise<void> {
     else {
       activeChatId.value = null
       messages.value = []
+      currentRunMessageId = null
       messagesLoading.value = false
       runtime.value = idleRuntime()
     }
@@ -259,6 +391,7 @@ async function cancelCurrentStream(): Promise<void> {
   const stream = currentStream
   currentStream = null
   streaming.value = false
+  if (activeChatId.value) removeCurrentAgentRun(activeChatId.value)
   await stream.cancel()
 }
 
@@ -266,6 +399,7 @@ async function selectChat(id: string): Promise<void> {
   if (id !== activeChatId.value) await cancelCurrentStream()
   activeChatId.value = id
   pendingReply.value = null
+  currentRunMessageId = null
   runtime.value = idleRuntime()
 
   const cached = messageCache.get(id)
@@ -343,8 +477,8 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
   pendingReply.value = null
   streaming.value = true
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
+  createAgentRunMessage(chat)
 
-  let assistantMessageId: string | null = null
   let assistantText = ''
 
   try {
@@ -352,27 +486,17 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
       onEvent(event) {
         if (activeChatId.value !== chatId) return
         handleRuntimeEvent(event)
+        syncAgentRunMessage(chat, event)
         if (event.type === 'text') {
           assistantText += event.text
-          if (!assistantMessageId) {
-            assistantMessageId = `m-agent-${Date.now()}`
-            appendMessage(chatId, {
-              id: assistantMessageId,
-              chatId,
-              kind: 'text',
-              timestamp: new Date().toISOString(),
-              sender: agentSender(chat),
-              text: assistantText
-            })
-          } else {
-            updateMessage(chatId, assistantMessageId, assistantText)
-          }
+          updateAgentRunText(chatId, assistantText)
         } else if (event.type === 'error' && event.fatal && !assistantText) {
           appendSystemMessage(chatId, event.message)
         }
       },
       onError(message) {
         if (activeChatId.value !== chatId) return
+        finishAgentRun(chatId, false)
         runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
         appendSystemMessage(chatId, message)
       },
@@ -380,7 +504,7 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
         if (activeChatId.value !== chatId) return
         streaming.value = false
         currentStream = null
-        void loadMessages(chatId, true)
+        finishAgentRun(chatId, true)
         void refreshChats()
       }
     })
@@ -391,6 +515,7 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
     if (activeChatId.value !== chatId) return
     streaming.value = false
     currentStream = null
+    removeCurrentAgentRun(chatId)
     const message = err instanceof Error ? err.message : String(err)
     runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
     appendSystemMessage(chatId, message)
@@ -411,7 +536,13 @@ async function onReplyOption(payload: { message: OptionsMessage; text: string })
   await sendMessage({ text: payload.text })
 }
 
-function messageToPlainText(msg: ChatMessage): string {
+function messageToPlainText(msg: ChatDisplayMessage): string {
+  if (isAgentRunMessage(msg)) {
+    const text = msg.text.trim()
+    if (text) return text
+    return msg.steps.map((step) => step.label).join('\n')
+  }
+
   switch (msg.kind) {
     case 'system':
       return msg.text
@@ -424,40 +555,38 @@ function messageToPlainText(msg: ChatMessage): string {
   }
 }
 
-function messageExcerpt(msg: ChatMessage): string {
+function messageExcerpt(msg: ChatDisplayMessage): string {
   const text = messageToPlainText(msg).replace(/\s+/g, ' ').trim()
   return text.length > 80 ? text.slice(0, 80) + '...' : text
 }
 
-function messageSenderName(msg: ChatMessage): string {
+function messageSenderName(msg: ChatDisplayMessage): string {
   return msg.kind === 'system' ? '系统' : msg.sender.name
 }
 
-function onPinMessage(msg: ChatMessage): void {
+function onPinMessage(msg: ChatDisplayMessage): void {
   const chatId = activeChatId.value
   if (!chatId) return
-  const next = messages.value.map((m) =>
-    m.id === msg.id ? ({ ...m, pinned: !m.pinned } as ChatMessage) : m
+  const next = messages.value.map((message) =>
+    message.id === msg.id ? { ...message, pinned: !message.pinned } : message
   )
   messageCache.set(chatId, next)
   messages.value = next
 }
 
-function onUnpinFromBar(msg: ChatMessage): void {
+function onUnpinFromBar(msg: ChatDisplayMessage): void {
   const chatId = activeChatId.value
   if (!chatId) return
-  const next = messages.value.map((m) =>
-    m.id === msg.id ? ({ ...m, pinned: false } as ChatMessage) : m
-  )
+  const next = messages.value.map((m) => (m.id === msg.id ? { ...m, pinned: false } : m))
   messageCache.set(chatId, next)
   messages.value = next
 }
 
-function onJumpToMessage(msg: ChatMessage): void {
+function onJumpToMessage(msg: ChatDisplayMessage): void {
   messageListRef.value?.scrollToMessage(msg.id)
 }
 
-async function onCopyMessage(msg: ChatMessage): Promise<void> {
+async function onCopyMessage(msg: ChatDisplayMessage): Promise<void> {
   try {
     await navigator.clipboard.writeText(messageToPlainText(msg))
   } catch {
@@ -465,7 +594,7 @@ async function onCopyMessage(msg: ChatMessage): Promise<void> {
   }
 }
 
-function onReplyMessage(msg: ChatMessage): void {
+function onReplyMessage(msg: ChatDisplayMessage): void {
   pendingReply.value = {
     messageId: msg.id,
     senderName: messageSenderName(msg),

@@ -1,24 +1,26 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import type { ChatMessage, OptionItem, OptionsMessage } from '../api'
+import type { OptionItem, OptionsMessage } from '../api'
+import { isAgentRunMessage, type ChatDisplayMessage } from '../types/chatDisplay'
 import SystemMessageView from './messages/SystemMessage.vue'
 import TextMessageView from './messages/TextMessage.vue'
 import TaskListMessageView from './messages/TaskListMessage.vue'
 import OptionsMessageView from './messages/OptionsMessage.vue'
+import AgentRunMessageView from './messages/AgentRunMessage.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 const props = defineProps<{
-  messages: ChatMessage[]
+  messages: ChatDisplayMessage[]
   loading?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'select-option', payload: { message: OptionsMessage; option: OptionItem }): void
   (e: 'reply-option', payload: { message: OptionsMessage; text: string }): void
-  (e: 'pin-message', message: ChatMessage): void
-  (e: 'copy-message', message: ChatMessage): void
-  (e: 'reply-message', message: ChatMessage): void
+  (e: 'pin-message', message: ChatDisplayMessage): void
+  (e: 'copy-message', message: ChatDisplayMessage): void
+  (e: 'reply-message', message: ChatDisplayMessage): void
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -41,9 +43,9 @@ function scrollToMessage(id: string): void {
   }, 1600)
 }
 
-function onItemPointerDown(event: PointerEvent, id: string): void {
+function onItemPointerDown(event: PointerEvent, message: ChatDisplayMessage): void {
   if ((event.target as HTMLElement)?.closest('button, a, input, textarea')) return
-  activeId.value = id
+  activeId.value = message.id
 }
 
 function onItemPointerUpOrLeave(id: string): void {
@@ -55,10 +57,10 @@ defineExpose({ scrollToMessage })
 const menuOpen = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
-const menuTarget = ref<ChatMessage | null>(null)
+const menuTarget = ref<ChatDisplayMessage | null>(null)
 const menuItems = ref<MenuItem[]>([])
 
-function openMenu(event: MouseEvent, message: ChatMessage): void {
+function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
   event.preventDefault()
   menuTarget.value = message
   menuX.value = event.clientX
@@ -75,6 +77,15 @@ function openMenu(event: MouseEvent, message: ChatMessage): void {
   menuOpen.value = true
 }
 
+function openMessageMenu(event: MouseEvent, message: ChatDisplayMessage): void {
+  event.preventDefault()
+  openMenu(event, message)
+}
+
+function isPinnedMessage(message: ChatDisplayMessage): boolean {
+  return Boolean(message.pinned)
+}
+
 function closeMenu(): void {
   menuOpen.value = false
   menuTarget.value = null
@@ -88,14 +99,21 @@ function onMenuSelect(id: string): void {
   else if (id === 'reply') emit('reply-message', target)
 }
 
-watch(
-  () => props.messages.length,
-  async () => {
-    await nextTick()
-    const el = scrollRef.value
-    if (el) el.scrollTop = el.scrollHeight
+function scrollSignature(): string {
+  const last = props.messages[props.messages.length - 1]
+  if (!last) return '0'
+  if (isAgentRunMessage(last)) {
+    return `${props.messages.length}:${last.id}:${last.status}:${last.steps.length}:${last.text.length}`
   }
-)
+  if (last.kind === 'text') return `${props.messages.length}:${last.id}:${last.text.length}`
+  return `${props.messages.length}:${last.id}:${last.kind}`
+}
+
+watch(scrollSignature, async () => {
+  await nextTick()
+  const el = scrollRef.value
+  if (el) el.scrollTop = el.scrollHeight
+})
 </script>
 
 <template>
@@ -113,19 +131,20 @@ watch(
       <div
         :ref="(el) => setItemRef(msg.id, el as Element | null)"
         :class="[
-          'relative group rounded-lg -mx-4 px-4 py-3 transition-all duration-150 cursor-pointer',
-          msg.pinned ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5' : '',
+          'relative group rounded-lg -mx-4 px-4 py-3 transition-all duration-150',
+          isPinnedMessage(msg) ? 'border-l-2 border-warning bg-warning-soft/40 pl-5 -ml-5' : '',
           highlightId === msg.id ? 'ring-2 ring-primary/40' : '',
-          activeId === msg.id ? 'bg-primary-soft/60 scale-[0.995]' : 'hover:bg-background/60'
+          'cursor-pointer hover:bg-background/60',
+          activeId === msg.id ? 'bg-primary-soft/60 scale-[0.995]' : ''
         ]"
-        @contextmenu="openMenu($event, msg)"
-        @pointerdown="onItemPointerDown($event, msg.id)"
+        @contextmenu="openMessageMenu($event, msg)"
+        @pointerdown="onItemPointerDown($event, msg)"
         @pointerup="onItemPointerUpOrLeave(msg.id)"
         @pointerleave="onItemPointerUpOrLeave(msg.id)"
         @pointercancel="onItemPointerUpOrLeave(msg.id)"
       >
         <span
-          v-if="msg.pinned"
+          v-if="isPinnedMessage(msg)"
           class="absolute -left-1 top-0 material-symbols-outlined text-md text-warning"
           title="已Pin"
           >keep</span
@@ -139,6 +158,7 @@ watch(
           @select="emit('select-option', $event)"
           @reply="emit('reply-option', $event)"
         />
+        <AgentRunMessageView v-else-if="isAgentRunMessage(msg)" :message="msg" />
       </div>
     </template>
     <ContextMenu

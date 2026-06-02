@@ -1,29 +1,27 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ChatMessage } from '../api'
+import type { ChatDisplayMessage } from '../types/chatDisplay'
 
 const props = defineProps<{
-  messages: ChatMessage[]
-  toText: (msg: ChatMessage) => string
-  senderName: (msg: ChatMessage) => string
+  messages: ChatDisplayMessage[]
+  toText: (msg: ChatDisplayMessage) => string
+  senderName: (msg: ChatDisplayMessage) => string
 }>()
 
 const emit = defineEmits<{
-  (e: 'unpin', message: ChatMessage): void
-  (e: 'jump', message: ChatMessage): void
+  (e: 'unpin', message: ChatDisplayMessage): void
+  (e: 'jump', message: ChatDisplayMessage): void
 }>()
 
 const expanded = ref(false)
 
 const pinned = computed(() =>
-  [...props.messages]
-    .filter((m) => m.pinned)
-    .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+  [...props.messages].filter((m) => m.pinned).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
 )
 
 const latest = computed(() => pinned.value[0] ?? null)
 
-function excerpt(msg: ChatMessage): string {
+function excerpt(msg: ChatDisplayMessage): string {
   const text = props.toText(msg).replace(/\s+/g, ' ').trim()
   return text.length > 60 ? text.slice(0, 60) + '…' : text
 }
@@ -32,21 +30,18 @@ function toggle(): void {
   if (pinned.value.length > 1) expanded.value = !expanded.value
 }
 
-function onUnpin(e: MouseEvent, msg: ChatMessage): void {
+function onUnpin(e: MouseEvent, msg: ChatDisplayMessage): void {
   e.stopPropagation()
   emit('unpin', msg)
 }
 
-function onJump(msg: ChatMessage): void {
+function onJump(msg: ChatDisplayMessage): void {
   emit('jump', msg)
 }
 </script>
 
 <template>
-  <div
-    v-if="latest"
-    class="border-b border-surface-border bg-warning-soft flex-shrink-0"
-  >
+  <div v-if="latest" class="border-b border-surface-border bg-warning-soft flex-shrink-0">
     <button
       type="button"
       class="w-full flex items-center space-x-2 px-4 py-2 text-left hover:bg-warning-soft-hover transition-colors"
