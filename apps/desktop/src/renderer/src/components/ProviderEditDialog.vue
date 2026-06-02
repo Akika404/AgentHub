@@ -110,11 +110,11 @@ async function onSubmit(): Promise<void> {
   >
     <div class="space-y-4">
       <div>
-        <label class="block text-sm text-text-muted mb-1.5">平台名称</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">平台名称</label>
         <BaseInput v-model="form.platformName" type="text" placeholder="如：我的 OpenAI" />
       </div>
       <div>
-        <label class="block text-sm text-text-muted mb-1.5">协议类型</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">协议类型</label>
         <BaseSelect v-model="form.type">
           <option v-for="t in PROVIDER_TYPES" :key="t" :value="t">
             {{ PROVIDER_TYPE_LABELS[t] }}
@@ -122,7 +122,7 @@ async function onSubmit(): Promise<void> {
         </BaseSelect>
       </div>
       <div>
-        <label class="block text-sm text-text-muted mb-1.5">Base URL</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">Base URL</label>
         <BaseInput
           v-model="form.baseUrl"
           mono
@@ -131,9 +131,9 @@ async function onSubmit(): Promise<void> {
         />
       </div>
       <div>
-        <label class="block text-sm text-text-muted mb-1.5">
+        <label class="block text-sm font-medium text-text-main mb-1.5">
           API Key
-          <span v-if="isEdit()" class="text-text-muted">（留空保留原密钥）</span>
+          <span v-if="isEdit()" class="font-normal text-text-muted">（留空保留原密钥）</span>
         </label>
         <BaseInput
           v-model="form.apiKey"
@@ -143,8 +143,9 @@ async function onSubmit(): Promise<void> {
         />
       </div>
       <div>
-        <label class="block text-sm text-text-muted mb-1.5">
-          模型列表 <span class="text-text-muted">（每行一个，可留空后用「刷新模型」拉取）</span>
+        <label class="block text-sm font-medium text-text-main mb-1.5">
+          模型列表
+          <span class="font-normal text-text-muted">（每行一个，可留空后用「刷新模型」拉取）</span>
         </label>
         <BaseTextarea v-model="form.modelList" mono rows="3" placeholder="gpt-4o&#10;gpt-4o-mini" />
       </div>
