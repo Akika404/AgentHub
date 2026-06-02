@@ -23,7 +23,7 @@ const emit = defineEmits<{
         :class="
           active === 'chat'
             ? 'bg-surface-active text-primary'
-            : 'text-text-muted hover:bg-surface-hover hover:text-text-main'
+            : 'text-gray-600 hover:bg-surface-hover hover:text-text-main'
         "
         @click="emit('navigate', 'chat')"
       >
@@ -34,7 +34,7 @@ const emit = defineEmits<{
         :class="
           active === 'agents'
             ? 'bg-surface-active text-primary'
-            : 'text-text-muted hover:bg-surface-hover hover:text-text-main'
+            : 'text-gray-600 hover:bg-surface-hover hover:text-text-main'
         "
         @click="emit('navigate', 'agents')"
       >
@@ -47,7 +47,7 @@ const emit = defineEmits<{
         :class="
           active === 'settings'
             ? 'bg-surface-active text-primary'
-            : 'text-text-muted hover:bg-surface-hover hover:text-text-main'
+            : 'text-gray-600 hover:bg-surface-hover hover:text-text-main'
         "
         @click="emit('navigate', 'settings')"
       >
