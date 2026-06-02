@@ -17,9 +17,7 @@ onMounted(initAuth)
 <template>
   <div class="flex w-full h-full bg-background">
     <template v-if="!authState.ready">
-      <div class="flex-1 flex items-center justify-center text-text-muted text-base">
-        正在加载…
-      </div>
+      <div class="flex-1 flex items-center justify-center text-text-muted text-base">正在加载…</div>
     </template>
 
     <AuthView v-else-if="!isAuthenticated()" />
@@ -27,8 +25,8 @@ onMounted(initAuth)
     <template v-else>
       <GlobalSidebar :active="nav" :user="authState.user" @navigate="nav = $event" />
       <ChatView v-show="nav === 'chat'" />
-      <AgentsView v-if="nav === 'agents'" />
-      <SettingsView v-if="nav === 'settings'" />
+      <AgentsView v-show="nav === 'agents'" />
+      <SettingsView v-show="nav === 'settings'" />
     </template>
   </div>
 </template>
