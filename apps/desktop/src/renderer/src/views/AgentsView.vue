@@ -4,6 +4,7 @@ import type { AgentView, PlatformProviderView } from '@agenthub/shared'
 import { ApiError, agentApi, providerApi } from '../api'
 import AgentAvatar from '../components/AgentAvatar.vue'
 import AgentCreateDialog from '../components/AgentCreateDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseSkeleton from '../components/ui/BaseSkeleton.vue'
 
@@ -13,6 +14,7 @@ const selectedId = ref<string | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const createOpen = ref(false)
+const deleteConfirmOpen = ref(false)
 const deleting = ref(false)
 
 const selected = computed(() => agents.value.find((a) => a.id === selectedId.value) ?? null)
@@ -64,10 +66,10 @@ async function onCreated(): Promise<void> {
 async function onDelete(): Promise<void> {
   const agent = selected.value
   if (!agent) return
-  if (!window.confirm(`确认删除 Agent「${agent.name}」？其会话也将一并删除。`)) return
   deleting.value = true
   try {
     await agentApi.delete(agent.id)
+    deleteConfirmOpen.value = false
     selectedId.value = null
     await load()
   } catch (err) {
@@ -147,7 +149,12 @@ onMounted(load)
               </p>
             </div>
           </div>
-          <BaseButton variant="danger" size="sm" :disabled="deleting" @click="onDelete">
+          <BaseButton
+            variant="danger"
+            size="sm"
+            :disabled="deleting"
+            @click="deleteConfirmOpen = true"
+          >
             <span class="material-symbols-outlined text-xl">delete</span>
             删除
           </BaseButton>
@@ -250,6 +257,16 @@ onMounted(load)
       :providers="providers"
       @close="createOpen = false"
       @created="onCreated"
+    />
+    <ConfirmDialog
+      :open="deleteConfirmOpen"
+      title="删除 Agent"
+      :message="selected ? `确认删除 Agent「${selected.name}」？其会话也将一并删除。` : ''"
+      confirm-label="删除"
+      confirming-label="删除中..."
+      :confirming="deleting"
+      @close="deleteConfirmOpen = false"
+      @confirm="onDelete"
     />
   </div>
 </template>

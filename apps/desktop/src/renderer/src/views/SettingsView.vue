@@ -5,6 +5,7 @@ import { ApiError, providerApi } from '../api'
 import ProviderList from '../components/ProviderList.vue'
 import ProviderDetail from '../components/ProviderDetail.vue'
 import ProviderEditDialog from '../components/ProviderEditDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type SettingsSection = 'platform-provider'
 
@@ -21,6 +22,8 @@ const error = ref<string | null>(null)
 
 const dialogOpen = ref(false)
 const editTarget = ref<PlatformProviderView | null>(null)
+const deleteConfirmOpen = ref(false)
+const deleting = ref(false)
 
 const selected = computed(() => providers.value.find((p) => p.id === selectedId.value) ?? null)
 
@@ -56,13 +59,16 @@ async function onSaved(): Promise<void> {
 async function onDelete(): Promise<void> {
   const p = selected.value
   if (!p) return
-  if (!window.confirm(`确认删除 Provider「${p.platformName}」？`)) return
+  deleting.value = true
   try {
     await providerApi.delete(p.id)
+    deleteConfirmOpen.value = false
     selectedId.value = null
     await load()
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '删除失败'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -108,7 +114,7 @@ onMounted(load)
         v-if="selected"
         :provider="selected"
         @edit="openEdit"
-        @delete="onDelete"
+        @delete="deleteConfirmOpen = true"
         @refreshed="load"
       />
       <div v-else class="flex-1 flex items-center justify-center text-text-muted text-base">
@@ -128,6 +134,16 @@ onMounted(load)
       :provider="editTarget"
       @close="dialogOpen = false"
       @saved="onSaved"
+    />
+    <ConfirmDialog
+      :open="deleteConfirmOpen"
+      title="删除 Provider"
+      :message="selected ? `确认删除 Provider「${selected.platformName}」？` : ''"
+      confirm-label="删除"
+      confirming-label="删除中..."
+      :confirming="deleting"
+      @close="deleteConfirmOpen = false"
+      @confirm="onDelete"
     />
   </div>
 </template>

@@ -27,7 +27,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <Transition name="modal" appear>
       <div
         v-if="open"
-        class="fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-6"
+        class="modal-backdrop fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-6"
         @mousedown.self="emit('close')"
       >
         <div

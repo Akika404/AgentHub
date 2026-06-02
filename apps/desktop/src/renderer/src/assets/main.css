@@ -60,11 +60,23 @@ body {
 /* Modal: backdrop fades in, the card pops up gently. */
 .modal-enter-active,
 .modal-leave-active {
-  transition: opacity 180ms ease;
+  transition:
+    opacity 180ms ease,
+    backdrop-filter 180ms ease,
+    -webkit-backdrop-filter 180ms ease;
 }
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+.modal-backdrop {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.modal-enter-from.modal-backdrop,
+.modal-leave-to.modal-backdrop {
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
 }
 .modal-enter-active .modal-card,
 .modal-leave-active .modal-card {
