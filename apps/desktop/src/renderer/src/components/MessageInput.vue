@@ -5,6 +5,7 @@ import BaseButton from './ui/BaseButton.vue'
 
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -23,6 +24,7 @@ watch(
 )
 
 function submit(): void {
+  if (props.disabled) return
   const trimmed = text.value.trim()
   if (!trimmed) return
   emit('send', { text: trimmed, replyTo: props.replyTo ?? undefined })
@@ -65,6 +67,7 @@ function onKey(event: KeyboardEvent): void {
         <textarea
           ref="inputRef"
           v-model="text"
+          :disabled="disabled"
           class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-md text-text-main placeholder-text-muted bg-transparent leading-[22px]"
           placeholder="Type a message or /command..."
           @keydown="onKey"
@@ -81,7 +84,7 @@ function onKey(event: KeyboardEvent): void {
         </div>
         <button
           class="bg-primary text-white px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
-          :disabled="!text.trim()"
+          :disabled="disabled || !text.trim()"
           @click="submit"
         >
           <span>发送&nbsp;</span>

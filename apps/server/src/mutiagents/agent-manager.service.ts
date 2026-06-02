@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
+import { randomUUID } from 'node:crypto'
 import { cp, mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
@@ -8,30 +9,32 @@ import { In, Repository } from 'typeorm'
 import { createAgent, getCapabilities, type AgentEvent, type AgentVendor } from './adapter/index.js'
 import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
+import { AgentMessage } from './entities/agent-message.entity.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
+import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
-import { agentToConfig, toAgentView } from './mappers/agent.mapper.js'
+import type { AgentChatView } from './dto/agent-chat-view.dto.js'
+import { agentToConfig, toAgentChatView, toAgentView } from './mappers/agent.mapper.js'
+import { toAgentChatMessageView } from './mappers/agent-message.mapper.js'
+import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
 import type { LiveAgent } from './live-agent.js'
 import { BusinessException } from '../common/index.js'
 import { PlatformProviderService } from '../platform-provider/platform-provider.service.js'
 import type { ProviderType } from '../platform-provider/entities/platform-provider.entity.js'
 
 /**
- * AgentManager — 用户虚拟员工的注册表与生命周期管家。
+ * AgentManager — 用户虚拟员工的注册表与单 Agent 聊天生命周期管家。
  *
- * 三层模型：Agent（配置，MySQL，归属用户）/ AgentSession（句柄，MySQL）/ LiveAgent（活实例，内存）。
- * Agent 与会话解耦：创建 Agent 只落配置（进 AgentList）；本期单聊按 agentId 懒加载/复用一条会话。
- * 凭证（baseUrl + apiKey）不存 Agent，运行时按 Agent.platformProviderId 从 platform-provider 取。
- * 会话内容由底层 SDK 落盘，这里只持久化句柄（sdkSessionId），因而能扛进程重启：
- * 缺失活实例时按 Agent 配置重建 adapter 并 resumeWith(sdkSessionId) 续接。
+ * Agent 是可复用配置；AgentSession 是一次具体单聊会话。同一个 Agent 可以创建多条
+ * AgentSession，每条都有自己的工作目录、私有 home、SDK 句柄和消息历史。
  */
 @Injectable()
 export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(AgentManager.name)
 
-    /** sessionId → 活实例 */
+    /** sessionId/chatId -> 活实例 */
     private readonly registry = new Map<string, LiveAgent>()
-    /** sessionId → 重建中的 Promise，去重并发 rehydrate */
+    /** sessionId/chatId -> 重建中的 Promise，去重并发 rehydrate */
     private readonly rehydrating = new Map<string, Promise<LiveAgent>>()
 
     private readonly maxLive: number
@@ -44,6 +47,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         private readonly agentRepo: Repository<Agent>,
         @InjectRepository(AgentSession)
         private readonly sessionRepo: Repository<AgentSession>,
+        @InjectRepository(AgentMessage)
+        private readonly messageRepo: Repository<AgentMessage>,
         private readonly providerService: PlatformProviderService,
         private readonly config: ConfigService
     ) {
@@ -53,30 +58,24 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     }
 
     onModuleInit(): void {
-        // 周期性清扫空闲活实例（非 busy 且超过 idle TTL）。unref 避免阻塞退出。
         this.sweepTimer = setInterval(() => this.sweepIdle(), Math.min(this.idleTtlMs, 60 * 1000))
         this.sweepTimer.unref?.()
     }
 
     onModuleDestroy(): void {
         if (this.sweepTimer) clearInterval(this.sweepTimer)
-        // 进程关闭：丢弃所有活实例（底层 SDK 子进程随 GC/进程退出回收）
         this.registry.clear()
     }
 
-    // ─────────────────────────── 创建 / 查询（按用户隔离） ───────────────────────────
+    // ─────────────────────────── Agent 配置（按用户隔离） ───────────────────────────
 
     /**
-     * 创建一个 Agent（仅落配置，进入该用户的 AgentList，不开会话）。
-     *
-     * 校验：vendor 能力支持配置；所引用 Provider 存在且本人所有；vendor 与 Provider 类型兼容；
-     * model 属于该 Provider 的 modelList（modelList 为空时跳过）。
+     * 创建一个 Agent（仅落配置，进入该用户的 AgentList，不开聊天会话）。
      */
     async createAgent(userId: string, dto: CreateAgentDto): Promise<AgentView> {
         this.assertConfigSupported(dto)
         this.assertSkillsShape(dto.skills)
 
-        // 取所引用 Provider 的运行时配置：顺带校验其存在且归属本人（否则 NOT_FOUND）
         const provider = await this.providerService.resolveRuntimeConfig(
             userId,
             dto.platformProviderId
@@ -114,50 +113,119 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             reasoningEffort: dto.reasoningEffort ?? null
         })
         const saved = await this.agentRepo.save(agent)
-        return toAgentView(saved, null)
+        return toAgentView(saved)
     }
 
-    /** 列出当前用户的全部 Agent（AgentList），附带各自单聊会话的运行时状态。 */
     async list(userId: string): Promise<AgentView[]> {
         const agents = await this.agentRepo.find({
             where: { userId },
             order: { createdAt: 'DESC' }
         })
-        if (agents.length === 0) return []
-        const sessions = await this.sessionRepo.find({
-            where: { agentId: In(agents.map((a) => a.id)) }
-        })
-        const sessionByAgent = new Map(sessions.map((s) => [s.agentId, s]))
-        return agents.map((a) => toAgentView(a, sessionByAgent.get(a.id) ?? null))
+        return agents.map(toAgentView)
     }
 
     async get(userId: string, agentId: string): Promise<AgentView> {
-        const agent = await this.loadAgent(userId, agentId)
-        const session = await this.findSoloSession(userId, agentId)
-        return toAgentView(agent, session)
+        return toAgentView(await this.loadAgent(userId, agentId))
     }
 
-    // ─────────────────────────── 对话（SSE） ───────────────────────────
+    /** 删除 Agent：连同它的所有单聊会话和消息一并删除。 */
+    async remove(userId: string, agentId: string): Promise<{ deleted: true }> {
+        const agent = await this.loadAgent(userId, agentId)
+        const sessions = await this.sessionRepo.find({ where: { agentId, userId } })
+        for (const s of sessions) this.assertNotBusy(s.id)
+        for (const s of sessions) this.registry.delete(s.id)
+        await this.messageRepo.delete({ agentId, userId })
+        if (sessions.length > 0) await this.sessionRepo.delete({ agentId, userId })
+        await this.agentRepo.delete({ id: agent.id, userId })
+        return { deleted: true }
+    }
 
-    /**
-     * 与某个 Agent 对话（单聊），返回事件流。
-     *
-     * 同步流程：取/建单聊会话 → 取/重建活实例 → 检查并占用 busy（无 await 的 check-and-set，
-     * 防并发）→ 返回生成器。生成器负责实际流式转发，并在 finally 回写句柄、释放 busy。
-     * 客户端断连时，控制器对返回的迭代器调用 .return()，触发本生成器 finally。
-     */
-    async converse(
+    // ─────────────────────────── 单 Agent 聊天（AgentSession） ───────────────────────────
+
+    async createChat(userId: string, dto: CreateAgentChatDto): Promise<AgentChatView> {
+        const agent = await this.loadAgent(userId, dto.agentId)
+        this.assertChatConfigSupported(agent.vendor, dto)
+
+        const workingDirectory = this.normalizeDirectoryPath(dto.workingDirectory)
+        const sessionId = randomUUID()
+        const sessionHomeDirectory = resolve(
+            join(agent.agentHomeDirectory, '.agenthub', 'chats', sessionId)
+        )
+
+        await this.ensureRuntimeDirectories(agent.vendor, workingDirectory, sessionHomeDirectory)
+        if (agent.vendor === 'claude') {
+            await this.copyAgentSkillDirectories(agent.agentHomeDirectory, sessionHomeDirectory)
+        }
+        const importedSkillNames =
+            agent.vendor === 'claude'
+                ? await this.importSkillSourceDirectories(
+                      dto.skillSourceDirectories ?? [],
+                      sessionHomeDirectory
+                  )
+                : []
+
+        const session = this.sessionRepo.create({
+            id: sessionId,
+            userId,
+            agentId: agent.id,
+            vendor: agent.vendor,
+            title: this.normalizeTitle(dto.title),
+            workingDirectory,
+            sessionHomeDirectory,
+            skills: this.mergeSkills(agent.skills, importedSkillNames),
+            mcpServers: this.mergeMcpServers(agent.mcpServers, dto.mcpServers),
+            sdkSessionId: null,
+            status: 'active',
+            lastTurnAt: null
+        })
+        const saved = await this.sessionRepo.save(session)
+        return toAgentChatView(saved, agent)
+    }
+
+    async listChats(userId: string): Promise<AgentChatView[]> {
+        const sessions = await this.sessionRepo.find({
+            where: { userId },
+            order: { updatedAt: 'DESC', createdAt: 'DESC' }
+        })
+        if (sessions.length === 0) return []
+
+        const agents = await this.agentRepo.find({
+            where: { userId, id: In([...new Set(sessions.map((s) => s.agentId))]) }
+        })
+        const agentById = new Map(agents.map((agent) => [agent.id, agent]))
+        return sessions
+            .map((session) => {
+                const agent = agentById.get(session.agentId)
+                return agent ? toAgentChatView(session, agent) : null
+            })
+            .filter((view): view is AgentChatView => view !== null)
+    }
+
+    async getChat(userId: string, chatId: string): Promise<AgentChatView> {
+        const { session, agent } = await this.loadChat(userId, chatId)
+        return toAgentChatView(session, agent)
+    }
+
+    async listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
+        const { session } = await this.loadChat(userId, chatId)
+        const messages = await this.messageRepo.find({
+            where: { userId, sessionId: session.id },
+            order: { createdAt: 'ASC', id: 'ASC' }
+        })
+        return messages.map(toAgentChatMessageView)
+    }
+
+    async converseChat(
         userId: string,
-        agentId: string,
+        chatId: string,
         prompt: string,
         clientSignal?: AbortSignal
     ): Promise<AsyncIterable<AgentEvent>> {
-        const { session } = await this.getOrCreateSoloSession(userId, agentId)
+        const { session } = await this.loadChat(userId, chatId)
         const live = await this.getOrRehydrate(session)
 
-        // check-and-set：此处到置位之间无 await，单线程下原子，避免并发对话交错上下文
         if (live.busy) {
-            throw BusinessException.agentBusy(`Agent ${agentId} is busy with another turn`)
+            throw BusinessException.agentBusy(`Chat ${chatId} is busy with another turn`)
         }
         live.busy = true
         live.lastUsedAt = Date.now()
@@ -169,7 +237,35 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             else clientSignal.addEventListener('abort', () => abort.abort(), { once: true })
         }
 
+        try {
+            await this.saveMessage(userId, session.agentId, session.id, 'user', prompt)
+        } catch (err) {
+            live.busy = false
+            live.abort = null
+            throw err
+        }
+
         return this.streamTurn(session, live, prompt, abort)
+    }
+
+    async clearChat(userId: string, chatId: string): Promise<AgentChatView> {
+        const { session, agent } = await this.loadChat(userId, chatId)
+        this.assertNotBusy(session.id)
+        this.registry.delete(session.id)
+        session.sdkSessionId = null
+        session.status = 'cleared'
+        await this.sessionRepo.save(session)
+        await this.messageRepo.delete({ userId, sessionId: session.id })
+        return toAgentChatView(session, agent)
+    }
+
+    async removeChat(userId: string, chatId: string): Promise<{ deleted: true }> {
+        const { session } = await this.loadChat(userId, chatId)
+        this.assertNotBusy(session.id)
+        this.registry.delete(session.id)
+        await this.messageRepo.delete({ userId, sessionId: session.id })
+        await this.sessionRepo.delete({ id: session.id, userId })
+        return { deleted: true }
     }
 
     private async *streamTurn(
@@ -178,13 +274,16 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         prompt: string,
         abort: AbortController
     ): AsyncIterable<AgentEvent> {
+        const textParts: string[] = []
+        let fatalErrorMessage: string | null = null
+        let persistedOutput = false
         try {
             for await (const ev of live.adapter.send(prompt, { signal: abort.signal })) {
+                if (ev.type === 'text') textParts.push(ev.text)
+                else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
                 yield ev
             }
         } finally {
-            // 无论正常结束还是客户端断连(.return())，都收尾：
-            // 仅在 turn 结束后持久化句柄（绝不在流中途写，避免崩溃留半截）
             live.busy = false
             live.abort = null
             live.lastUsedAt = Date.now()
@@ -195,70 +294,42 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                     `Failed to persist session handle ${session.id}: ${this.errMsg(err)}`
                 )
             }
+            try {
+                if (!persistedOutput) {
+                    const agentText = textParts.join('').trim()
+                    if (agentText) {
+                        await this.saveMessage(
+                            session.userId,
+                            session.agentId,
+                            session.id,
+                            'agent',
+                            agentText
+                        )
+                    } else if (fatalErrorMessage) {
+                        await this.saveMessage(
+                            session.userId,
+                            session.agentId,
+                            session.id,
+                            'system',
+                            fatalErrorMessage
+                        )
+                    }
+                    persistedOutput = true
+                }
+            } catch (err) {
+                this.logger.error(
+                    `Failed to persist message history for session ${session.id}: ${this.errMsg(err)}`
+                )
+            }
         }
     }
 
-    /** 回写底层 sdkSessionId（首轮捕获 / resume 轮换）+ lastTurnAt + status=active */
     private async persistHandle(session: AgentSession, live: LiveAgent): Promise<void> {
         const latest = live.adapter.sessionId
-        const patch: Partial<AgentSession> = { lastTurnAt: new Date(), status: 'active' }
-        if (latest && latest !== session.sdkSessionId) {
-            patch.sdkSessionId = latest
-            session.sdkSessionId = latest
-        }
+        if (latest && latest !== session.sdkSessionId) session.sdkSessionId = latest
         session.status = 'active'
-        session.lastTurnAt = patch.lastTurnAt!
-        await this.sessionRepo.update({ id: session.id }, patch)
-    }
-
-    // ─────────────────────── 暂存 / 恢复 / 清空 / 删除（按用户隔离） ───────────────────────
-
-    /** 暂存单聊会话：从内存驱逐，可恢复。无会话则为 no-op（返回 none 视图）。 */
-    async suspend(userId: string, agentId: string): Promise<AgentView> {
-        const agent = await this.loadAgent(userId, agentId)
-        const session = await this.findSoloSession(userId, agentId)
-        if (!session) return toAgentView(agent, null)
-        this.assertNotBusy(session.id)
-        this.registry.delete(session.id) // 从内存驱逐；磁盘会话仍在，可后续恢复
-        session.status = 'suspended'
-        await this.sessionRepo.update({ id: session.id }, { status: 'suspended' })
-        return toAgentView(agent, session)
-    }
-
-    /** 恢复单聊会话：用 Agent 配置重建 adapter 并续接底层会话；无会话则新建并预热。 */
-    async restore(userId: string, agentId: string): Promise<AgentView> {
-        const { agent, session } = await this.getOrCreateSoloSession(userId, agentId)
-        session.status = 'active'
-        await this.sessionRepo.update({ id: session.id }, { status: 'active' })
-        await this.getOrRehydrate(session) // 预热活实例（按 sdkSessionId resume）
-        return toAgentView(agent, session)
-    }
-
-    /**
-     * 清空聊天历史 = 丢弃底层会话句柄，下次对话自动开新会话。无会话则为 no-op。
-     * 注意：这是逻辑清空，SDK 落盘的旧会话文件不会被删除（见 README 已知限制）。
-     */
-    async clear(userId: string, agentId: string): Promise<AgentView> {
-        const agent = await this.loadAgent(userId, agentId)
-        const session = await this.findSoloSession(userId, agentId)
-        if (!session) return toAgentView(agent, null)
-        this.assertNotBusy(session.id)
-        this.registry.delete(session.id) // 必须驱逐：活实例内部仍持有旧会话上下文
-        session.sdkSessionId = null
-        session.status = 'cleared'
-        await this.sessionRepo.update({ id: session.id }, { sdkSessionId: null, status: 'cleared' })
-        return toAgentView(agent, session)
-    }
-
-    /** 删除 Agent：连同其会话一并删除，并驱逐相关活实例。 */
-    async remove(userId: string, agentId: string): Promise<{ deleted: true }> {
-        const agent = await this.loadAgent(userId, agentId)
-        const sessions = await this.sessionRepo.find({ where: { agentId, userId } })
-        for (const s of sessions) this.assertNotBusy(s.id) // 任一会话进行中则整体拒绝
-        for (const s of sessions) this.registry.delete(s.id)
-        if (sessions.length > 0) await this.sessionRepo.delete({ agentId, userId })
-        await this.agentRepo.delete({ id: agent.id, userId })
-        return { deleted: true }
+        session.lastTurnAt = new Date()
+        await this.sessionRepo.save(session)
     }
 
     // ─────────────────────────── 内部工具 ───────────────────────────
@@ -269,6 +340,15 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         if (trimmed === '~') return homedir()
         if (trimmed.startsWith('~/')) return resolve(homedir(), trimmed.slice(2))
         return resolve(trimmed)
+    }
+
+    private normalizeTitle(title: string | undefined): string | null {
+        const trimmed = title?.trim() ?? ''
+        if (!trimmed) return null
+        if (trimmed.length > 128) {
+            throw BusinessException.badRequest('Chat title cannot exceed 128 characters')
+        }
+        return trimmed
     }
 
     private async ensureRuntimeDirectories(
@@ -292,6 +372,32 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     private agentSkillsRoot(agentHomeDirectory: string): string {
         return join(agentHomeDirectory, '.claude', 'skills')
+    }
+
+    private async copyAgentSkillDirectories(
+        agentHomeDirectory: string,
+        sessionHomeDirectory: string
+    ): Promise<void> {
+        const sourceRoot = this.agentSkillsRoot(agentHomeDirectory)
+        if (!(await this.isDirectory(sourceRoot))) return
+        const destinationRoot = this.agentSkillsRoot(sessionHomeDirectory)
+        try {
+            const entries = await readdir(sourceRoot, { withFileTypes: true })
+            for (const entry of entries) {
+                const source = join(sourceRoot, entry.name)
+                const destination = join(destinationRoot, entry.name)
+                await cp(source, destination, {
+                    recursive: true,
+                    errorOnExist: true,
+                    force: false
+                })
+            }
+        } catch (err) {
+            throw BusinessException.badRequest(
+                `Failed to copy Agent skills into chat home: ${this.errMsg(err)}`,
+                { sourceRoot, destinationRoot }
+            )
+        }
     }
 
     private async importSkillSourceDirectories(
@@ -412,6 +518,26 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    private async saveMessage(
+        userId: string,
+        agentId: string,
+        sessionId: string,
+        role: AgentMessage['role'],
+        text: string
+    ): Promise<void> {
+        const trimmed = text.trim()
+        if (!trimmed) return
+        await this.messageRepo.save(
+            this.messageRepo.create({
+                userId,
+                agentId,
+                sessionId,
+                role,
+                text: trimmed
+            })
+        )
+    }
+
     private assertSkillsShape(skills: CreateAgentDto['skills']): void {
         if (skills === undefined) return
         if (skills === 'all') return
@@ -420,7 +546,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     }
 
     private mergeSkills(
-        requested: CreateAgentDto['skills'],
+        requested: CreateAgentDto['skills'] | null,
         importedSkillNames: string[]
     ): 'all' | string[] | null {
         if (requested === 'all') return 'all'
@@ -435,7 +561,14 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         return names.size > 0 ? [...names] : null
     }
 
-    /** 取活实例；缺失则按 Agent 配置重建并 resume。用 in-flight 去重避免并发重复构造。 */
+    private mergeMcpServers(
+        base: Record<string, unknown> | null,
+        override: Record<string, unknown> | undefined
+    ): Record<string, unknown> | null {
+        const merged = { ...(base ?? {}), ...(override ?? {}) }
+        return Object.keys(merged).length > 0 ? merged : null
+    }
+
     private async getOrRehydrate(session: AgentSession): Promise<LiveAgent> {
         const existing = this.registry.get(session.id)
         if (existing) {
@@ -458,14 +591,15 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     }
 
     private async buildLiveAgent(session: AgentSession): Promise<LiveAgent> {
-        const agent = await this.agentRepo.findOne({ where: { id: session.agentId } })
+        const agent = await this.agentRepo.findOne({
+            where: { id: session.agentId, userId: session.userId }
+        })
         if (!agent) {
             throw BusinessException.agentUnavailable(
-                `Agent ${session.agentId} missing for session ${session.id}`
+                `Agent ${session.agentId} missing for chat ${session.id}`
             )
         }
 
-        // 运行时凭证来自所引用 Provider；Provider 被删/不可用 → 该 Agent 不可用
         let provider
         try {
             provider = await this.providerService.resolveRuntimeConfig(
@@ -478,7 +612,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             )
         }
 
-        const config = agentToConfig(agent, provider.apiKey, provider.baseUrl, session.id)
+        const config = agentToConfig(agent, session, provider.apiKey, provider.baseUrl, session.id)
 
         let adapter
         try {
@@ -501,7 +635,6 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** 容量控制：超过上限时驱逐 LRU 的空闲(非 busy)活实例。Codex 子进程较重，单独限额。 */
     private evictIfNeeded(incomingVendor: AgentVendor): void {
         if (incomingVendor === 'codex') {
             this.evictVendorOverCap('codex', this.maxLiveCodex - 1)
@@ -536,7 +669,6 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** 校验 vendor 与 Provider 接入类型兼容：claude↔anthropic；codex↔openai-*。 */
     private assertVendorProviderCompatible(vendor: AgentVendor, type: ProviderType): void {
         const compatible =
             vendor === 'claude'
@@ -550,7 +682,6 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** 校验所选 model 属于该 Provider 的 modelList（modelList 为空时无法校验，放行）。 */
     private assertModelInList(model: string, modelList: string[]): void {
         if (modelList.length > 0 && !modelList.includes(model)) {
             throw BusinessException.badRequest(
@@ -560,7 +691,6 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** 创建时校验 vendor 能力，不支持的配置显式报错而非静默丢弃 */
     private assertConfigSupported(dto: CreateAgentDto): void {
         const caps = getCapabilities(dto.vendor)
         const unsupported: string[] = []
@@ -582,14 +712,30 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private assertNotBusy(sessionId: string): void {
-        const live = this.registry.get(sessionId)
-        if (live?.busy) {
-            throw BusinessException.agentBusy(`Agent ${sessionId} is busy; cannot mutate mid-turn`)
+    private assertChatConfigSupported(vendor: AgentVendor, dto: CreateAgentChatDto): void {
+        const caps = getCapabilities(vendor)
+        const unsupported: string[] = []
+        if ((dto.skillSourceDirectories?.length ?? 0) > 0 && !caps.supportsSkills) {
+            unsupported.push('skills')
+        }
+        if (dto.mcpServers && Object.keys(dto.mcpServers).length > 0 && !caps.supportsMcp) {
+            unsupported.push('mcpServers')
+        }
+        if (unsupported.length > 0) {
+            throw BusinessException.agentUnavailable(
+                `Vendor "${vendor}" does not support chat config: ${unsupported.join(', ')}`,
+                { vendor, unsupported, capabilities: caps }
+            )
         }
     }
 
-    /** 按 (userId, agentId) 取 Agent；不存在或非本人 → NOT_FOUND。 */
+    private assertNotBusy(sessionId: string): void {
+        const live = this.registry.get(sessionId)
+        if (live?.busy) {
+            throw BusinessException.agentBusy(`Chat ${sessionId} is busy; cannot mutate mid-turn`)
+        }
+    }
+
     private async loadAgent(userId: string, agentId: string): Promise<Agent> {
         const agent = await this.agentRepo.findOne({ where: { id: agentId, userId } })
         if (!agent) {
@@ -598,31 +744,16 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         return agent
     }
 
-    /** 取某 Agent 的单聊会话（本期一个 Agent 至多一条）；无则 null。 */
-    private findSoloSession(userId: string, agentId: string): Promise<AgentSession | null> {
-        return this.sessionRepo.findOne({ where: { agentId, userId } })
-    }
-
-    /** 取/建某 Agent 的单聊会话（顺带校验 Agent 归属本人）。 */
-    private async getOrCreateSoloSession(
+    private async loadChat(
         userId: string,
-        agentId: string
+        chatId: string
     ): Promise<{ agent: Agent; session: AgentSession }> {
-        const agent = await this.loadAgent(userId, agentId)
-        let session = await this.findSoloSession(userId, agentId)
+        const session = await this.sessionRepo.findOne({ where: { id: chatId, userId } })
         if (!session) {
-            session = await this.sessionRepo.save(
-                this.sessionRepo.create({
-                    userId,
-                    agentId,
-                    vendor: agent.vendor,
-                    sdkSessionId: null,
-                    status: 'active',
-                    lastTurnAt: null
-                })
-            )
+            throw BusinessException.notFound(`Agent chat ${chatId} not found`)
         }
-        return { agent, session }
+        const agent = await this.loadAgent(userId, session.agentId)
+        return { session, agent }
     }
 
     private errMsg(err: unknown): string {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { AgentRuntimeStatus, AgentView, PlatformProviderView } from '@agenthub/shared'
+import type { AgentView, PlatformProviderView } from '@agenthub/shared'
 import { ApiError, agentApi, providerApi } from '../api'
 import AgentCreateDialog from '../components/AgentCreateDialog.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
@@ -15,13 +15,6 @@ const createOpen = ref(false)
 const deleting = ref(false)
 
 const selected = computed(() => agents.value.find((a) => a.id === selectedId.value) ?? null)
-
-const STATUS_LABELS: Record<AgentRuntimeStatus, string> = {
-  active: '会话进行中',
-  suspended: '已暂存',
-  cleared: '已清空',
-  none: '未开始会话'
-}
 
 function providerName(id: string): string {
   return providers.value.find((p) => p.id === id)?.platformName ?? id
@@ -129,7 +122,7 @@ onMounted(load)
           <div class="flex items-center gap-2 mt-1 pl-6">
             <span class="text-xs text-text-muted">{{ agent.vendor }}</span>
             <span class="text-xs text-text-muted">·</span>
-            <span class="text-xs text-text-muted">{{ STATUS_LABELS[agent.status] }}</span>
+            <span class="text-xs text-text-muted">{{ agent.model }}</span>
           </div>
         </button>
       </div>
@@ -141,9 +134,7 @@ onMounted(load)
         <div class="flex items-start justify-between mb-6">
           <div>
             <h2 class="text-2xl font-semibold text-text-main">{{ selected.name }}</h2>
-            <p class="text-sm text-text-muted mt-1">
-              {{ selected.vendor }} · {{ STATUS_LABELS[selected.status] }}
-            </p>
+            <p class="text-sm text-text-muted mt-1">{{ selected.vendor }} · {{ selected.model }}</p>
           </div>
           <BaseButton variant="danger" size="sm" :disabled="deleting" @click="onDelete">
             <span class="material-symbols-outlined text-xl">delete</span>

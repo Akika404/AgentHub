@@ -8,6 +8,12 @@ export interface ApiRequest {
   token?: string
 }
 
+export interface ApiStreamRequest {
+  streamId: string
+  path: string
+  token?: string
+}
+
 /** Response returned by the main-process HTTP proxy. */
 export interface ApiProxyResponse {
   /** HTTP status; 0 when the request never reached the server */
@@ -21,6 +27,9 @@ export interface ApiProxyResponse {
 
 export interface RendererApi {
   request(req: ApiRequest): Promise<ApiProxyResponse>
+  streamStart(req: ApiStreamRequest): Promise<ApiProxyResponse>
+  streamCancel(streamId: string): Promise<void>
+  onStream(name: 'event' | 'error' | 'done', callback: (payload: unknown) => void): () => void
 }
 
 declare global {

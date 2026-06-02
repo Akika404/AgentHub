@@ -12,11 +12,10 @@ import type { AgentVendor } from '../adapter/index.js'
 export type AgentSessionStatus = 'active' | 'suspended' | 'cleared'
 
 /**
- * AgentSession — 一次对话的"句柄"。
+ * AgentSession — 一个单 Agent 聊天会话。
  *
- * 客户端通过其 Agent（agentId）与之对话；本期为「单聊」语义：每个 Agent 懒加载/复用一条会话。
- * 会话内容由底层 SDK 落盘（Claude session 文件 / Codex thread rollout），这里只持久化恢复所需的
- * `sdkSessionId` + 状态，因而能扛进程重启（恢复 = 用 Agent 配置重建 adapter 并 resumeWith(sdkSessionId)）。
+ * 一个 Agent 可以被创建出多条互不影响的单聊会话。每条会话拥有自己的工作目录、
+ * 会话私有 home、SDK 会话句柄、合并后的 skills/MCP 运行配置和 UI 消息历史。
  */
 @Entity('agent_session')
 export class AgentSession {
@@ -36,6 +35,26 @@ export class AgentSession {
     /** 冗余 vendor，免去重建时为取 vendor 而 join agent */
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
+
+    /** 可选聊天标题；为空时客户端按 Agent 名称 + 创建时间展示 */
+    @Column({ type: 'varchar', length: 128, nullable: true })
+    title!: string | null
+
+    /** 本聊天实际工作目录；创建聊天时必填 */
+    @Column({ type: 'varchar', length: 1024 })
+    workingDirectory!: string
+
+    /** 本聊天私有 home；Claude skills 等会话级资源写入这里 */
+    @Column({ type: 'varchar', length: 1024 })
+    sessionHomeDirectory!: string
+
+    /** 合并 Agent 原配置与本聊天导入项后的有效 skills */
+    @Column({ type: 'json', nullable: true })
+    skills!: 'all' | string[] | null
+
+    /** 合并 Agent 原配置与本聊天配置后的有效 MCP servers */
+    @Column({ type: 'json', nullable: true })
+    mcpServers!: Record<string, unknown> | null
 
     /** 底层 SDK 的会话 id（Claude session UUID / Codex thread id）。清空后为 null */
     @Column({ type: 'varchar', length: 128, nullable: true })

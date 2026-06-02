@@ -3,17 +3,20 @@ import { getCapabilities } from '../adapter/index.js'
 import type { Agent } from '../entities/agent.entity.js'
 import type { AgentSession } from '../entities/agent-session.entity.js'
 import type { AgentReasoningEffort, AgentView } from '../dto/agent-view.dto.js'
+import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
 
 type ReasoningEffort = AgentAdapterConfig['reasoningEffort']
 
 /**
- * Agent → AgentAdapterConfig。
+ * (Agent + chat session) -> AgentAdapterConfig.
  *
- * apiKey / baseUrl 不存在 Agent 上，由调用方（Manager）从所引用 Provider 的
- * resolveRuntimeConfig 注入。null 列归一为 undefined，以匹配 adapter config 的 optional 语义。
+ * apiKey / baseUrl are injected by AgentManager from PlatformProvider. Agent
+ * owns the provider/model/systemPrompt/tool policy; each chat owns cwd, private
+ * home, skills and MCP.
  */
 export function agentToConfig(
     agent: Agent,
+    session: AgentSession,
     apiKey: string,
     baseUrl: string,
     idHint?: string
@@ -21,25 +24,20 @@ export function agentToConfig(
     return {
         id: idHint,
         model: agent.model,
-        agentHomeDirectory: agent.agentHomeDirectory,
-        workingDirectory: agent.workingDirectory,
+        agentHomeDirectory: session.sessionHomeDirectory,
+        workingDirectory: session.workingDirectory,
         apiKey,
         baseUrl,
         reasoningEffort: (agent.reasoningEffort as ReasoningEffort) ?? undefined,
         systemPrompt: agent.systemPrompt ?? undefined,
-        skills: agent.skills ?? undefined,
-        mcpServers: agent.mcpServers ?? undefined,
+        skills: session.skills ?? undefined,
+        mcpServers: session.mcpServers ?? undefined,
         allowedTools: agent.allowedTools ?? undefined,
         permissionMode: agent.permissionMode ?? undefined
     }
 }
 
-/**
- * (agent, 单聊会话?) → 对外视图。
- *
- * session 为 null（尚未开过会话）时 status 记为 `none`、无 lastTurnAt / live session。
- */
-export function toAgentView(agent: Agent, session: AgentSession | null): AgentView {
+export function toAgentView(agent: Agent): AgentView {
     return {
         id: agent.id,
         name: agent.name,
@@ -49,9 +47,6 @@ export function toAgentView(agent: Agent, session: AgentSession | null): AgentVi
         agentHomeDirectory: agent.agentHomeDirectory,
         workingDirectory: agent.workingDirectory,
         capabilities: getCapabilities(agent.vendor),
-        status: session ? session.status : 'none',
-        hasLiveSession: session?.sdkSessionId != null,
-        lastTurnAt: session?.lastTurnAt ? session.lastTurnAt.toISOString() : null,
         createdAt: agent.createdAt.toISOString(),
         updatedAt: agent.updatedAt.toISOString(),
         systemPrompt: agent.systemPrompt,
@@ -60,5 +55,29 @@ export function toAgentView(agent: Agent, session: AgentSession | null): AgentVi
         allowedTools: agent.allowedTools,
         permissionMode: agent.permissionMode,
         reasoningEffort: (agent.reasoningEffort as AgentReasoningEffort | null) ?? null
+    }
+}
+
+export function toAgentChatView(session: AgentSession, agent: Agent): AgentChatView {
+    return {
+        id: session.id,
+        agentId: session.agentId,
+        agent: {
+            id: agent.id,
+            name: agent.name,
+            vendor: agent.vendor,
+            model: agent.model,
+            capabilities: getCapabilities(agent.vendor)
+        },
+        title: session.title,
+        workingDirectory: session.workingDirectory,
+        sessionHomeDirectory: session.sessionHomeDirectory,
+        skills: session.skills,
+        mcpServers: session.mcpServers,
+        status: session.status,
+        hasLiveSession: session.sdkSessionId != null,
+        lastTurnAt: session.lastTurnAt ? session.lastTurnAt.toISOString() : null,
+        createdAt: session.createdAt.toISOString(),
+        updatedAt: session.updatedAt.toISOString()
     }
 }

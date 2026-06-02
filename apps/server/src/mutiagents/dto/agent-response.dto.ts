@@ -1,9 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
 import type { AgentCapabilities, AgentPermissionMode, AgentVendor } from '../adapter/index.js'
-import type { AgentReasoningEffort, AgentView, AgentRuntimeStatus } from './agent-view.dto.js'
+import type { AgentReasoningEffort, AgentView } from './agent-view.dto.js'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
-const RUNTIME_STATUSES: AgentRuntimeStatus[] = ['active', 'suspended', 'cleared', 'none']
 const PERMISSION_MODES: AgentPermissionMode[] = [
     'default',
     'acceptEdits',
@@ -42,7 +41,7 @@ export class AgentCapabilitiesDto implements AgentCapabilities {
     supportsResumeById!: boolean
 }
 
-/** 对外返回的 Agent 视图（Agent 配置 + 单聊会话运行时状态的投影） */
+/** 对外返回的 Agent 视图（纯 Agent 配置） */
 export class AgentViewDto implements AgentView {
     @ApiProperty({ description: 'Agent id（客户端用它对话 / 管理）' })
     id!: string
@@ -69,19 +68,6 @@ export class AgentViewDto implements AgentView {
 
     @ApiProperty({ type: AgentCapabilitiesDto, description: '该 vendor 的能力描述' })
     capabilities!: AgentCapabilitiesDto
-
-    @ApiProperty({ enum: RUNTIME_STATUSES, description: '单聊会话状态；尚未开过会话为 none' })
-    status!: AgentRuntimeStatus
-
-    @ApiProperty({ description: '是否有进行中的底层会话（sdkSessionId 非空）' })
-    hasLiveSession!: boolean
-
-    @ApiProperty({
-        type: String,
-        nullable: true,
-        description: '最近一轮对话时间，ISO8601；从未对话为 null'
-    })
-    lastTurnAt!: string | null
 
     @ApiProperty({ description: '创建时间，ISO8601' })
     createdAt!: string

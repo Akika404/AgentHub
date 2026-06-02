@@ -216,102 +216,65 @@ src/platform-provider/
 
 ## 多 Agent 管理模块（`src/mutiagents/`）
 
-用户「虚拟员工」（Agent）的创建、管理与单聊对话（SSE 流）。每个 Agent 归属创建它的用户，整模块复用 `user` 模块导出的
-`JwtAuthGuard` 鉴权。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
+用户「虚拟员工」（Agent）的创建、管理与单 Agent 聊天会话。每个 Agent 归属创建它的用户；同一个 Agent 可以创建多个互不影响的
+`AgentSession`。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
 
 ### 目录结构
 
 ```
 src/mutiagents/
-├── agents.module.ts                  # 装配 Agent/AgentSession 实体；import UserModule(复用 JwtAuthGuard) + PlatformProviderModule(取凭证)
-├── agents.controller.ts              # @Controller('agents')，整体 @UseGuards(JwtAuthGuard)；REST + SSE
-├── agent-manager.service.ts          # 注册表 + 生命周期：创建/对话/暂存/恢复/清空/删除；按 userId 隔离
-├── live-agent.ts                     # LiveAgent 接口（内存活实例：adapter + busy + abort + lastUsedAt）
+├── agents.module.ts                  # 装配实体和 controllers
+├── agents.controller.ts              # /agents：Agent 配置管理
+├── agent-chats.controller.ts         # /agent-chats：单 Agent 聊天会话
+├── agent-manager.service.ts          # Agent + chat lifecycle；按 userId 隔离
+├── live-agent.ts                     # 内存活实例：adapter + busy + abort + lastUsedAt
 ├── entities/
-│   ├── agent.entity.ts               # @Entity('agent')：用户拥有的 Agent 配置
-│   └── agent-session.entity.ts       # @Entity('agent_session')：会话句柄
-├── dto/                              # create-agent 入参、converse 入参、agent-view 契约(interface)、agent-response 文档类
-├── mappers/agent.mapper.ts           # Agent → adapter 配置；(agent, session) → 对外视图
-└── adapter/                          # 统一 Agent 适配层（Claude / Codex → 同一套 AgentEvent）；详见 adapter/README.md
+│   ├── agent.entity.ts               # Agent 配置
+│   ├── agent-session.entity.ts       # 单 Agent 聊天会话
+│   └── agent-message.entity.ts       # 按 sessionId 隔离的 UI 消息历史
+└── adapter/                          # Claude / Codex -> AgentEvent
     ├── types.ts                      # AgentVendor / AgentEvent / AgentAdapter / AgentAdapterConfig / 能力描述
     ├── capabilities.ts               # 各 vendor 能力矩阵
     ├── claude.ts                     # ClaudeAdapter（Claude Agent SDK）
     ├── codex.ts                      # CodexAdapter（OpenAI Codex SDK）
     └── index.ts                      # 对外导出 + createAgent / getCapabilities 工厂
+
 ```
 
-### 三层模型
+### 模型
 
-- **Agent**（`agent` 表）：用户拥有的不变配置——`name`、`vendor`（claude/codex）、`platformProviderId` + `model`
-  、Agent 私有目录、工作目录、systemPrompt、skills、mcp、tools 等。**不存 `apiKey` / `baseUrl`**。
-- **AgentSession**（`agent_session` 表）：会话句柄——`userId` + `agentId` + `sdkSessionId` + 状态，持久化以扛进程重启。
-- **LiveAgent**（进程内存，不入库）：内存中的 adapter 活实例 + 并发锁 + LRU 时间戳。
-
-**Agent 与会话解耦**：创建 Agent 只落配置（进 AgentList），不开会话；本期单聊按 `agentId` 懒加载/复用一条会话。把多个 Agent
-拉进同一会话的**群聊**是后续独立模块。
-
-**凭证来自 Provider**：Agent 引用一个 `platformProviderId`，运行时调 `PlatformProviderService.resolveRuntimeConfig` 取
-`baseUrl` + 明文 `apiKey` 注入 adapter（仅后端内部）。创建时校验 vendor↔Provider 类型兼容（`claude`↔`anthropic`，`codex`↔
-`openai-*`）、`model` 属于 Provider 的 `modelList`。
+- **Agent**（`agent` 表）：可复用配置，包含 vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等；不存
+  `apiKey/baseUrl`。
+- **AgentSession**（`agent_session` 表）：一个单 Agent 聊天，包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、
+  SDK 句柄和状态。
+- **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
+- **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法       | 路径                                       | 功能                                          |
-| ---------- | ------------------------------------------ | --------------------------------------------- |
-| POST       | `/api/agents`                              | 创建 Agent 配置（不开会话），返回 `AgentView` |
-| GET        | `/api/agents`                              | 列出当前用户的 AgentList                      |
-| GET        | `/api/agents/:agentId`                     | 查询单个 Agent                                |
-| DELETE     | `/api/agents/:agentId`                     | 删除 Agent（连同其会话）                      |
-| GET `@Sse` | `/api/agents/:agentId/converse?prompt=...` | 单聊（懒加载会话），SSE 推 `AgentEvent`       |
-| POST       | `/api/agents/:agentId/suspend`             | 暂存单聊会话（从内存驱逐，可恢复）            |
-| POST       | `/api/agents/:agentId/restore`             | 恢复单聊会话并预热活实例                      |
-| POST       | `/api/agents/:agentId/clear`               | 清空单聊会话（丢弃句柄，下次开新会话）        |
+| 方法       | 路径                                             | 功能                                  |
+| ---------- | ------------------------------------------------ | ------------------------------------- |
+| POST       | `/api/agents`                                    | 创建 Agent 配置，不开聊天             |
+| GET        | `/api/agents`                                    | 列出当前用户 AgentList                |
+| GET        | `/api/agents/:agentId`                           | 查询单个 Agent                        |
+| DELETE     | `/api/agents/:agentId`                           | 删除 Agent，并删除其全部聊天和消息    |
+| POST       | `/api/agent-chats`                               | 创建单 Agent 聊天                     |
+| GET        | `/api/agent-chats`                               | 列出当前用户单 Agent 聊天             |
+| GET        | `/api/agent-chats/:chatId`                       | 查询聊天详情                          |
+| GET        | `/api/agent-chats/:chatId/messages`              | 查询聊天消息历史                      |
+| GET `@Sse` | `/api/agent-chats/:chatId/converse?prompt=...`   | 聊天 SSE 对话流                       |
+| POST       | `/api/agent-chats/:chatId/clear`                 | 清空聊天句柄和 UI 消息历史            |
+| DELETE     | `/api/agent-chats/:chatId`                       | 删除聊天                              |
 
-- 所有操作按 `@CurrentUser()` 隔离，非本人 Agent 一律 `NOT_FOUND`。
-- 创建 Agent 时，`agentHomeDirectory` 不传则默认等于 `workingDirectory`；Claude Agent 会在该私有目录下创建
-  `.claude/skills`。`skillSourceDirectories` 是 create-only 输入，支持传入单个含 `SKILL.md` 的 skill 目录、`.claude/skills`
-  根目录，或包含多个 skill 子目录的目录；后端会复制到 `agentHomeDirectory/.claude/skills/<skill-name>`，并把导入的 skill
-  名称并入 `skills` 启用列表。
-- Claude 运行时设置 `CLAUDE_CONFIG_DIR=<agentHomeDirectory>/.claude` 且 `settingSources=['user','project']`：`user`
-  source 加载 Agent 私有 skills，`project` source 加载当前 `workingDirectory` 的项目级 `CLAUDE.md` / `.claude/settings.json`。
-  因此未来群聊把 `workingDirectory` 切到群聊项目目录时，Agent 私有 skills 仍可加载。
-- SSE 路由用 `@SkipEnvelope()`；浏览器原生 `EventSource` 不便带 `Authorization` 头，前端需用 fetch-stream 或后续支持 query
-  token。
+创建聊天时 `workingDirectory` 必填；system prompt 不在聊天上设置，运行时继承 Agent。Claude 聊天会把 Agent 原 skills 复制到会话私有
+home，再导入本聊天指定的 skill 文件夹；MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
 
-### 并发与生命周期
+### 数据库与限制
 
-- **单会话串行**：进行中的 turn 再次对话 → `AGENT_BUSY`（Manager 同步 check-and-set，非裸 throw）。
-- **驱逐**：LRU + 上限（`AGENT_MAX_LIVE` 默认 30；Codex 子进程较重，`AGENT_MAX_LIVE_CODEX` 默认 8），仅驱逐空闲（非 busy）实例；另有
-  idle-TTL 清扫（`AGENT_IDLE_TTL_MS` 默认 15min）。Codex 子进程无 dispose API，驱逐只能丢引用靠 GC，故设活跃实例上限兜底。
-- **句柄回写**：仅在每轮结束（`done`）持久化 `sdkSessionId`，绝不在流中途写；缺失活实例时按 Agent 配置重建 adapter 并
-  `resumeWith(sdkSessionId)` 续接，故能扛进程重启（仅恢复已完成轮次，崩溃时进行中的 turn 丢失，客户端需重发）。
-
-### 数据库
-
-两张表 `agent` / `agent_session`，均按 `userId` 隔离。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
+三张表 `agent` / `agent_session` / `agent_message`，均按 `userId` 隔离。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
 `sql/agent_manager.sql`，**真实结构以实体定义为准**。
 
-### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
-
-| 码                       | HTTP | 含义                                         |
-| ------------------------ | ---- | -------------------------------------------- |
-| `2001 UNAUTHORIZED`      | 401  | 缺少/无效/已失效的 token                     |
-| `3001 BAD_REQUEST`       | 400  | vendor↔Provider 类型不兼容等入参错误         |
-| `4000 NOT_FOUND`         | 404  | Agent 不存在或非本人                         |
-| `5001 AGENT_UNAVAILABLE` | 503  | 运行时凭证解析失败（如被引用 Provider 已删） |
-| `5002 AGENT_BUSY`        | 409  | 会话已有进行中的 turn                        |
-
-### 已知限制
-
-- 群聊会话留给后续模块；本期仅单聊（一个 Agent 至多一条会话）。
-- Agent 配置创建后不可编辑（无 PATCH）；`name` 同一用户下不强制唯一。
-- 删除被 Agent 引用的 Provider 不级联，运行时凭证解析失败 → `AGENT_UNAVAILABLE`。
-- **权限审批**：本期 auto-approve（Claude `bypassPermissions` / Codex `approvalPolicy:"never"`），已留
-  `config.permissionMode` + `canUseTool` seam，交互审批为 phase-2。
-- **厂商不对称**：Codex 不支持 systemPrompt / skills / MCP（见 `capabilities()`），创建时显式拒绝。
-- Claude `skills` 是启用过滤器而不是安装 API；AgentHub 通过 `skillSourceDirectories` 在创建时把本地 skill 文件夹复制到该
-  Agent 私有目录，再把名称传给 SDK。
-- `clear()` 仅逻辑清空：SDK 落盘的旧会话文件不删除（disk 增长、旧会话技术上仍可 resume）→ phase-2 清理任务。
+已知限制：群聊未实现；聊天消息历史暂不分页；clear 不删除 SDK 已落盘的旧会话文件；Codex 无显式 dispose API，仍依赖实例上限和 GC。
 
 ## 下一步建议
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ChatSummary } from '../api'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
@@ -11,7 +12,40 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'select', id: string): void
   (e: 'search', value: string): void
+  (e: 'create-chat'): void
 }>()
+
+const createMenuOpen = ref(false)
+
+function toggleCreateMenu(): void {
+  createMenuOpen.value = !createMenuOpen.value
+}
+
+function onCreateChat(): void {
+  createMenuOpen.value = false
+  emit('create-chat')
+}
+
+function onGlobalMouseDown(event: MouseEvent): void {
+  if (!createMenuOpen.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('[data-create-chat-menu]')) return
+  createMenuOpen.value = false
+}
+
+function onKey(event: KeyboardEvent): void {
+  if (event.key === 'Escape') createMenuOpen.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('mousedown', onGlobalMouseDown, true)
+  window.addEventListener('keydown', onKey)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('mousedown', onGlobalMouseDown, true)
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -32,12 +66,39 @@ const emit = defineEmits<{
           @input="emit('search', ($event.target as HTMLInputElement).value)"
         />
       </div>
-      <button
-        class="w-8 h-8 flex items-center justify-center bg-surface-hover rounded hover:bg-gray-200 text-text-muted transition-colors"
-        title="新建会话"
-      >
-        <span class="material-symbols-outlined text-2xl">add</span>
-      </button>
+      <div class="relative" data-create-chat-menu>
+        <button
+          class="w-8 h-8 flex items-center justify-center bg-surface-hover rounded hover:bg-gray-200 text-text-muted transition-colors"
+          title="新建会话"
+          type="button"
+          @click.stop="toggleCreateMenu"
+        >
+          <span class="material-symbols-outlined text-2xl">add</span>
+        </button>
+        <Transition name="pop">
+          <div
+            v-if="createMenuOpen"
+            class="absolute right-0 top-10 z-30 w-[156px] rounded-md border border-gray-150 bg-white py-1 shadow-md"
+          >
+            <button
+              type="button"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
+              @click="onCreateChat"
+            >
+              <span class="material-symbols-outlined text-2xl text-text-muted">chat</span>
+              <span>创建聊天</span>
+            </button>
+            <button
+              type="button"
+              disabled
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-gray-400 cursor-not-allowed"
+            >
+              <span class="material-symbols-outlined text-2xl text-gray-400">groups</span>
+              <span>创建群聊</span>
+            </button>
+          </div>
+        </Transition>
+      </div>
     </div>
     <div class="flex-1 overflow-y-auto py-1">
       <div v-if="loading">

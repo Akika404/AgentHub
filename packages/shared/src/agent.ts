@@ -5,8 +5,70 @@
 
 export type AgentVendor = 'claude' | 'codex'
 
-/** Single-chat session runtime status; `none` = no session opened yet. */
-export type AgentRuntimeStatus = 'active' | 'suspended' | 'cleared' | 'none'
+export type AgentChatStatus = 'active' | 'suspended' | 'cleared'
+
+export interface AgentUsage {
+  inputTokens?: number
+  outputTokens?: number
+  cachedInputTokens?: number
+  reasoningTokens?: number
+  totalCostUSD?: number
+}
+
+export type ToolCallStatus = 'started' | 'completed' | 'failed'
+export type AgentTodoStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface AgentTodoItem {
+  text: string
+  status: AgentTodoStatus
+}
+
+export type AgentEvent =
+  | { type: 'session_started'; vendor: AgentVendor; sessionId: string }
+  | { type: 'turn_started'; vendor: AgentVendor }
+  | { type: 'text'; vendor: AgentVendor; text: string; itemId?: string }
+  | { type: 'thinking'; vendor: AgentVendor; text: string; itemId?: string }
+  | {
+      type: 'tool_use'
+      vendor: AgentVendor
+      id: string
+      name: string
+      input: unknown
+      status: ToolCallStatus
+    }
+  | {
+      type: 'tool_result'
+      vendor: AgentVendor
+      toolUseId: string
+      output: unknown
+      isError?: boolean
+    }
+  | { type: 'todo'; vendor: AgentVendor; items: AgentTodoItem[] }
+  | {
+      type: 'turn_completed'
+      vendor: AgentVendor
+      finalText?: string
+      usage?: AgentUsage
+    }
+  | { type: 'error'; vendor: AgentVendor; message: string; fatal?: boolean }
+  | {
+      type: 'done'
+      vendor: AgentVendor
+      success: boolean
+      finalText?: string
+      usage?: AgentUsage
+    }
+
+export type AgentChatMessageRole = 'user' | 'agent' | 'system'
+
+export interface AgentChatMessageView {
+  id: string
+  chatId: string
+  agentId: string
+  role: AgentChatMessageRole
+  text: string
+  createdAt: string
+}
 
 /** Vendor capability matrix (asymmetric: codex lacks systemPrompt/skills/mcp). */
 export interface AgentCapabilities {
@@ -30,7 +92,7 @@ export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhig
 /**
  * Per-vendor capability matrix. Mirrors
  * `apps/server/src/mutiagents/adapter/capabilities.ts` (single source of truth);
- * lets the create form gate fields without constructing an adapter.
+ * lets forms gate fields without constructing an adapter.
  */
 export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {
   claude: {
@@ -47,7 +109,7 @@ export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {
   }
 }
 
-/** vendor ↔ provider type compatibility: claude↔anthropic; codex↔openai-*. */
+/** vendor <-> provider type compatibility: claude<->anthropic; codex<->openai-*. */
 export function isVendorProviderCompatible(
   vendor: AgentVendor,
   type: import('./provider').ProviderType
@@ -58,15 +120,11 @@ export function isVendorProviderCompatible(
 }
 
 /**
- * Outward agent view (config + single-chat runtime status projection).
- *
- * `systemPrompt` / `skills` / `mcpServers` / `allowedTools` / `permissionMode` /
- * `reasoningEffort` are the detail-panel config fields; always present, `null`
- * when unset (or when the vendor doesn't support them — e.g. codex lacks
- * systemPrompt/skills/mcp). This shared type IS the contract.
+ * Outward agent view. It is pure Agent configuration and intentionally carries
+ * no chat/session runtime state.
  */
 export interface AgentView {
-  /** Agent id (client uses it to converse / manage) */
+  /** Agent id (client uses it to manage or start chats) */
   id: string
   /** display name */
   name: string
@@ -74,17 +132,12 @@ export interface AgentView {
   /** referenced platform_provider.id */
   platformProviderId: string
   model: string
-  /** Agent-private persisted home directory; single-chat cwd defaults to this. */
+  /** Agent-private persisted home directory. */
   agentHomeDirectory: string
+  /** Agent default working directory; a chat can override it. */
   workingDirectory: string
   /** vendor capability description */
   capabilities: AgentCapabilities
-  /** single-chat session status; `none` before any session */
-  status: AgentRuntimeStatus
-  /** whether an underlying session exists (sdkSessionId non-null) */
-  hasLiveSession: boolean
-  /** last turn time, ISO8601; null if never conversed */
-  lastTurnAt: string | null
   createdAt: string
   updatedAt: string
 
@@ -97,8 +150,36 @@ export interface AgentView {
   reasoningEffort: AgentReasoningEffort | null
 }
 
+export interface AgentChatAgentSummary {
+  id: string
+  name: string
+  vendor: AgentVendor
+  model: string
+  capabilities: AgentCapabilities
+}
+
+export interface AgentChatView {
+  /** Chat/session id. Use this id for messages, converse, clear and delete. */
+  id: string
+  agentId: string
+  agent: AgentChatAgentSummary
+  /** User-supplied title; null means the client should render an automatic title. */
+  title: string | null
+  workingDirectory: string
+  sessionHomeDirectory: string
+  /** Effective skills after merging Agent config with this chat's imported skills. */
+  skills: 'all' | string[] | null
+  /** Effective MCP config after shallow merge; chat keys override Agent keys. */
+  mcpServers: Record<string, unknown> | null
+  status: AgentChatStatus
+  hasLiveSession: boolean
+  lastTurnAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 /**
- * Create input. baseUrl/apiKey are not passed here — referenced via
+ * Create Agent input. baseUrl/apiKey are not passed here: referenced via
  * `platformProviderId`; `model` must belong to that provider's modelList.
  */
 export interface CreateAgentPayload {
@@ -116,4 +197,18 @@ export interface CreateAgentPayload {
   allowedTools?: string[]
   permissionMode?: AgentPermissionMode
   reasoningEffort?: AgentReasoningEffort
+}
+
+/**
+ * Create single-Agent chat input. systemPrompt is intentionally absent; chats
+ * inherit the Agent-level system prompt.
+ */
+export interface CreateAgentChatPayload {
+  agentId: string
+  title?: string
+  workingDirectory: string
+  /** Local skill directories copied into this chat's private home. */
+  skillSourceDirectories?: string[]
+  /** MCP servers shallow-merged with the Agent-level config. */
+  mcpServers?: Record<string, unknown>
 }

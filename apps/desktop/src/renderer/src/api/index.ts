@@ -10,7 +10,7 @@ import type { AgentHubApi } from '@agenthub/shared'
 export const api: AgentHubApi = mockApi
 
 export { authApi } from './auth'
-export { agentApi } from './agents'
+export { agentApi, agentChatApi } from './agents'
 export { providerApi } from './providers'
 export { ApiError } from './http'
 

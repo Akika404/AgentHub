@@ -1,0 +1,26 @@
+import type { AgentCapabilities, AgentVendor } from '../adapter/index.js'
+import type { AgentSessionStatus } from '../entities/agent-session.entity.js'
+
+export interface AgentChatAgentSummary {
+    id: string
+    name: string
+    vendor: AgentVendor
+    model: string
+    capabilities: AgentCapabilities
+}
+
+export interface AgentChatView {
+    id: string
+    agentId: string
+    agent: AgentChatAgentSummary
+    title: string | null
+    workingDirectory: string
+    sessionHomeDirectory: string
+    skills: 'all' | string[] | null
+    mcpServers: Record<string, unknown> | null
+    status: AgentSessionStatus
+    hasLiveSession: boolean
+    lastTurnAt: string | null
+    createdAt: string
+    updatedAt: string
+}
