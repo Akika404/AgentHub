@@ -111,7 +111,7 @@ src/user/
 | DELETE | `/api/user/me`       | 注销账号（逻辑删除），并吊销当前 token             | 是   |
 
 - `account` = 登录名（唯一不可变）；`nickname` = 展示名；`email` / `avatar` 注册后可选补充。
-- `POST /api/user/update` 为部分更新：字段省略保留原值、显式传 `null` 清空；当前仅开放 `nickname` / `avatar`（`account` 不可变、`email` 暂未开放、`password` 应走独立的校验旧密码接口）。
+- `POST /api/user/update` 为部分更新：字段省略保留原值、显式传 `null` 清空；当前仅开放 `nickname` / `avatar`（头像支持 URL 或 <= 256 KiB 的压缩 data URL；`account` 不可变、`email` 暂未开放、`password` 应走独立的校验旧密码接口）。
 - 受保护接口需带 `Authorization: Bearer <token>`；Scalar UI 中点右上 **Authorize** 填入即可。
 
 ### 认证机制

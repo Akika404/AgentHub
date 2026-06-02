@@ -24,7 +24,7 @@ export class UserViewDto implements UserView {
     @ApiProperty({ type: String, nullable: true, description: '邮箱' })
     email!: string | null
 
-    @ApiProperty({ type: String, nullable: true, description: '头像 URL / data URL' })
+    @ApiProperty({ type: String, nullable: true, description: '头像 URL / 压缩后的 data URL' })
     avatar!: string | null
 
     @ApiProperty({ enum: STATUSES, description: '用户状态' })

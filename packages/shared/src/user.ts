@@ -12,7 +12,7 @@ export interface UserView {
   /** display name */
   nickname: string | null
   email: string | null
-  /** avatar URL / data URL */
+  /** avatar URL / compact data URL (<= 256 KiB) */
   avatar: string | null
   status: UserStatus
   /** ISO8601 */
@@ -46,5 +46,6 @@ export interface LoginPayload {
  */
 export interface UpdateUserPayload {
   nickname?: string | null
+  /** avatar URL / compact data URL (<= 256 KiB) */
   avatar?: string | null
 }

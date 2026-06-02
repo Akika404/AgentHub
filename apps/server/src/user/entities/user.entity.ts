@@ -40,8 +40,8 @@ export class User {
     @Column({ type: 'varchar', length: 255, nullable: true })
     email!: string | null
 
-    /** 头像 URL 或 data URL */
-    @Column({ type: 'varchar', length: 1024, nullable: true })
+    /** 头像 URL 或压缩后的 data URL */
+    @Column({ type: 'mediumtext', nullable: true })
     avatar!: string | null
 
     @Column({ type: 'varchar', length: 16, default: 'active' })

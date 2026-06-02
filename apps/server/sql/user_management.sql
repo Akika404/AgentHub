@@ -23,7 +23,7 @@ CREATE TABLE `user`
     `passwordHash` varchar(100) NOT NULL COMMENT 'bcrypt 哈希，绝不存明文；实体侧 select:false 默认不随查询返回',
     `nickname`     varchar(64)           DEFAULT NULL COMMENT '展示名；可空',
     `email`        varchar(255)          DEFAULT NULL COMMENT '邮箱；可空且唯一（MySQL 唯一索引允许多个 NULL）',
-    `avatar`       varchar(1024)         DEFAULT NULL COMMENT '头像 URL 或 data URL；可空',
+    `avatar`       mediumtext            DEFAULT NULL COMMENT '头像 URL 或压缩后的 data URL；可空',
     `status`       varchar(16)  NOT NULL DEFAULT 'active' COMMENT '用户状态：active 活跃 / deactivated 已注销（逻辑删除，不可再登录）',
     `createdAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（@CreateDateColumn，微秒精度）',
     `updatedAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（@UpdateDateColumn，行更新时自动刷新）',

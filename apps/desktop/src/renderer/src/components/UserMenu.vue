@@ -17,6 +17,10 @@ const saving = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
+const AVATAR_CANVAS_SIZE = 256
+const AVATAR_MAX_DATA_URL_LENGTH = 256 * 1024
+const AVATAR_QUALITY_STEPS = [0.9, 0.8, 0.7, 0.6]
+
 function toggleMenu(): void {
   menuOpen.value = !menuOpen.value
 }
@@ -55,22 +59,78 @@ function pickAvatar(): void {
   fileInput.value?.click()
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result === 'string') resolve(result)
+      else reject(new Error('Invalid avatar file'))
+    }
+    reader.onerror = () => reject(new Error('Failed to read avatar file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Invalid avatar image'))
+    image.src = src
+  })
+}
+
+async function createAvatarDataUrl(file: File): Promise<string> {
+  const source = await readFileAsDataUrl(file)
+  const image = await loadImage(source)
+  const canvas = document.createElement('canvas')
+  canvas.width = AVATAR_CANVAS_SIZE
+  canvas.height = AVATAR_CANVAS_SIZE
+
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is not available')
+
+  const width = image.naturalWidth || image.width
+  const height = image.naturalHeight || image.height
+  const sourceSize = Math.min(width, height)
+  const sourceX = (width - sourceSize) / 2
+  const sourceY = (height - sourceSize) / 2
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE)
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceSize,
+    sourceSize,
+    0,
+    0,
+    AVATAR_CANVAS_SIZE,
+    AVATAR_CANVAS_SIZE
+  )
+
+  for (const quality of AVATAR_QUALITY_STEPS) {
+    const dataUrl = canvas.toDataURL('image/jpeg', quality)
+    if (dataUrl.length <= AVATAR_MAX_DATA_URL_LENGTH) return dataUrl
+  }
+
+  throw new Error('Avatar image is too large')
+}
+
 function onFileChange(event: Event): void {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file || !file.type.startsWith('image/')) return
-  const reader = new FileReader()
-  reader.onload = async () => {
-    const result = reader.result
-    if (typeof result !== 'string') return
-    try {
-      await updateProfile({ avatar: result })
-    } catch {
+  void createAvatarDataUrl(file)
+    .then((avatar) => updateProfile({ avatar }))
+    .catch((err) => {
+      console.warn('Failed to update avatar', err)
       /* surfaced elsewhere; avoid blocking the sidebar */
-    }
-  }
-  reader.readAsDataURL(file)
+    })
 }
 
 async function onLogout(): Promise<void> {

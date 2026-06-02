@@ -1,5 +1,7 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator'
 
+const AVATAR_MAX_LENGTH = 256 * 1024 // 256 KiB compact data URL
+
 /**
  * 更新当前用户资料的入参（部分更新）。
  *
@@ -14,9 +16,9 @@ export class UpdateUserDto {
     @MaxLength(64)
     nickname?: string | null
 
-    /** 头像 URL / data URL；传 null 清空 */
+    /** 头像 URL / 压缩后的 data URL；传 null 清空 */
     @IsOptional()
     @IsString()
-    @MaxLength(1024)
+    @MaxLength(AVATAR_MAX_LENGTH)
     avatar?: string | null
 }

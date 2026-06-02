@@ -59,7 +59,7 @@ user/
 - `passwordHash` `@Column({ type: 'varchar', length: 100, select: false })` — **`select: false` 防御性默认不加载**（类比 Spring 的 `@JsonIgnore` + 显式查询）；登录时用 `addSelect`/`select` 显式取。
 - `nickname` `@Column varchar(64) nullable`
 - `email` `@Column varchar(255) nullable` + `@Index({ unique: true })`（MySQL 唯一索引允许多个 NULL）
-- `avatar` `@Column varchar(1024) nullable`（URL 或 data URL）
+- `avatar` `@Column mediumtext nullable`（URL 或 <= 256 KiB 的压缩 data URL）
 - `status` `@Column({ type: 'varchar', length: 16, default: 'active' })`，类型 `UserStatus = 'active' | 'deactivated'`
 - `createdAt` / `updatedAt`
 
@@ -76,7 +76,7 @@ user/
 | `passwordHash` | `varchar(100)` | NOT NULL | bcrypt 哈希；实体侧 `select:false` 默认不查出 |
 | `nickname` | `varchar(64)` | NULL | 展示名 |
 | `email` | `varchar(255)` | NULL, UNIQUE | 可空且唯一（MySQL 唯一索引允许多个 NULL） |
-| `avatar` | `varchar(1024)` | NULL | 头像 URL 或 data URL |
+| `avatar` | `mediumtext` | NULL | 头像 URL 或 <= 256 KiB 的压缩 data URL |
 | `status` | `varchar(16)` | NOT NULL, DEFAULT `'active'` | `active` / `deactivated`（逻辑删除） |
 | `createdAt` | `datetime(6)` | NOT NULL, DEFAULT `CURRENT_TIMESTAMP(6)` | 创建时间 |
 | `updatedAt` | `datetime(6)` | NOT NULL, DEFAULT `CURRENT_TIMESTAMP(6)` ON UPDATE | 更新时间 |
@@ -88,7 +88,7 @@ CREATE TABLE `user` (
   `passwordHash` varchar(100)  NOT NULL COMMENT 'bcrypt 哈希，绝不存明文',
   `nickname`     varchar(64)   DEFAULT NULL COMMENT '展示名',
   `email`        varchar(255)  DEFAULT NULL COMMENT '邮箱，可空且唯一',
-  `avatar`       varchar(1024) DEFAULT NULL COMMENT '头像 URL / data URL',
+  `avatar`       mediumtext    DEFAULT NULL COMMENT '头像 URL / 压缩后的 data URL',
   `status`       varchar(16)   NOT NULL DEFAULT 'active' COMMENT 'active / deactivated',
   `createdAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updatedAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),

@@ -18,6 +18,13 @@ interface NormalizedError {
     details?: unknown
 }
 
+interface HttpLikeError {
+    status?: number
+    statusCode?: number
+    message?: string
+    type?: string
+}
+
 /**
  * Global exception filter — converts every error thrown anywhere in the request
  * lifecycle into the unified ApiResponse envelope.
@@ -78,10 +85,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
             }
         }
 
+        const httpLike = this.normalizeHttpLikeError(exception)
+        if (httpLike) return httpLike
+
         return {
             httpStatus: HttpStatus.INTERNAL_SERVER_ERROR,
             code: ErrorCode.INTERNAL_ERROR,
             message: 'Internal server error'
+        }
+    }
+
+    private normalizeHttpLikeError(exception: unknown): NormalizedError | null {
+        if (!exception || typeof exception !== 'object') return null
+
+        const candidate = exception as HttpLikeError
+        const httpStatus = candidate.statusCode ?? candidate.status
+        if (typeof httpStatus !== 'number' || httpStatus < 400 || httpStatus > 599) return null
+
+        return {
+            httpStatus,
+            code: this.mapHttpStatusToCode(httpStatus),
+            message:
+                candidate.type === 'entity.too.large'
+                    ? 'Request payload too large'
+                    : (candidate.message ?? 'Request payload too large')
         }
     }
 
@@ -109,6 +136,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
                 return ErrorCode.NOT_FOUND
             case HttpStatus.CONFLICT:
                 return ErrorCode.CONFLICT
+            case HttpStatus.PAYLOAD_TOO_LARGE:
+                return ErrorCode.BAD_REQUEST
             case HttpStatus.BAD_GATEWAY:
                 return ErrorCode.UPSTREAM_ERROR
             case HttpStatus.SERVICE_UNAVAILABLE:

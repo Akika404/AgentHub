@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { apiReference } from '@scalar/nestjs-api-reference'
 import type { NextFunction, Request, Response } from 'express'
@@ -12,6 +13,7 @@ import { BusinessException } from './common/exceptions/business.exception.js'
 import { ErrorCode } from './common/exceptions/error-code.js'
 
 const httpLogger = new Logger('HTTP')
+const API_BODY_LIMIT = '512kb'
 
 /**
  * 挂载 API 文档（Scalar UI）。
@@ -43,8 +45,11 @@ function setupApiDocs(app: Parameters<typeof SwaggerModule.createDocument>[0]): 
 }
 
 async function bootstrap(): Promise<void> {
-    const app = await NestFactory.create(AppModule)
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false })
     const config = app.get(ConfigService)
+
+    app.useBodyParser('json', { limit: API_BODY_LIMIT })
+    app.useBodyParser('urlencoded', { limit: API_BODY_LIMIT, extended: true })
 
     app.use((req: Request, res: Response, next: NextFunction) => {
         if (!(req.originalUrl ?? req.url).startsWith('/api')) {
