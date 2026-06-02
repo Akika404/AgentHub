@@ -8,6 +8,13 @@ This skill guides creation of distinctive, production-grade frontend interfaces 
 
 The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
 
+## AgentHub Project UI Rules
+
+When working in this repository's Electron/Vue desktop app:
+
+- Keep modal form field labels consistent: use `text-sm font-medium text-text-main` for the main label text, and `font-normal text-text-muted` for parenthetical helper text inside the label.
+- For shared select controls, keep the right-side indicator visually inset from the edge. Prefer an internal icon indicator such as Material Symbols `expand_more` placed around `right-3`, and reserve enough right padding on the select text, such as `pr-9`.
+
 ## Design Thinking
 
 Before coding, understand the context and commit to a BOLD aesthetic direction:
