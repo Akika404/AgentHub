@@ -72,7 +72,7 @@ onMounted(load)
 <template>
   <div class="flex flex-1 h-full min-w-0">
     <!-- settings sidebar -->
-    <div class="w-[200px] flex-shrink-0 border-r border-surface-border bg-surface flex flex-col">
+    <div class="w-[240px] flex-shrink-0 border-r border-surface-border bg-surface flex flex-col">
       <header class="h-16 px-4 flex items-center border-b border-surface-border flex-shrink-0">
         <h1 class="font-semibold text-text-main text-lg">设置</h1>
       </header>

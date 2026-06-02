@@ -14,9 +14,9 @@ const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'add'): void }>(
 <template>
   <div class="w-[260px] flex-shrink-0 border-r border-surface-border bg-surface flex flex-col">
     <header
-      class="h-14 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
+      class="h-16 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
     >
-      <span class="text-base font-medium text-text-main">Provider 列表</span>
+      <span class="text-lg font-semibold text-text-main">Provider 列表</span>
       <BaseButton size="sm" @click="emit('add')">
         <span class="material-symbols-outlined text-lg">add</span>
         添加

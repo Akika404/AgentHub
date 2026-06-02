@@ -59,7 +59,7 @@ async function onRefresh(): Promise<void> {
 
 <template>
   <div class="flex-1 min-w-0 bg-background overflow-y-auto">
-    <div class="max-w-[680px] mx-auto p-6">
+    <div class="max-w-[600px] mx-auto p-6">
       <div class="flex items-start justify-between mb-6">
         <div>
           <h2 class="text-2xl font-semibold text-text-main">{{ provider.platformName }}</h2>
