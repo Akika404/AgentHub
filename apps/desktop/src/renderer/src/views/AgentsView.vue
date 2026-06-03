@@ -94,6 +94,21 @@ async function onUpdated(): Promise<void> {
   await load()
 }
 
+async function refreshProvidersForDialog(): Promise<boolean> {
+  try {
+    providers.value = await providerApi.list()
+    return true
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : 'Provider 列表加载失败'
+    return false
+  }
+}
+
+async function openCreateDialog(): Promise<void> {
+  if (!(await refreshProvidersForDialog())) return
+  createOpen.value = true
+}
+
 function openAgentMenu(event: MouseEvent, agent: AgentView): void {
   event.preventDefault()
   selectedId.value = agent.id
@@ -129,7 +144,8 @@ function openEditDialog(agent: AgentView): void {
 async function requestEdit(agent: AgentView): Promise<void> {
   checkingEditUsage.value = true
   try {
-    const chats = await agentChatApi.list()
+    const [chats, providerList] = await Promise.all([agentChatApi.list(), providerApi.list()])
+    providers.value = providerList
     const usedCount = chats.filter((chat) => chat.agentId === agent.id).length
     if (usedCount > 0) {
       pendingEditAgent.value = agent
@@ -189,7 +205,7 @@ onMounted(load)
         class="h-16 px-4 flex items-center justify-between border-b border-surface-border flex-shrink-0"
       >
         <h1 class="font-semibold text-text-main text-lg">Agent 管理</h1>
-        <BaseButton size="sm" @click="createOpen = true">
+        <BaseButton size="sm" @click="openCreateDialog">
           <span class="material-symbols-outlined text-xl">add</span>
           新建
         </BaseButton>
