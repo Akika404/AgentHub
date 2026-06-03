@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { AgentView, PlatformProviderView } from '@agenthub/shared'
-import { ApiError, agentApi, providerApi } from '../api'
+import { ApiError, agentApi, agentChatApi, providerApi } from '../api'
 import AgentAvatar from '../components/AgentAvatar.vue'
 import AgentCreateDialog from '../components/AgentCreateDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseSkeleton from '../components/ui/BaseSkeleton.vue'
 
@@ -14,10 +15,30 @@ const selectedId = ref<string | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const createOpen = ref(false)
+const editOpen = ref(false)
+const editingAgent = ref<AgentView | null>(null)
+const editConfirmOpen = ref(false)
+const pendingEditAgent = ref<AgentView | null>(null)
+const pendingEditChatCount = ref(0)
+const checkingEditUsage = ref(false)
 const deleteConfirmOpen = ref(false)
 const deleting = ref(false)
+const menuOpen = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+const menuTarget = ref<AgentView | null>(null)
 
 const selected = computed(() => agents.value.find((a) => a.id === selectedId.value) ?? null)
+
+const menuItems = computed<MenuItem[]>(() => [
+  {
+    id: 'edit',
+    label: checkingEditUsage.value ? '检查中...' : '编辑',
+    icon: 'edit',
+    disabled: checkingEditUsage.value
+  },
+  { id: 'delete', label: '删除', icon: 'delete' }
+])
 
 function providerName(id: string): string {
   return providers.value.find((p) => p.id === id)?.platformName ?? id
@@ -67,6 +88,78 @@ async function load(): Promise<void> {
 
 async function onCreated(): Promise<void> {
   await load()
+}
+
+async function onUpdated(): Promise<void> {
+  await load()
+}
+
+function openAgentMenu(event: MouseEvent, agent: AgentView): void {
+  event.preventDefault()
+  selectedId.value = agent.id
+  menuTarget.value = agent
+  menuX.value = event.clientX
+  menuY.value = event.clientY
+  menuOpen.value = true
+}
+
+function closeAgentMenu(): void {
+  menuOpen.value = false
+  menuTarget.value = null
+}
+
+function onMenuSelect(id: string): void {
+  const agent = menuTarget.value
+  if (!agent) return
+  if (id === 'edit') {
+    void requestEdit(agent)
+    return
+  }
+  if (id === 'delete') {
+    selectedId.value = agent.id
+    deleteConfirmOpen.value = true
+  }
+}
+
+function openEditDialog(agent: AgentView): void {
+  editingAgent.value = agent
+  editOpen.value = true
+}
+
+async function requestEdit(agent: AgentView): Promise<void> {
+  checkingEditUsage.value = true
+  try {
+    const chats = await agentChatApi.list()
+    const usedCount = chats.filter((chat) => chat.agentId === agent.id).length
+    if (usedCount > 0) {
+      pendingEditAgent.value = agent
+      pendingEditChatCount.value = usedCount
+      editConfirmOpen.value = true
+      return
+    }
+    openEditDialog(agent)
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : '检查 Agent 使用情况失败'
+  } finally {
+    checkingEditUsage.value = false
+  }
+}
+
+function closeEditConfirm(): void {
+  editConfirmOpen.value = false
+  pendingEditAgent.value = null
+  pendingEditChatCount.value = 0
+}
+
+function confirmEditUsedAgent(): void {
+  const agent = pendingEditAgent.value
+  closeEditConfirm()
+  if (agent) openEditDialog(agent)
+}
+
+function closeEditDialog(): void {
+  editOpen.value = false
+  editingAgent.value = null
 }
 
 async function onDelete(): Promise<void> {
@@ -121,6 +214,7 @@ onMounted(load)
           class="w-full text-left px-3 py-2.5 rounded-md mb-1 transition-colors"
           :class="agent.id === selectedId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
           @click="selectedId = agent.id"
+          @contextmenu="openAgentMenu($event, agent)"
         >
           <div class="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
             <AgentAvatar
@@ -278,6 +372,26 @@ onMounted(load)
       @close="createOpen = false"
       @created="onCreated"
     />
+    <AgentCreateDialog
+      :open="editOpen"
+      :providers="providers"
+      :agent="editingAgent"
+      @close="closeEditDialog"
+      @updated="onUpdated"
+    />
+    <ConfirmDialog
+      :open="editConfirmOpen"
+      title="Agent 已被使用"
+      :message="
+        pendingEditAgent
+          ? `Agent「${pendingEditAgent.name}」已经被 ${pendingEditChatCount} 个会话使用。编辑配置可能影响后续对话和重新进入的运行实例，是否继续编辑？`
+          : ''
+      "
+      confirm-label="继续编辑"
+      confirm-variant="primary"
+      @close="closeEditConfirm"
+      @confirm="confirmEditUsedAgent"
+    />
     <ConfirmDialog
       :open="deleteConfirmOpen"
       title="删除 Agent"
@@ -287,6 +401,14 @@ onMounted(load)
       :confirming="deleting"
       @close="deleteConfirmOpen = false"
       @confirm="onDelete"
+    />
+    <ContextMenu
+      :open="menuOpen"
+      :x="menuX"
+      :y="menuY"
+      :items="menuItems"
+      @select="onMenuSelect"
+      @close="closeAgentMenu"
     />
   </div>
 </template>

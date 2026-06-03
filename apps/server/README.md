@@ -259,6 +259,7 @@ src/mutiagents/
 | POST       | `/api/agents`                                  | 创建 Agent 配置，不开聊天          |
 | GET        | `/api/agents`                                  | 列出当前用户 AgentList             |
 | GET        | `/api/agents/:agentId`                         | 查询单个 Agent                     |
+| PATCH      | `/api/agents/:agentId`                         | 修改 Agent 配置                    |
 | DELETE     | `/api/agents/:agentId`                         | 删除 Agent，并删除其全部聊天和消息 |
 | POST       | `/api/agent-chats`                             | 创建单 Agent 聊天                  |
 | GET        | `/api/agent-chats`                             | 列出当前用户单 Agent 聊天          |

@@ -10,6 +10,7 @@ const props = withDefaults(
     confirmLabel?: string
     confirmingLabel?: string
     cancelLabel?: string
+    confirmVariant?: 'primary' | 'secondary' | 'danger'
     confirming?: boolean
     width?: number
   }>(),
@@ -17,6 +18,7 @@ const props = withDefaults(
     confirmLabel: '确认',
     confirmingLabel: '处理中...',
     cancelLabel: '取消',
+    confirmVariant: 'danger',
     confirming: false,
     width: 420
   }
@@ -38,7 +40,7 @@ function requestClose(): void {
       <BaseButton variant="ghost" :disabled="confirming" @click="requestClose">
         {{ cancelLabel }}
       </BaseButton>
-      <BaseButton variant="danger" :disabled="confirming" @click="emit('confirm')">
+      <BaseButton :variant="confirmVariant" :disabled="confirming" @click="emit('confirm')">
         {{ confirming ? confirmingLabel : confirmLabel }}
       </BaseButton>
     </template>

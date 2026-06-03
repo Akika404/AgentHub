@@ -3,8 +3,10 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   VENDOR_CAPABILITIES,
   isVendorProviderCompatible,
+  type AgentView,
   type AgentVendor,
   type CreateAgentPayload,
+  type UpdateAgentPayload,
   type PlatformProviderView
 } from '@agenthub/shared'
 import { ApiError, agentApi } from '../api'
@@ -16,8 +18,15 @@ import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
 import BaseButton from './ui/BaseButton.vue'
 
-const props = defineProps<{ open: boolean; providers: PlatformProviderView[] }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'created'): void }>()
+const props = withDefaults(
+  defineProps<{ open: boolean; providers: PlatformProviderView[]; agent?: AgentView | null }>(),
+  { agent: null }
+)
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'created'): void
+  (e: 'updated'): void
+}>()
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
 const AGENT_COLORS = [
@@ -50,7 +59,9 @@ const error = ref<string | null>(null)
 const avatarError = ref<string | null>(null)
 const submitting = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const suspendDependentWatchers = ref(false)
 
+const isEdit = computed(() => props.agent !== null)
 const caps = computed(() => VENDOR_CAPABILITIES[form.vendor])
 const previewColor = computed(() => (isHexColor(form.color) ? form.color : DEFAULT_AGENT_COLOR))
 
@@ -65,26 +76,41 @@ const selectedProvider = computed(() =>
 
 const modelOptions = computed(() => selectedProvider.value?.modelList ?? [])
 
+function stringifyConfig(value: unknown): string {
+  if (value == null) return ''
+  return JSON.stringify(value, null, 2)
+}
+
+function formatSkills(value: AgentView['skills']): string {
+  if (value == null) return ''
+  return value === 'all' ? 'all' : value.join(', ')
+}
+
 function reset(): void {
-  form.name = ''
-  form.avatar = null
-  form.color = DEFAULT_AGENT_COLOR
-  form.vendor = 'claude'
-  form.platformProviderId = ''
-  form.model = ''
-  form.workingDirectory = ''
+  suspendDependentWatchers.value = true
+  const agent = props.agent
+  form.name = agent?.name ?? ''
+  form.avatar = agent?.avatar ?? null
+  form.color = agent?.color ?? DEFAULT_AGENT_COLOR
+  form.vendor = agent?.vendor ?? 'claude'
+  form.platformProviderId = agent?.platformProviderId ?? ''
+  form.model = agent?.model ?? ''
+  form.workingDirectory = agent?.workingDirectory ?? ''
   form.skillSourceDirectories = ''
-  form.systemPrompt = ''
-  form.skills = ''
-  form.mcpServers = ''
-  form.allowedTools = ''
+  form.systemPrompt = agent?.systemPrompt ?? ''
+  form.skills = formatSkills(agent?.skills ?? null)
+  form.mcpServers = stringifyConfig(agent?.mcpServers ?? null)
+  form.allowedTools = agent?.allowedTools?.join(', ') ?? ''
   error.value = null
   avatarError.value = null
+  queueMicrotask(() => {
+    suspendDependentWatchers.value = false
+  })
 }
 
 watch(
-  () => props.open,
-  (open) => {
+  () => [props.open, props.agent?.id] as const,
+  ([open]) => {
     if (open) reset()
   }
 )
@@ -93,6 +119,7 @@ watch(
 watch(
   () => form.vendor,
   () => {
+    if (suspendDependentWatchers.value) return
     form.platformProviderId = ''
     form.model = ''
   }
@@ -100,6 +127,7 @@ watch(
 watch(
   () => form.platformProviderId,
   () => {
+    if (suspendDependentWatchers.value) return
     form.model = ''
   }
 )
@@ -111,14 +139,14 @@ function parseList(value: string): string[] {
     .filter(Boolean)
 }
 
-function buildPayload(): CreateAgentPayload | string {
+function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (!form.name.trim()) return '请输入名称'
   if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
   if (!form.platformProviderId) return '请选择 PlatformProvider'
   if (!form.model) return '请选择模型'
   if (!form.workingDirectory.trim()) return '请输入 Agent 目录'
 
-  const payload: CreateAgentPayload = {
+  const payload: CreateAgentPayload | UpdateAgentPayload = {
     name: form.name.trim(),
     avatar: form.avatar,
     color: form.color.toLowerCase(),
@@ -128,25 +156,39 @@ function buildPayload(): CreateAgentPayload | string {
     workingDirectory: form.workingDirectory.trim()
   }
 
-  if (caps.value.supportsSystemPrompt && form.systemPrompt.trim()) {
-    payload.systemPrompt = form.systemPrompt
+  if (caps.value.supportsSystemPrompt) {
+    if (form.systemPrompt.trim()) payload.systemPrompt = form.systemPrompt
+    else if (isEdit.value) payload.systemPrompt = null
   }
   if (caps.value.supportsSkills && form.skillSourceDirectories.trim()) {
     payload.skillSourceDirectories = parseList(form.skillSourceDirectories)
   }
-  if (caps.value.supportsSkills && form.skills.trim()) {
-    const skills = form.skills.trim()
-    payload.skills = skills === 'all' ? 'all' : parseList(skills)
+  if (caps.value.supportsSkills) {
+    if (form.skills.trim()) {
+      const skills = form.skills.trim()
+      payload.skills = skills === 'all' ? 'all' : parseList(skills)
+    } else if (isEdit.value) {
+      payload.skills = null
+    }
   }
-  if (caps.value.supportsMcp && form.mcpServers.trim()) {
-    try {
-      payload.mcpServers = JSON.parse(form.mcpServers) as Record<string, unknown>
-    } catch {
-      return 'MCP 配置不是合法的 JSON'
+  if (caps.value.supportsMcp) {
+    if (form.mcpServers.trim()) {
+      try {
+        payload.mcpServers = JSON.parse(form.mcpServers) as Record<string, unknown>
+      } catch {
+        return 'MCP 配置不是合法的 JSON'
+      }
+    } else if (isEdit.value) {
+      payload.mcpServers = null
     }
   }
   const tools = parseList(form.allowedTools)
   if (tools.length) payload.allowedTools = tools
+  else if (isEdit.value) payload.allowedTools = null
+
+  if (isEdit.value && !caps.value.supportsSystemPrompt) payload.systemPrompt = null
+  if (isEdit.value && !caps.value.supportsSkills) payload.skills = null
+  if (isEdit.value && !caps.value.supportsMcp) payload.mcpServers = null
 
   return payload
 }
@@ -193,11 +235,17 @@ async function onSubmit(): Promise<void> {
   error.value = null
   submitting.value = true
   try {
-    await agentApi.create(result)
-    emit('created')
+    if (isEdit.value && props.agent) {
+      await agentApi.update(props.agent.id, result as UpdateAgentPayload)
+      emit('updated')
+    } else {
+      await agentApi.create(result as CreateAgentPayload)
+      emit('created')
+    }
     emit('close')
   } catch (err) {
-    error.value = err instanceof ApiError ? err.message : '创建失败，请重试'
+    error.value =
+      err instanceof ApiError ? err.message : isEdit.value ? '保存失败，请重试' : '创建失败，请重试'
   } finally {
     submitting.value = false
   }
@@ -205,7 +253,12 @@ async function onSubmit(): Promise<void> {
 </script>
 
 <template>
-  <Modal :open="open" title="新建 Agent" :width="560" @close="emit('close')">
+  <Modal
+    :open="open"
+    :title="isEdit ? '编辑 Agent' : '新建 Agent'"
+    :width="560"
+    @close="emit('close')"
+  >
     <div class="space-y-4">
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">名称</label>
@@ -380,7 +433,13 @@ async function onSubmit(): Promise<void> {
           type="text"
           placeholder="/path/to/skill 或 /path/to/.claude/skills，逗号分隔"
         />
-        <p class="mt-1 text-xs text-text-muted">创建时复制到 Agent 目录的 .claude/skills。</p>
+        <p class="mt-1 text-xs text-text-muted">
+          {{
+            isEdit
+              ? '保存时导入到 Agent 目录的 .claude/skills。'
+              : '创建时复制到 Agent 目录的 .claude/skills。'
+          }}
+        </p>
       </div>
 
       <div>
@@ -405,7 +464,7 @@ async function onSubmit(): Promise<void> {
     <template #footer>
       <BaseButton variant="ghost" @click="emit('close')">取消</BaseButton>
       <BaseButton :disabled="submitting" @click="onSubmit">
-        {{ submitting ? '创建中…' : '创建' }}
+        {{ submitting ? (isEdit ? '保存中…' : '创建中…') : isEdit ? '保存' : '创建' }}
       </BaseButton>
     </template>
   </Modal>

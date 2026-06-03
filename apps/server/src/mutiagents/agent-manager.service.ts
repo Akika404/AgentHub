@@ -19,6 +19,7 @@ import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
 import { AgentMessageStep } from './entities/agent-message-step.entity.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
+import { UpdateAgentDto } from './dto/update-agent.dto.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
@@ -32,6 +33,7 @@ import type { ProviderType } from '../platform-provider/entities/platform-provid
 
 const DEFAULT_AGENT_COLOR = '#3370ff'
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+type AgentSkillsInput = 'all' | string[] | null | undefined
 
 /** streamTurn 内累积运行步骤的草稿；落库前不带 id/seq/messageId */
 interface StepDraft {
@@ -154,6 +156,80 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     async get(userId: string, agentId: string): Promise<AgentView> {
         return toAgentView(await this.loadAgent(userId, agentId))
+    }
+
+    async updateAgent(userId: string, agentId: string, dto: UpdateAgentDto): Promise<AgentView> {
+        const agent = await this.loadAgent(userId, agentId)
+        const sessions = await this.sessionRepo.find({ where: { agentId, userId } })
+        for (const s of sessions) this.assertNotBusy(s.id)
+
+        const vendor = dto.vendor ?? agent.vendor
+        const caps = getCapabilities(vendor)
+        const platformProviderId = dto.platformProviderId ?? agent.platformProviderId
+        const model = dto.model ?? agent.model
+        const workingDirectory =
+            dto.workingDirectory !== undefined
+                ? this.normalizeDirectoryPath(dto.workingDirectory)
+                : agent.workingDirectory
+        const systemPrompt = caps.supportsSystemPrompt
+            ? this.normalizeNullableText(dto.systemPrompt, agent.systemPrompt)
+            : null
+        const requestedSkills = caps.supportsSkills
+            ? dto.skills !== undefined
+                ? dto.skills
+                : agent.skills
+            : null
+        const mcpServers = caps.supportsMcp
+            ? dto.mcpServers !== undefined
+                ? dto.mcpServers
+                : agent.mcpServers
+            : null
+
+        this.assertConfigSupported({
+            vendor,
+            systemPrompt,
+            skills: requestedSkills,
+            skillSourceDirectories: dto.skillSourceDirectories,
+            mcpServers
+        })
+        this.assertSkillsShape(requestedSkills)
+
+        const provider = await this.providerService.resolveRuntimeConfig(userId, platformProviderId)
+        this.assertVendorProviderCompatible(vendor, provider.type)
+        this.assertModelInList(model, provider.modelList)
+
+        await this.ensureRuntimeDirectories(vendor, workingDirectory, agent.agentHomeDirectory)
+        const importedSkillNames =
+            caps.supportsSkills && dto.skillSourceDirectories
+                ? await this.importSkillSourceDirectories(
+                      dto.skillSourceDirectories,
+                      agent.agentHomeDirectory
+                  )
+                : []
+        const skills = caps.supportsSkills
+            ? this.mergeSkills(requestedSkills, importedSkillNames)
+            : null
+
+        if (dto.name !== undefined) agent.name = dto.name
+        if (dto.avatar !== undefined) agent.avatar = dto.avatar ?? null
+        if (dto.color !== undefined) agent.color = this.normalizeColor(dto.color)
+        agent.vendor = vendor
+        agent.platformProviderId = platformProviderId
+        agent.model = model
+        agent.workingDirectory = workingDirectory
+        agent.systemPrompt = systemPrompt
+        agent.skills = skills
+        agent.mcpServers = mcpServers
+        if (dto.allowedTools !== undefined) agent.allowedTools = dto.allowedTools
+        if (dto.permissionMode !== undefined) agent.permissionMode = dto.permissionMode
+        if (dto.reasoningEffort !== undefined) agent.reasoningEffort = dto.reasoningEffort
+
+        const saved = await this.agentRepo.save(agent)
+        for (const s of sessions) this.registry.delete(s.id)
+        if (sessions.length > 0 && sessions.some((s) => s.vendor !== vendor)) {
+            await this.sessionRepo.update({ agentId, userId }, { vendor })
+        }
+        return toAgentView(saved)
     }
 
     /** 删除 Agent：连同它的所有单聊会话和消息一并删除。 */
@@ -481,6 +557,15 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         return trimmed
     }
 
+    private normalizeNullableText(
+        value: string | null | undefined,
+        fallback: string | null
+    ): string | null {
+        if (value === undefined) return fallback
+        if (value === null) return null
+        return value.trim() ? value : null
+    }
+
     private normalizeColor(color: string | undefined): string {
         const trimmed = color?.trim() ?? DEFAULT_AGENT_COLOR
         if (!HEX_COLOR_RE.test(trimmed)) {
@@ -676,15 +761,16 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         )
     }
 
-    private assertSkillsShape(skills: CreateAgentDto['skills']): void {
+    private assertSkillsShape(skills: AgentSkillsInput): void {
         if (skills === undefined) return
+        if (skills === null) return
         if (skills === 'all') return
         if (Array.isArray(skills) && skills.every((s) => typeof s === 'string')) return
         throw BusinessException.badRequest('skills must be "all" or an array of skill names')
     }
 
     private mergeSkills(
-        requested: CreateAgentDto['skills'] | null,
+        requested: AgentSkillsInput,
         importedSkillNames: string[]
     ): 'all' | string[] | null {
         if (requested === 'all') return 'all'
@@ -829,7 +915,13 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private assertConfigSupported(dto: CreateAgentDto): void {
+    private assertConfigSupported(dto: {
+        vendor: AgentVendor
+        systemPrompt?: string | null
+        skills?: AgentSkillsInput
+        skillSourceDirectories?: string[]
+        mcpServers?: Record<string, unknown> | null
+    }): void {
         const caps = getCapabilities(dto.vendor)
         const unsupported: string[] = []
         if (dto.systemPrompt && !caps.supportsSystemPrompt) unsupported.push('systemPrompt')

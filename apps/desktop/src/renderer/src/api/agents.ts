@@ -7,7 +7,8 @@ import {
   type AgentView,
   type ApiResponse,
   type CreateAgentChatPayload,
-  type CreateAgentPayload
+  type CreateAgentPayload,
+  type UpdateAgentPayload
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
 import { ApiError, http } from './http'
@@ -124,6 +125,8 @@ export const agentApi = {
   list: () => http.get<AgentView[]>('/agents'),
   get: (agentId: string) => http.get<AgentView>(`/agents/${agentId}`),
   create: (payload: CreateAgentPayload) => http.post<AgentView>('/agents', payload),
+  update: (agentId: string, payload: UpdateAgentPayload) =>
+    http.patch<AgentView>(`/agents/${agentId}`, payload),
   delete: (agentId: string) => http.delete<{ deleted: true }>(`/agents/${agentId}`)
 }
 

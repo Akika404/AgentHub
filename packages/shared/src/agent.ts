@@ -229,6 +229,28 @@ export interface CreateAgentPayload {
 }
 
 /**
+ * Update Agent input. Omitted fields are left unchanged; nullable config fields
+ * can be sent as null to clear them.
+ */
+export interface UpdateAgentPayload {
+  name?: string
+  avatar?: string | null
+  color?: string
+  vendor?: AgentVendor
+  platformProviderId?: string
+  model?: string
+  workingDirectory?: string
+  systemPrompt?: string | null
+  /** Local skill directories to copy into this Agent's private `.claude/skills`. */
+  skillSourceDirectories?: string[]
+  skills?: 'all' | string[] | null
+  mcpServers?: Record<string, unknown> | null
+  allowedTools?: string[] | null
+  permissionMode?: AgentPermissionMode | null
+  reasoningEffort?: AgentReasoningEffort | null
+}
+
+/**
  * Create single-Agent chat input. systemPrompt is intentionally absent; chats
  * inherit the Agent-level system prompt.
  */

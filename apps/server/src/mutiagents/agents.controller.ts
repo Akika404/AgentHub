@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ApiEnvelope } from '../common/swagger/api-envelope.decorator.js'
 import { JwtAuthGuard } from '../user/auth/jwt-auth.guard.js'
@@ -6,6 +6,7 @@ import { CurrentUser } from '../user/auth/current-user.decorator.js'
 import type { User } from '../user/entities/user.entity.js'
 import { AgentManager } from './agent-manager.service.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
+import { UpdateAgentDto } from './dto/update-agent.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
 import { AgentViewDto, DeleteAgentResultDto } from './dto/agent-response.dto.js'
 
@@ -45,6 +46,20 @@ export class AgentsController {
     @ApiEnvelope(AgentViewDto)
     get(@CurrentUser() user: User, @Param('agentId') agentId: string): Promise<AgentView> {
         return this.manager.get(user.id, agentId)
+    }
+
+    @Patch(':agentId')
+    @ApiOperation({
+        summary: '修改 Agent',
+        description: '部分更新 Agent 配置，只覆盖传入字段'
+    })
+    @ApiEnvelope(AgentViewDto)
+    update(
+        @CurrentUser() user: User,
+        @Param('agentId') agentId: string,
+        @Body() dto: UpdateAgentDto
+    ): Promise<AgentView> {
+        return this.manager.updateAgent(user.id, agentId, dto)
     }
 
     @Delete(':agentId')
