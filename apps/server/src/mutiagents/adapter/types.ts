@@ -97,7 +97,7 @@ export interface AgentAdapterConfig {
     id?: string
     /** 模型名 */
     model: string
-    /** Agent 私有持久目录；Claude 用于隔离 CLAUDE_CONFIG_DIR / 私有 skills */
+    /** Agent 私有持久目录；Claude 用于 CLAUDE_CONFIG_DIR，Codex 用于 CODEX_HOME */
     agentHomeDirectory: string
     /** 工作目录（agent 实际操作文件系统的根） */
     workingDirectory: string

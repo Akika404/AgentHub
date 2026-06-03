@@ -393,6 +393,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         abort: AbortController
     ): AsyncIterable<AgentEvent> {
         const textParts: string[] = []
+        let finalTextFromDone: string | null = null
         let fatalErrorMessage: string | null = null
         let persistedOutput = false
         // 运行步骤草稿：thinking / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
@@ -401,6 +402,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         try {
             for await (const ev of live.adapter.send(prompt, { signal: abort.signal })) {
                 if (ev.type === 'text') textParts.push(ev.text)
+                else if (ev.type === 'done' && ev.finalText) finalTextFromDone = ev.finalText
                 else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
                 else this.collectStep(ev, stepDrafts, toolIndexById)
                 yield ev
@@ -418,7 +420,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             }
             try {
                 if (!persistedOutput) {
-                    const agentText = textParts.join('').trim()
+                    const agentText = (finalTextFromDone ?? textParts.join('')).trim()
                     if (agentText) {
                         const message = await this.saveMessage(
                             session.userId,

@@ -13,6 +13,10 @@ const activeStep = computed(() => props.message.steps.find((step) => step.status
 const completedCount = computed(
   () => props.message.steps.filter((step) => step.status !== 'active').length
 )
+const terminalLabel = computed(() =>
+  props.message.status === 'error' ? '运行失败' : '运行完成，未返回文本'
+)
+const terminalIcon = computed(() => (props.message.status === 'error' ? 'error' : 'check'))
 
 function stepIcon(step: AgentRunStep): string {
   if (step.status === 'failed') return 'error'
@@ -53,13 +57,17 @@ function stepIcon(step: AgentRunStep): string {
           <div v-if="activeStep?.type === 'tool'" class="whitespace-nowrap">
             {{ activeStep.label }}
           </div>
-          <div v-else class="flex items-center space-x-1">
+          <div v-else-if="activeStep?.type === 'thinking'" class="flex items-center space-x-1">
             <span
               v-for="dot in 3"
               :key="dot"
               class="agent-thinking-dot h-1.5 w-1.5 rounded-full bg-text-muted"
               :style="{ animationDelay: `${(dot - 1) * 140}ms` }"
             />
+          </div>
+          <div v-else class="flex min-w-0 items-center space-x-1.5 text-text-muted">
+            <span class="material-symbols-outlined text-lg">{{ terminalIcon }}</span>
+            <span class="truncate">{{ terminalLabel }}</span>
           </div>
         </div>
 
