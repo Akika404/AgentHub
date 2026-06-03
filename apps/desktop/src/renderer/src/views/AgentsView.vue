@@ -42,6 +42,12 @@ function toolsText(agent: AgentView): string {
   return t && t.length ? t.join(', ') : '—'
 }
 
+function vendorTagClass(vendor: AgentView['vendor']): string {
+  if (vendor === 'claude') return 'border-[#fed7aa] bg-[#fff7ed] text-[#b45309]'
+  if (vendor === 'codex') return 'border-primary/30 bg-primary-soft text-primary'
+  return 'border-surface-border bg-surface-hover text-text-muted'
+}
+
 async function load(): Promise<void> {
   loading.value = true
   error.value = null
@@ -116,16 +122,30 @@ onMounted(load)
           :class="agent.id === selectedId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
           @click="selectedId = agent.id"
         >
-          <div class="flex items-center gap-2">
-            <AgentAvatar :name="agent.name" :avatar="agent.avatar" :color="agent.color" size="sm" />
-            <span class="flex-1 text-base font-medium text-text-main truncate">{{
+          <div class="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
+            <AgentAvatar
+              :name="agent.name"
+              :avatar="agent.avatar"
+              :color="agent.color"
+              size="sm"
+              class="row-span-2"
+            />
+            <span class="min-w-0 text-base font-medium leading-5 text-text-main truncate">{{
               agent.name
             }}</span>
-          </div>
-          <div class="flex items-center gap-2 mt-1 pl-10">
-            <span class="text-xs text-text-muted">{{ agent.vendor }}</span>
-            <span class="text-xs text-text-muted">·</span>
-            <span class="text-xs text-text-muted">{{ agent.model }}</span>
+            <div class="col-start-2 flex min-w-0 items-center gap-1.5">
+              <span
+                class="inline-flex max-w-full items-center rounded-sm border px-1.5 py-[1px] text-xs font-medium leading-4 truncate"
+                :class="vendorTagClass(agent.vendor)"
+              >
+                {{ agent.vendor }}
+              </span>
+              <span
+                class="inline-flex min-w-0 max-w-[8.75rem] items-center rounded-sm border border-surface-border bg-surface-hover px-1.5 py-[1px] text-xs font-medium leading-4 text-gray-600 truncate"
+              >
+                {{ agent.model }}
+              </span>
+            </div>
           </div>
         </button>
       </div>
