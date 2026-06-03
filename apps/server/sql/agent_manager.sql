@@ -6,6 +6,7 @@
 --   Agent（用户拥有的可复用配置）
 --   AgentSession（一个单 Agent 聊天会话）
 --   AgentMessage（按 sessionId 隔离的 UI 消息历史）
+--   AgentMessageStep（一条 agent 消息产出过程中的有序运行步骤）
 -- =============================================================================
 
 CREATE TABLE `agent`
@@ -74,3 +75,26 @@ CREATE TABLE `agent_message`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci COMMENT ='单 Agent 聊天 UI 消息历史';
+
+CREATE TABLE `agent_message_step`
+(
+  `id`         varchar(36)  NOT NULL COMMENT '主键，UUID',
+  `messageId`  varchar(36)  NOT NULL COMMENT '关联 agent_message.id',
+  `sessionId`  varchar(36)  NOT NULL COMMENT '冗余 agent_session.id，供按会话清理',
+  `seq`        int          NOT NULL COMMENT '同一条消息内的步骤顺序，从 0 起',
+  `type`       varchar(16)  NOT NULL COMMENT 'thinking / tool / todo',
+  `text`       text                  DEFAULT NULL COMMENT 'thinking 推理文本',
+  `toolName`   varchar(128)          DEFAULT NULL COMMENT 'tool 步骤的工具名',
+  `toolUseId`  varchar(128)          DEFAULT NULL COMMENT 'tool 调用 id，配对 tool_use 与 tool_result',
+  `toolStatus` varchar(16)           DEFAULT NULL COMMENT 'started / completed / failed',
+  `input`      json                  DEFAULT NULL COMMENT 'tool 完整入参',
+  `output`     json                  DEFAULT NULL COMMENT 'tool 完整返回',
+  `isError`    tinyint               DEFAULT NULL COMMENT 'tool_result 是否报错',
+  `todos`      json                  DEFAULT NULL COMMENT 'todo 列表快照',
+  `createdAt`  datetime(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_agent_message_step_messageId` (`messageId`),
+  KEY `IDX_agent_message_step_sessionId` (`sessionId`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci COMMENT ='agent 消息的有序运行步骤（thinking/tool/todo）';

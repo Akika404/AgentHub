@@ -312,6 +312,13 @@ interface AgentRunStep {
   type: 'thinking' | 'tool'
   label: string
   status: 'active' | 'completed' | 'failed'
+  // 历史复原时带上的可选富字段（实时态可不填）
+  text?: string
+  toolName?: string
+  toolUseId?: string
+  input?: unknown
+  output?: unknown
+  isError?: boolean
 }
 
 interface AgentRunMessage {
@@ -381,6 +388,8 @@ interface AgentRunMessage {
 | `turn_completed`                     | 如果存在 `finalText`，同步到 `text`，并完成当前步骤   |
 | `done`                               | 标记气泡为 `done` 或 `error`                          |
 | stream error                         | 标记气泡为 `error`，并追加系统消息说明错误            |
+
+运行步骤会持久化到后端 `agent_message_step`（thinking/tool/todo，tool 含完整 input/output）。重开/刷新会话时，`messageFromView` 把带 `steps` 的 agent 消息复原为 `agent-run` 卡片（`status: 'done'`）：thinking 标签按序复原为 `思考中`/`继续思考`，tool 标签复原为 `正在调用 <toolName>`。todo 步骤已入库但不重建为卡片步骤。
 
 ## 扩展新卡片的约定
 

@@ -8,17 +8,19 @@ import { AgentManager } from './agent-manager.service.js'
 import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
+import { AgentMessageStep } from './entities/agent-message-step.entity.js'
 
 /**
  * AgentsModule — 用户虚拟员工管理（AgentManager）。
  *
- * 注册 Agent / AgentSession / AgentMessage 三个实体（autoLoadEntities 已开，forFeature 即建表）；
+ * 注册 Agent / AgentSession / AgentMessage / AgentMessageStep 四个实体
+ * （autoLoadEntities 已开，forFeature 即建表）；
  * 导入 UserModule 复用其导出的 JwtAuthGuard（控制器整体鉴权）；
  * 导入 PlatformProviderModule 以按 platformProviderId 取运行时凭证（resolveRuntimeConfig）。
  */
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Agent, AgentSession, AgentMessage]),
+        TypeOrmModule.forFeature([Agent, AgentSession, AgentMessage, AgentMessageStep]),
         UserModule,
         PlatformProviderModule
     ],

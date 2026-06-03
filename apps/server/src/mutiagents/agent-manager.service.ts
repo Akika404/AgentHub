@@ -6,10 +6,18 @@ import { cp, mkdir, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { In, Repository } from 'typeorm'
-import { createAgent, getCapabilities, type AgentEvent, type AgentVendor } from './adapter/index.js'
+import {
+    createAgent,
+    getCapabilities,
+    type AgentEvent,
+    type AgentTodoItem,
+    type AgentVendor,
+    type ToolCallStatus
+} from './adapter/index.js'
 import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
+import { AgentMessageStep } from './entities/agent-message-step.entity.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
@@ -24,6 +32,19 @@ import type { ProviderType } from '../platform-provider/entities/platform-provid
 
 const DEFAULT_AGENT_COLOR = '#3370ff'
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+/** streamTurn 内累积运行步骤的草稿；落库前不带 id/seq/messageId */
+interface StepDraft {
+    type: AgentMessageStep['type']
+    text?: string
+    toolName?: string
+    toolUseId?: string
+    toolStatus?: ToolCallStatus
+    input?: unknown
+    output?: unknown
+    isError?: boolean
+    todos?: AgentTodoItem[]
+}
 
 /**
  * AgentManager — 用户虚拟员工的注册表与单 Agent 聊天生命周期管家。
@@ -52,6 +73,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         private readonly sessionRepo: Repository<AgentSession>,
         @InjectRepository(AgentMessage)
         private readonly messageRepo: Repository<AgentMessage>,
+        @InjectRepository(AgentMessageStep)
+        private readonly stepRepo: Repository<AgentMessageStep>,
         private readonly providerService: PlatformProviderService,
         private readonly config: ConfigService
     ) {
@@ -217,7 +240,19 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             where: { userId, sessionId: session.id },
             order: { createdAt: 'ASC', id: 'ASC' }
         })
-        return messages.map(toAgentChatMessageView)
+        const steps = await this.stepRepo.find({
+            where: { sessionId: session.id },
+            order: { seq: 'ASC' }
+        })
+        const stepsByMessage = new Map<string, AgentMessageStep[]>()
+        for (const step of steps) {
+            const list = stepsByMessage.get(step.messageId)
+            if (list) list.push(step)
+            else stepsByMessage.set(step.messageId, [step])
+        }
+        return messages.map((message) =>
+            toAgentChatMessageView(message, stepsByMessage.get(message.id) ?? [])
+        )
     }
 
     async converseChat(
@@ -260,6 +295,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         session.sdkSessionId = null
         session.status = 'cleared'
         await this.sessionRepo.save(session)
+        await this.stepRepo.delete({ sessionId: session.id })
         await this.messageRepo.delete({ userId, sessionId: session.id })
         return toAgentChatView(session, agent)
     }
@@ -268,6 +304,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const { session } = await this.loadChat(userId, chatId)
         this.assertNotBusy(session.id)
         this.registry.delete(session.id)
+        await this.stepRepo.delete({ sessionId: session.id })
         await this.messageRepo.delete({ userId, sessionId: session.id })
         await this.sessionRepo.delete({ id: session.id, userId })
         return { deleted: true }
@@ -282,10 +319,14 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const textParts: string[] = []
         let fatalErrorMessage: string | null = null
         let persistedOutput = false
+        // 运行步骤草稿：thinking / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
+        const stepDrafts: StepDraft[] = []
+        const toolIndexById = new Map<string, number>()
         try {
             for await (const ev of live.adapter.send(prompt, { signal: abort.signal })) {
                 if (ev.type === 'text') textParts.push(ev.text)
                 else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
+                else this.collectStep(ev, stepDrafts, toolIndexById)
                 yield ev
             }
         } finally {
@@ -303,13 +344,14 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 if (!persistedOutput) {
                     const agentText = textParts.join('').trim()
                     if (agentText) {
-                        await this.saveMessage(
+                        const message = await this.saveMessage(
                             session.userId,
                             session.agentId,
                             session.id,
                             'agent',
                             agentText
                         )
+                        if (message) await this.saveSteps(message.id, session.id, stepDrafts)
                     } else if (fatalErrorMessage) {
                         await this.saveMessage(
                             session.userId,
@@ -327,6 +369,89 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 )
             }
         }
+    }
+
+    /** 把一条运行事件并入步骤草稿。tool_use 建行、tool_result 按 toolUseId 回填 */
+    private collectStep(
+        ev: AgentEvent,
+        drafts: StepDraft[],
+        toolIndexById: Map<string, number>
+    ): void {
+        switch (ev.type) {
+            case 'thinking':
+                drafts.push({ type: 'thinking', text: ev.text })
+                return
+            case 'tool_use': {
+                const existing = toolIndexById.get(ev.id)
+                if (existing !== undefined) {
+                    drafts[existing].toolStatus = ev.status
+                    drafts[existing].input = ev.input
+                    return
+                }
+                toolIndexById.set(ev.id, drafts.length)
+                drafts.push({
+                    type: 'tool',
+                    toolName: ev.name,
+                    toolUseId: ev.id,
+                    toolStatus: ev.status,
+                    input: ev.input
+                })
+                return
+            }
+            case 'tool_result': {
+                const idx = toolIndexById.get(ev.toolUseId)
+                const isError = Boolean(ev.isError)
+                if (idx !== undefined) {
+                    const draft = drafts[idx]
+                    draft.output = ev.output
+                    draft.isError = isError
+                    if (draft.toolStatus === 'started') {
+                        draft.toolStatus = isError ? 'failed' : 'completed'
+                    }
+                    return
+                }
+                // 没配上的孤儿结果：单独成行，保留可观测性
+                drafts.push({
+                    type: 'tool',
+                    toolUseId: ev.toolUseId,
+                    toolStatus: isError ? 'failed' : 'completed',
+                    output: ev.output,
+                    isError
+                })
+                return
+            }
+            case 'todo':
+                drafts.push({ type: 'todo', todos: ev.items })
+                return
+            default:
+                return
+        }
+    }
+
+    /** 批量落库一轮回复的运行步骤，按草稿顺序赋 seq */
+    private async saveSteps(
+        messageId: string,
+        sessionId: string,
+        drafts: StepDraft[]
+    ): Promise<void> {
+        if (drafts.length === 0) return
+        const entities = drafts.map((draft, seq) =>
+            this.stepRepo.create({
+                messageId,
+                sessionId,
+                seq,
+                type: draft.type,
+                text: draft.text ?? null,
+                toolName: draft.toolName ?? null,
+                toolUseId: draft.toolUseId ?? null,
+                toolStatus: draft.toolStatus ?? null,
+                input: draft.input,
+                output: draft.output,
+                isError: draft.isError ?? null,
+                todos: draft.todos ?? null
+            })
+        )
+        await this.stepRepo.save(entities)
     }
 
     private async persistHandle(session: AgentSession, live: LiveAgent): Promise<void> {
@@ -537,10 +662,10 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         sessionId: string,
         role: AgentMessage['role'],
         text: string
-    ): Promise<void> {
+    ): Promise<AgentMessage | null> {
         const trimmed = text.trim()
-        if (!trimmed) return
-        await this.messageRepo.save(
+        if (!trimmed) return null
+        return this.messageRepo.save(
             this.messageRepo.create({
                 userId,
                 agentId,

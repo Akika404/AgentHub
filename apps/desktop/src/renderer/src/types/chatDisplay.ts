@@ -5,6 +5,14 @@ export interface AgentRunStep {
   type: 'thinking' | 'tool'
   label: string
   status: 'active' | 'completed' | 'failed'
+  /** thinking 文本（历史复原时带上，供后续详情查看） */
+  text?: string
+  /** tool 步骤的工具名 / 调用 id / 完整入参与返回（历史复原时带上） */
+  toolName?: string
+  toolUseId?: string
+  input?: unknown
+  output?: unknown
+  isError?: boolean
 }
 
 export interface AgentRunMessage {

@@ -4,10 +4,10 @@ import type {
   AgentChatMessageView,
   AgentChatView,
   AgentEvent,
+  AgentRunStepView,
   AgentTodoItem,
   AgentView,
   ChatDetail,
-  ChatMessage,
   ChatSummary,
   MessageReplyRef,
   OptionItem,
@@ -146,7 +146,52 @@ function agentSender(chat: AgentChatView): SenderInfo {
   }
 }
 
-function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatMessage {
+function runStepFromView(view: AgentRunStepView): AgentRunStep | null {
+  const status: AgentRunStep['status'] =
+    view.isError || view.toolStatus === 'failed' ? 'failed' : 'completed'
+  if (view.type === 'thinking') {
+    return {
+      id: view.id,
+      type: 'thinking',
+      label: view.seq === 0 ? '思考中' : '继续思考',
+      status,
+      text: view.text ?? undefined
+    }
+  }
+  if (view.type === 'tool') {
+    return {
+      id: view.id,
+      type: 'tool',
+      label: `正在调用 ${view.toolName ?? '工具'}`,
+      status,
+      toolName: view.toolName ?? undefined,
+      toolUseId: view.toolUseId ?? undefined,
+      input: view.input,
+      output: view.output,
+      isError: view.isError ?? undefined
+    }
+  }
+  // todo 步骤不在运行条里复原（实时态走独立面板）
+  return null
+}
+
+function agentRunFromView(view: AgentChatMessageView, chat: AgentChatView): AgentRunMessage {
+  const steps = (view.steps ?? [])
+    .map(runStepFromView)
+    .filter((step): step is AgentRunStep => step !== null)
+  return {
+    id: view.id,
+    chatId: view.chatId,
+    kind: 'agent-run',
+    timestamp: view.createdAt,
+    sender: agentSender(chat),
+    status: 'done',
+    steps,
+    text: view.text
+  }
+}
+
+function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatDisplayMessage {
   if (view.role === 'system') {
     return {
       id: view.id,
@@ -155,6 +200,10 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatM
       timestamp: view.createdAt,
       text: view.text
     }
+  }
+
+  if (view.role === 'agent' && view.steps && view.steps.length > 0) {
+    return agentRunFromView(view, chat)
   }
 
   return {

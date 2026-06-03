@@ -61,6 +61,25 @@ export type AgentEvent =
 
 export type AgentChatMessageRole = 'user' | 'agent' | 'system'
 
+/** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
+export type AgentMessageStepType = 'thinking' | 'tool' | 'todo'
+
+/** 一条运行步骤的对外视图。镜像 `apps/server/src/mutiagents/dto/agent-message-view.dto.ts` */
+export interface AgentRunStepView {
+  id: string
+  seq: number
+  type: AgentMessageStepType
+  /** thinking 文本；其余类型为 null */
+  text: string | null
+  toolName: string | null
+  toolUseId: string | null
+  toolStatus: ToolCallStatus | null
+  input: unknown
+  output: unknown
+  isError: boolean | null
+  todos: AgentTodoItem[] | null
+}
+
 export interface AgentChatMessageView {
   id: string
   chatId: string
@@ -68,6 +87,8 @@ export interface AgentChatMessageView {
   role: AgentChatMessageRole
   text: string
   createdAt: string
+  /** 该消息产出过程中的有序运行步骤；仅 agent 消息可能非空 */
+  steps?: AgentRunStepView[]
 }
 
 /** Vendor capability matrix (asymmetric: codex lacks systemPrompt/skills/mcp). */

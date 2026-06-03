@@ -11,16 +11,18 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - Agent 只保存可复用配置：展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
 - AgentSession 是一个具体单聊会话：title、workingDirectory、sessionHomeDirectory、sdkSessionId、有效 skills/MCP、status。
 - AgentMessage 按 `sessionId` 隔离 UI 消息历史。
+- AgentMessageStep 按 `messageId` 一对多承载 agent 消息的有序运行步骤（thinking/tool/todo）。
 - LiveAgent 按 `session.id` 存在内存中，同一个 Agent 的不同聊天可以并行运行，只有同一 chat 会互斥。
 
 ## Model
 
-| 概念         | 存储            | 说明                                       |
-| ------------ | --------------- | ------------------------------------------ |
-| Agent        | `agent`         | 用户拥有的 Agent 配置，不存 apiKey/baseUrl |
-| AgentSession | `agent_session` | 单 Agent 聊天会话和底层 SDK 句柄           |
-| AgentMessage | `agent_message` | 主聊天区可见文本历史，按 sessionId 隔离    |
-| LiveAgent    | memory          | adapter + busy + abort + LRU 时间戳        |
+| 概念             | 存储                 | 说明                                              |
+| ---------------- | -------------------- | ------------------------------------------------- |
+| Agent            | `agent`              | 用户拥有的 Agent 配置，不存 apiKey/baseUrl        |
+| AgentSession     | `agent_session`      | 单 Agent 聊天会话和底层 SDK 句柄                  |
+| AgentMessage     | `agent_message`      | 主聊天区可见文本历史，按 sessionId 隔离           |
+| AgentMessageStep | `agent_message_step` | agent 消息的运行步骤，tool 含完整 input/output    |
+| LiveAgent        | memory               | adapter + busy + abort + LRU 时间戳               |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
 
@@ -59,12 +61,13 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - Adapter config 中，模型/Provider/systemPrompt/tools/permission/reasoning 来自 Agent；cwd/home/skills/MCP 来自 AgentSession。
 - `registry` 和 busy 锁使用 `session.id`。
 - 用户消息和 Agent/system 回复都写入 `agent_message.sessionId`。
+- 流式时把 thinking/tool/todo 事件按 `seq` 累积为运行步骤（tool_use 建行、tool_result 按 toolUseId 回填）；turn 结束存完 agent 回复后，批量写入 `agent_message_step`（挂到该消息 id）。
 - turn 结束后回写 `sdkSessionId/status/lastTurnAt`。
 
 删除：
 
-- 删除单个 chat：拒绝 busy，驱逐 LiveAgent，删除该 session 的消息和 session。
-- 删除 Agent：拒绝其任一 session busy，驱逐全部 LiveAgent，删除所有消息、sessions、Agent。
+- 删除单个 chat：拒绝 busy，驱逐 LiveAgent，删除该 session 的运行步骤、消息和 session。
+- 删除 Agent：拒绝其任一 session busy，驱逐全部 LiveAgent，删除所有运行步骤、消息、sessions、Agent。
 
 ## Validation
 
@@ -77,5 +80,6 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 
 - 群聊未实现。
 - 聊天消息历史暂不分页。
+- 运行步骤已持久化（tool 含完整 input/output），但 tool 入参/返回暂无展开 UI；todo 不重建为面板；空轮次（无回复消息）的步骤不落库。
 - clear 不删除 SDK 已落盘的旧会话文件。
 - Codex SDK 无显式 dispose API，仍依赖实例上限和 GC。
