@@ -1,5 +1,6 @@
 import type { McpServerConfig, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { Logger } from '@nestjs/common'
 import { join } from 'node:path'
 import type {
     AgentAdapter,
@@ -92,6 +93,7 @@ function normalizeTodoStatus(s: unknown): AgentTodoStatus {
 export class ClaudeAdapter implements AgentAdapter {
     readonly vendor = 'claude' as const
     readonly id: string
+    private readonly logger = new Logger(ClaudeAdapter.name)
     private _sessionId: string | null = null
     /** session_started 在实例生命周期内只发一次；与 _sessionId 的更新解耦 */
     private sessionStartedEmitted = false
@@ -198,7 +200,9 @@ export class ClaudeAdapter implements AgentAdapter {
             yieldedTurnStart = true
 
             for await (const msg of query({ prompt, options: opts }) as AsyncIterable<SDKMessage>) {
+                this.logger.debug(`[raw] ${JSON.stringify(msg)}`)
                 for (const ev of this.translate(msg)) {
+                    this.logger.debug(`[out] ${ev.type}`)
                     if (ev.type === 'turn_completed') {
                         finalText = ev.finalText
                         usage = ev.usage
@@ -218,6 +222,13 @@ export class ClaudeAdapter implements AgentAdapter {
             if (!yieldedTurnStart) {
                 // 异常太早，至少补一个 done
             }
+            this.logger.debug(
+                `[done] ${JSON.stringify({
+                    success,
+                    finalTextLen: finalText?.length ?? 0,
+                    finalTextHead: finalText?.slice(0, 80) ?? null
+                })}`
+            )
             yield {
                 type: 'done',
                 vendor: this.vendor,

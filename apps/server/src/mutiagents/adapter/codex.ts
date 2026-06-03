@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common'
 import { Codex } from '@openai/codex-sdk'
 import type { Thread, ThreadEvent, ThreadItem } from '@openai/codex-sdk'
 import type {
@@ -27,9 +28,23 @@ function toToolStatus(raw: unknown): ToolCallStatus {
     return 'started'
 }
 
+function buildCodexEnv(config: AgentAdapterConfig): Record<string, string> {
+    const env: Record<string, string> = {}
+    for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined) env[key] = value
+    }
+    for (const [key, value] of Object.entries(config.env ?? {})) {
+        if (value === undefined) delete env[key]
+        else env[key] = value
+    }
+    env.CODEX_HOME ??= config.agentHomeDirectory
+    return env
+}
+
 export class CodexAdapter implements AgentAdapter {
     readonly vendor = 'codex' as const
     readonly id: string
+    private readonly logger = new Logger(CodexAdapter.name)
     private readonly config: AgentAdapterConfig
     /** 惰性构造，首次 send 时再 new（见 ensureCodex） */
     private codex: Codex | null = null
@@ -64,10 +79,7 @@ export class CodexAdapter implements AgentAdapter {
                       model_provider: 'test_provider'
                   }
                 : undefined,
-            env: {
-                ...process.env,
-                ...config.env
-            } as Record<string, string>
+            env: buildCodexEnv(config)
         })
         return this.codex
     }
@@ -95,6 +107,8 @@ export class CodexAdapter implements AgentAdapter {
         let success = true
         let finalText: string | undefined
         let usageOut: AgentUsage | undefined
+        let latestAgentText: string | undefined
+        const textParts: string[] = []
 
         try {
             // 首次调用：开新 thread 或按 resumeId 续接；之后复用以维持对话上下文。
@@ -122,10 +136,25 @@ export class CodexAdapter implements AgentAdapter {
             })
 
             for await (const ev of events) {
-                for (const out of this.translate(ev)) {
-                    if (out.type === 'turn_completed') {
-                        finalText = out.finalText
+                this.logger.debug(`[raw] ${JSON.stringify(ev)}`)
+                // 跟踪最近一次 agent_message 文本（含 started/updated 阶段），
+                // 用于个别网关只发增量、不发终态 text 时兜底 finalText
+                if ('item' in ev && ev.item.type === 'agent_message' && ev.item.text) {
+                    latestAgentText = ev.item.text
+                }
+                for (let out of this.translate(ev)) {
+                    this.logger.debug(`[out] ${out.type}`)
+                    if (out.type === 'text') {
+                        textParts.push(out.text)
+                        finalText = textParts.join('\n\n')
+                    } else if (out.type === 'turn_completed') {
+                        // 对齐 Claude：把最终文本塞进 turn_completed.finalText。
+                        // 优先用累计的 text 流；网关未发 text 时回退到最近一次 agent_message。
+                        finalText = finalText ?? latestAgentText
+                        if (finalText) out = { ...out, finalText }
                         usageOut = out.usage
+                    } else if (out.type === 'error' && out.fatal) {
+                        success = false
                     }
                     yield out
                 }
@@ -139,6 +168,16 @@ export class CodexAdapter implements AgentAdapter {
                 fatal: true
             }
         } finally {
+            // 兜底：即便没收到 turn.completed，也用最近一次 agent_message 补 finalText
+            finalText = finalText ?? latestAgentText
+            this.logger.debug(
+                `[done] ${JSON.stringify({
+                    success,
+                    textEvents: textParts.length,
+                    finalTextLen: finalText?.length ?? 0,
+                    finalTextHead: finalText?.slice(0, 80) ?? null
+                })}`
+            )
             yield {
                 type: 'done',
                 vendor: this.vendor,
@@ -179,7 +218,8 @@ export class CodexAdapter implements AgentAdapter {
                 yield {
                     type: 'error',
                     vendor: this.vendor,
-                    message: ev.error.message
+                    message: ev.error.message,
+                    fatal: true
                 }
                 yield { type: 'turn_completed', vendor: this.vendor }
                 return

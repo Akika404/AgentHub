@@ -491,7 +491,22 @@ function handleRuntimeEvent(event: AgentEvent): void {
       runtime.value = { ...runtime.value, todos: event.items }
       return
     case 'text':
-      runtime.value = { ...runtime.value, phase: 'streaming', label: 'Responding' }
+      runtime.value = {
+        ...runtime.value,
+        phase: 'streaming',
+        label: 'Responding',
+        detail: undefined
+      }
+      return
+    case 'turn_completed':
+      // turn 结束信号：推进右侧 runtime，避免个别 vendor（如 codex）结束后仍停留在 thinking。
+      // 真正的终态由后续 done 事件给出；这里只把 thinking 收尾为 streaming。
+      runtime.value = {
+        ...runtime.value,
+        phase: 'streaming',
+        label: 'Responding',
+        detail: event.finalText ?? runtime.value.detail
+      }
       return
     case 'error':
       runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: event.message }
@@ -500,7 +515,8 @@ function handleRuntimeEvent(event: AgentEvent): void {
       runtime.value = {
         ...runtime.value,
         phase: event.success ? 'done' : 'error',
-        label: event.success ? 'Done' : 'Error'
+        label: event.success ? 'Done' : 'Error',
+        detail: event.finalText
       }
       return
   }
@@ -529,15 +545,17 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
   createAgentRunMessage(chat)
 
   let assistantText = ''
+  let agentFinished = false
 
   try {
     const stream = agentChatApi.converse(chatId, prompt, {
       onEvent(event) {
         if (activeChatId.value !== chatId) return
+        if (event.type === 'done') agentFinished = true
         handleRuntimeEvent(event)
         syncAgentRunMessage(chat, event)
         if (event.type === 'text') {
-          assistantText += event.text
+          assistantText = assistantText ? `${assistantText}\n\n${event.text}` : event.text
           updateAgentRunText(chatId, assistantText)
         } else if (event.type === 'error' && event.fatal && !assistantText) {
           appendSystemMessage(chatId, event.message)
@@ -553,7 +571,17 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
         if (activeChatId.value !== chatId) return
         streaming.value = false
         currentStream = null
-        finishAgentRun(chatId, true)
+        if (!agentFinished) {
+          const message = 'Stream ended before agent sent a final done event'
+          finishAgentRun(chatId, false)
+          runtime.value = {
+            ...runtime.value,
+            phase: 'error',
+            label: 'Stream ended',
+            detail: message
+          }
+          appendSystemMessage(chatId, message)
+        }
         void refreshChats()
       }
     })

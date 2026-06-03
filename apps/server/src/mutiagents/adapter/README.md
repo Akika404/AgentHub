@@ -139,8 +139,9 @@ export type AgentEvent =
 - **`text` vs `thinking`**：`text` 是会被展示给用户的最终回答；`thinking` 是推理过程（应当折叠展示）。两边的 reasoning / thinking block 都映射到 `thinking`。
 - **`tool_use` + `tool_result`** 通过 `id` 配对。一次工具调用至少产生一条 `tool_use(started)`，工具完成后再产生 `tool_use(completed|failed)` 以及可选的 `tool_result`。
 - **`todo`**：每次 TODO 列表变化都全量推送，上层做 diff。`AgentTodoItem` 是三态 `status: "pending" | "in_progress" | "completed"`，Claude 端直接透传，Codex 端因为 SDK 只暴露 `boolean`，映射为 `completed ? "completed" : "pending"`（拿不到 in_progress 这一态）。
-- **`done`** 是流的终结事件，**保证一定出现**（包括异常路径）。`success: false` 时说明本次 turn 整体失败。`finalText` / `usage` 是从 `turn_completed` 复制过来的最终态摘要，便于上层不维持状态也能拿到结果。
+- **`done`** 是流的终结事件，**保证一定出现**（包括异常路径）。`success: false` 时说明本次 turn 整体失败。`finalText` / `usage` 是最终态摘要，便于上层不维持状态也能拿到结果；Claude 的 `finalText` 来自 result，Codex 的 `finalText` 由本轮 `agent_message` 文本累积得到、并在缺失 `text` 流时回退到最近一次 `agent_message`。为对齐两端，Codex 的 `turn_completed` 也会带上同一份 `finalText`（Claude 本就如此）。
 - **`error.fatal`**：用于区分"局部错误"（如某个工具失败）和"会话级致命错误"（如鉴权失败、网络断开）。fatal 错误后通常紧跟 `done(success=false)`。
+- **调试日志**：两个 Adapter 均通过 `Logger.debug` 打点（`[raw]` SDK 原始事件、`[out]` 翻译后的统一事件类型、`[done]` 本轮汇总：success / finalText 长度 / 文本开头）。默认日志级别下静默；排查事件流问题（如最终文本未送达）时，把 Nest logger 级别开到 `debug` 即可复现完整链路。
 
 ### 3.3 `AgentUsage`
 
@@ -369,6 +370,8 @@ case "reasoning":
 
 只在 `completed` 阶段发，避免刷屏。代价是丢失了打字机效果 —— 如果上层需要流式打字，将来可以加一个配置开关。
 
+Codex 的 `turn.completed` 原生只有 usage、没有最终文本字段。Adapter 的做法：本轮 `agent_message`（completed 阶段）的 `text` 用空行拼接作为 `finalText`，并在 `turn_completed` 与 `done` 上**都**带出（对齐 Claude 的 `result.finalText`，避免上层只在 `turn_completed` 分支取文本时拿不到）。此外 Adapter 还会跟踪最近一次 `agent_message` 文本（含 `started` / `updated` 阶段）作为兜底：当个别不合规网关只发增量、不发终态 `item.completed`（因而一个 `text` 事件都没有）时，仍能用它补上 `finalText`，让上层优雅降级而不是空白气泡。
+
 #### c) 工具类 item 的状态翻译
 
 `command_execution` / `mcp_tool_call` 自带 `status: "in_progress" | "completed" | "failed"` 字段，所以三段都发：
@@ -416,13 +419,25 @@ this.codex = new Codex({
               model_provider: 'test_provider'
           }
         : undefined,
-    env: { ...process.env, ...config.env } as Record<string, string>
+    env: buildCodexEnv(config)
 })
 ```
 
 只有传了 `baseUrl` 才注入 `model_providers`，否则走默认 OpenAI 端点。
 
-#### e) Effort 映射
+#### e) CODEX_HOME 隔离
+
+Codex CLI 会把会话和配置写到 `CODEX_HOME`（未设置时落到全局 `~/.codex`）。AgentHub 的正式运行路径把
+`AgentAdapterConfig.agentHomeDirectory` 作为默认 `CODEX_HOME`，也就是每个聊天的 `sessionHomeDirectory`：
+
+```ts
+env.CODEX_HOME ??= config.agentHomeDirectory
+```
+
+这样重建 `LiveAgent` 时能按同一个聊天私有目录恢复 Codex 会话，也避免多个聊天共享全局 Codex 状态。注意 Codex CLI 要求
+`CODEX_HOME` 目录必须已经存在；`AgentManager.ensureRuntimeDirectories()` 会在创建 Agent/Chat 时预先创建。
+
+#### f) Effort 映射
 
 Codex 不支持 `"max"`，降级到 `"xhigh"`：
 
@@ -596,11 +611,11 @@ async function broadcast(prompt: string) {
 
 ### 9.1 已验证场景
 
-| 场景                        | Vendor | 结果                                                                                                                               |
-| --------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| 完整任务跑通（写排序+落盘） | Codex  | ✅ 事件流：session → turn_started → 多轮 tool_use/tool_result → file_change → text → turn_completed(usage) → done(success=true)    |
-| 鉴权失败                    | Claude | ✅ 事件流：turn_started → session → text(错误内容) → turn_completed(零 usage) → error(fatal) → done(success=false)，**进程不崩溃** |
-| 实例化但不发送              | 两者   | ✅ `sessionId === null`，`vendor` / `id` 字段正确                                                                                  |
+| 场景                        | Vendor | 结果                                                                                                                                      |
+| --------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 完整任务跑通（写排序+落盘） | Codex  | ✅ 事件流：session → turn_started → 多轮 tool_use/tool_result → file_change → text → turn_completed(usage+finalText) → done(success=true) |
+| 鉴权失败                    | Claude | ✅ 事件流：turn_started → session → text(错误内容) → turn_completed(零 usage) → error(fatal) → done(success=false)，**进程不崩溃**        |
+| 实例化但不发送              | 两者   | ✅ `sessionId === null`，`vendor` / `id` 字段正确                                                                                         |
 
 ### 9.2 运行示例
 
