@@ -39,6 +39,16 @@ type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done
 type ChatListItem = ChatSummary & { pinned: boolean; updatedAt?: string }
 
 const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
+const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
+const INSPECTOR_WIDTH_STORAGE_KEY = 'agenthub:right-inspector-width'
+const GLOBAL_SIDEBAR_WIDTH = 68
+const MIN_MAIN_WIDTH = 420
+const CHAT_LIST_MIN_WIDTH = 220
+const CHAT_LIST_DEFAULT_WIDTH = 280
+const CHAT_LIST_MAX_WIDTH = 420
+const INSPECTOR_MIN_WIDTH = 260
+const INSPECTOR_DEFAULT_WIDTH = 300
+const INSPECTOR_MAX_WIDTH = 520
 
 interface AgentRuntimeState {
   phase: RuntimePhase
@@ -52,10 +62,17 @@ const agentChats = ref<AgentChatView[]>([])
 const agents = ref<AgentView[]>([])
 const activeChatId = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
+const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST_DEFAULT_WIDTH))
+const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
+const resizingPane = ref<'chat-list' | 'inspector' | null>(null)
 const messageCache = new Map<string, ChatDisplayMessage[]>()
 let activeLoadId = 0
 let currentStream: AgentConverseStream | null = null
 let currentRunMessageId: string | null = null
+let dragStartX = 0
+let dragStartWidth = 0
+let previousBodyCursor = ''
+let previousBodyUserSelect = ''
 
 const chatsLoading = ref(false)
 const agentsLoading = ref(false)
@@ -161,6 +178,86 @@ function readPinnedChatIds(): Set<string> {
 
 function writePinnedChatIds(ids: Set<string>): void {
   localStorage.setItem(PINNED_CHAT_IDS_STORAGE_KEY, JSON.stringify([...ids]))
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+function readStoredWidth(key: string, fallback: number): number {
+  const raw = localStorage.getItem(key)
+  const value = raw ? Number(raw) : Number.NaN
+  return Number.isFinite(value) ? value : fallback
+}
+
+function mainAwareMaxWidth(kind: 'chat-list' | 'inspector'): number {
+  const otherSideWidth = kind === 'chat-list' ? inspectorWidth.value : chatListWidth.value
+  return window.innerWidth - GLOBAL_SIDEBAR_WIDTH - MIN_MAIN_WIDTH - otherSideWidth
+}
+
+function normalizePaneWidths(): void {
+  chatListWidth.value = clamp(
+    chatListWidth.value,
+    CHAT_LIST_MIN_WIDTH,
+    Math.min(CHAT_LIST_MAX_WIDTH, mainAwareMaxWidth('chat-list'))
+  )
+  inspectorWidth.value = clamp(
+    inspectorWidth.value,
+    INSPECTOR_MIN_WIDTH,
+    Math.min(INSPECTOR_MAX_WIDTH, mainAwareMaxWidth('inspector'))
+  )
+}
+
+function persistPaneWidth(kind: 'chat-list' | 'inspector'): void {
+  const key = kind === 'chat-list' ? CHAT_LIST_WIDTH_STORAGE_KEY : INSPECTOR_WIDTH_STORAGE_KEY
+  const width = kind === 'chat-list' ? chatListWidth.value : inspectorWidth.value
+  localStorage.setItem(key, String(width))
+}
+
+function startPaneResize(kind: 'chat-list' | 'inspector', event: PointerEvent): void {
+  if (event.button !== 0) return
+  event.preventDefault()
+  resizingPane.value = kind
+  dragStartX = event.clientX
+  dragStartWidth = kind === 'chat-list' ? chatListWidth.value : inspectorWidth.value
+  previousBodyCursor = document.body.style.cursor
+  previousBodyUserSelect = document.body.style.userSelect
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', onPaneResizeMove)
+  window.addEventListener('pointerup', stopPaneResize, { once: true })
+}
+
+function onPaneResizeMove(event: PointerEvent): void {
+  const kind = resizingPane.value
+  if (!kind) return
+
+  const delta = event.clientX - dragStartX
+  if (kind === 'chat-list') {
+    chatListWidth.value = clamp(
+      dragStartWidth + delta,
+      CHAT_LIST_MIN_WIDTH,
+      Math.min(CHAT_LIST_MAX_WIDTH, mainAwareMaxWidth('chat-list'))
+    )
+    return
+  }
+
+  inspectorWidth.value = clamp(
+    dragStartWidth - delta,
+    INSPECTOR_MIN_WIDTH,
+    Math.min(INSPECTOR_MAX_WIDTH, mainAwareMaxWidth('inspector'))
+  )
+}
+
+function stopPaneResize(): void {
+  const kind = resizingPane.value
+  if (!kind) return
+  persistPaneWidth(kind)
+  resizingPane.value = null
+  document.body.style.cursor = previousBodyCursor
+  document.body.style.userSelect = previousBodyUserSelect
+  window.removeEventListener('pointermove', onPaneResizeMove)
+  window.removeEventListener('pointerup', stopPaneResize)
 }
 
 function prunePinnedChatIds(): void {
@@ -896,8 +993,14 @@ function onCancelReply(): void {
   pendingReply.value = null
 }
 
-onMounted(loadWorkspace)
+onMounted(() => {
+  normalizePaneWidths()
+  window.addEventListener('resize', normalizePaneWidths)
+  void loadWorkspace()
+})
 onUnmounted(() => {
+  window.removeEventListener('resize', normalizePaneWidths)
+  stopPaneResize()
   // 只断开本端订阅，turn 在服务端继续运行；重新打开或在其它设备仍可围观
   void detachStream()
 })
@@ -906,6 +1009,7 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-1 h-full min-w-0">
     <ChatList
+      :style="{ width: `${chatListWidth}px` }"
       :chats="chats"
       :active-chat-id="activeChatId"
       :loading="chatsLoading"
@@ -914,6 +1018,16 @@ onUnmounted(() => {
       @toggle-pin="toggleChatPinned"
       @delete-chat="requestDeleteChat"
     />
+    <div class="relative z-20 h-full w-0 flex-shrink-0">
+      <div
+        class="absolute inset-y-0 -left-1 w-2 cursor-col-resize bg-transparent"
+        role="separator"
+        aria-label="调整聊天列表宽度"
+        aria-orientation="vertical"
+        @pointerdown="startPaneResize('chat-list', $event)"
+        @dragstart.prevent
+      ></div>
+    </div>
     <main class="flex-1 flex flex-col h-full bg-surface min-w-0 relative">
       <ChatHeader :detail="chatDetail" />
       <PinnedBar
@@ -942,7 +1056,22 @@ onUnmounted(() => {
         @stop="stopCurrentTurn"
       />
     </main>
-    <RightInspector :network="[]" :chat="activeChat" :runtime="runtime" />
+    <div class="relative z-20 h-full w-0 flex-shrink-0">
+      <div
+        class="absolute inset-y-0 -left-1 w-2 cursor-col-resize bg-transparent"
+        role="separator"
+        aria-label="调整状态工作区宽度"
+        aria-orientation="vertical"
+        @pointerdown="startPaneResize('inspector', $event)"
+        @dragstart.prevent
+      ></div>
+    </div>
+    <RightInspector
+      :style="{ width: `${inspectorWidth}px` }"
+      :network="[]"
+      :chat="activeChat"
+      :runtime="runtime"
+    />
     <AgentChatCreateDialog
       :open="createChatOpen"
       :agents="agents"
