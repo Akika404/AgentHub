@@ -349,6 +349,11 @@ function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
   return message
 }
 
+function ensureAgentRunMessage(chat: AgentChatView): void {
+  if (currentRunMessageId) return
+  createAgentRunMessage(chat)
+}
+
 function updateAgentRunMessage(
   chatId: string,
   updater: (message: AgentRunMessage) => AgentRunMessage
@@ -700,7 +705,6 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
   pendingReply.value = null
   streaming.value = true
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
-  createAgentRunMessage(chat)
 
   let assistantText = ''
   let agentFinished = false
@@ -709,6 +713,7 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
     const stream = agentChatApi.converse(chatId, prompt, {
       onEvent(event) {
         if (activeChatId.value !== chatId) return
+        ensureAgentRunMessage(chat)
         if (event.type === 'done') agentFinished = true
         handleRuntimeEvent(event)
         syncAgentRunMessage(chat, event)

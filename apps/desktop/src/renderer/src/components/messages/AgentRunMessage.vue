@@ -13,6 +13,15 @@ const activeStep = computed(() => props.message.steps.find((step) => step.status
 const completedCount = computed(
   () => props.message.steps.filter((step) => step.status !== 'active').length
 )
+const isInitialThinking = computed(
+  () =>
+    !hasText.value &&
+    props.message.status === 'thinking' &&
+    props.message.steps.length === 1 &&
+    props.message.steps[0]?.type === 'thinking' &&
+    props.message.steps[0]?.status === 'active' &&
+    props.message.steps[0]?.label === '思考中'
+)
 const showRunPanel = computed(
   () => props.message.steps.length > 0 && (!hasText.value || expanded.value)
 )
@@ -68,6 +77,7 @@ function stepOutput(step: AgentRunStep): string {
       </div>
       <div
         class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md leading-[22px] whitespace-pre-wrap break-words"
+        :class="{ 'w-72 max-w-full': isInitialThinking }"
       >
         <button
           v-if="hasText && message.steps.length"
@@ -99,7 +109,7 @@ function stepOutput(step: AgentRunStep): string {
             class="mb-3 overflow-hidden rounded-sm border border-surface-border bg-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
           >
             <div
-              v-if="!hasText"
+              v-if="!hasText && !isInitialThinking"
               class="flex items-center justify-between border-b border-surface-border px-2.5 py-1.5 text-xs font-medium text-text-muted"
             >
               <span>运行过程</span>
