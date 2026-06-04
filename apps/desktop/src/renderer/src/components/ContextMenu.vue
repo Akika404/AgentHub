@@ -85,7 +85,7 @@ function onPick(item: MenuItem): void {
       <div
         v-if="open"
         data-context-menu
-        class="fixed z-50 bg-white border border-gray-150 rounded-md shadow-md py-1"
+        class="fixed z-50 bg-white border border-gray-150 rounded-md shadow-lg py-1"
         :style="{ ...position, width: `${MENU_WIDTH}px` }"
         @contextmenu.prevent
       >
@@ -94,10 +94,15 @@ function onPick(item: MenuItem): void {
           :key="item.id"
           type="button"
           :disabled="item.disabled"
-          class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
+          class="w-full flex items-center space-x-2.5 px-3 py-2 text-left text-md font-medium text-text-main hover:bg-surface-hover disabled:text-gray-400 disabled:hover:bg-transparent transition-colors"
           @click="onPick(item)"
         >
-          <span class="material-symbols-outlined text-2xl text-text-muted">{{ item.icon }}</span>
+          <span
+            class="material-symbols-outlined text-2xl"
+            :class="item.disabled ? 'text-gray-400' : 'text-text-main'"
+          >
+            {{ item.icon }}
+          </span>
           <span class="flex-1">{{ item.label }}</span>
         </button>
       </div>

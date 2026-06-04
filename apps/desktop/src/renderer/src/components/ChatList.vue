@@ -126,20 +126,20 @@ onBeforeUnmount(() => {
         <Transition name="pop">
           <div
             v-if="createMenuOpen"
-            class="absolute right-0 top-10 z-30 w-[156px] rounded-md border border-gray-150 bg-white py-1 shadow-md"
+            class="absolute right-0 top-10 z-30 w-[156px] rounded-md border border-gray-150 bg-white py-1 shadow-lg"
           >
             <button
               type="button"
-              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-text-main hover:bg-surface-hover transition-colors"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-md font-medium text-text-main hover:bg-surface-hover transition-colors"
               @click="onCreateChat"
             >
-              <span class="material-symbols-outlined text-2xl text-text-muted">chat</span>
+              <span class="material-symbols-outlined text-2xl text-text-main">chat</span>
               <span>创建聊天</span>
             </button>
             <button
               type="button"
               disabled
-              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-base text-gray-400 cursor-not-allowed"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-md font-medium text-gray-400 cursor-not-allowed"
             >
               <span class="material-symbols-outlined text-2xl text-gray-400">groups</span>
               <span>创建群聊</span>
