@@ -227,6 +227,7 @@ src/mutiagents/
 ├── agents.controller.ts              # /agents：Agent 配置管理
 ├── agent-chats.controller.ts         # /agent-chats：单 Agent 聊天会话
 ├── agent-manager.service.ts          # Agent + chat lifecycle；按 userId 隔离
+├── turn-stream.service.ts            # 一轮一条 Redis Stream：广播/回放事件 + 活跃指针 + 跨实例 abort
 ├── live-agent.ts                     # 内存活实例：adapter + busy + abort + lastUsedAt
 ├── entities/
 │   ├── agent.entity.ts               # Agent 配置
@@ -251,6 +252,7 @@ src/mutiagents/
 - **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
 - **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/progress/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
 - **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。
+- **Turn 事件流**（Redis）：一轮对话一条 Redis Stream，承载该轮 `AgentEvent` 的广播与回放；另含会话活跃指针（`SET NX` 跨实例并发锁）与跨实例 abort 控制频道。turn 是与 HTTP 请求解耦的游离后台任务，支撑后台运行与多端实时围观。
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
@@ -265,12 +267,16 @@ src/mutiagents/
 | GET        | `/api/agent-chats`                             | 列出当前用户单 Agent 聊天          |
 | GET        | `/api/agent-chats/:chatId`                     | 查询聊天详情                       |
 | GET        | `/api/agent-chats/:chatId/messages`            | 查询聊天消息历史                   |
-| GET `@Sse` | `/api/agent-chats/:chatId/converse?prompt=...` | 聊天 SSE 对话流                    |
+| POST       | `/api/agent-chats/:chatId/converse`            | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }` |
+| GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events`| 订阅该轮事件流（回放+追尾），遇 `done` 结束 |
+| POST       | `/api/agent-chats/:chatId/turns/:turnId/abort` | 中止该轮（跨实例广播）             |
 | POST       | `/api/agent-chats/:chatId/clear`               | 清空聊天句柄和 UI 消息历史         |
 | DELETE     | `/api/agent-chats/:chatId`                     | 删除聊天                           |
 
 Agent 可保存头像 data URL/URL 与颜色标识；未设置头像时，前端用颜色和名称前两个字生成默认头像。创建聊天时 `workingDirectory` 必填；system prompt 不在聊天上设置，运行时继承 Agent。Claude 聊天会把 Agent 原 skills 复制到会话私有
 home，再导入本聊天指定的 skill 文件夹；MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
+
+一轮对话（turn）启动后即在服务端游离运行，与发起请求解耦：发起端切走/关窗/断连只取消订阅，turn 继续跑到结束；任意端可订阅 `turns/:turnId/events` 回放+实时追尾同一轮，实现多端围观；`AgentChatView.activeTurnId` 暴露当前活跃轮以便打开聊天时自动围观。相关环境变量：`AGENT_RECLAIM_ON_BOOT`（默认开，进程重启清理残留活跃指针；多实例部署应设 `false`）。
 
 ### 数据库与限制
 

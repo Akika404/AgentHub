@@ -13,6 +13,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - AgentMessage 按 `sessionId` 隔离 UI 消息历史。
 - AgentMessageStep 按 `messageId` 一对多承载 agent 消息的有序运行步骤（thinking/progress/tool/todo）。
 - LiveAgent 按 `session.id` 存在内存中，同一个 Agent 的不同聊天可以并行运行，只有同一 chat 会互斥。
+- 一轮对话（turn）是与 HTTP 请求解耦的游离后台任务：事件经一轮一条的 Redis Stream 广播，支持后台运行与多端实时围观（回放+追尾）。
 
 ## Model
 
@@ -23,6 +24,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 | AgentMessage     | `agent_message`      | 主聊天区可见文本历史，按 sessionId 隔离           |
 | AgentMessageStep | `agent_message_step` | agent 消息的运行步骤，tool 含完整 input/output    |
 | LiveAgent        | memory               | adapter + busy + abort + LRU 时间戳               |
+| Turn 事件流      | Redis                | 一轮一条 Stream 广播 AgentEvent；会话活跃指针 + 跨实例 abort 控制频道 |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
 
@@ -40,7 +42,9 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 | `GET`      | `/agent-chats`                          | 当前用户的聊天列表                 |
 | `GET`      | `/agent-chats/:chatId`                  | 聊天详情                           |
 | `GET`      | `/agent-chats/:chatId/messages`         | 聊天消息历史                       |
-| `GET @Sse` | `/agent-chats/:chatId/converse?prompt=` | 聊天 SSE 对话流                    |
+| `POST`     | `/agent-chats/:chatId/converse`         | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }` |
+| `GET @Sse` | `/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流（回放+追尾），遇 `done` 结束 |
+| `POST`     | `/agent-chats/:chatId/turns/:turnId/abort`  | 中止该轮（跨实例广播）             |
 | `POST`     | `/agent-chats/:chatId/clear`            | 清空聊天句柄和消息                 |
 | `DELETE`   | `/agent-chats/:chatId`                  | 删除聊天                           |
 
@@ -55,19 +59,21 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - 有效 skills = Agent 原 skills + 导入 skill 名称；有效 MCP = Agent MCP 与聊天 MCP 浅合并。
 - 保存 AgentSession，不启动 SDK。
 
-对话：
+对话（turn 后台游离运行）：
 
 - 按 `chatId` 加载 AgentSession，再加载 Agent。
 - Adapter config 中，模型/Provider/systemPrompt/tools/permission/reasoning 来自 Agent；cwd/home/skills/MCP 来自 AgentSession。
-- `registry` 和 busy 锁使用 `session.id`。
+- `startTurn` 生成 `turnId`，用会话活跃指针 `SET NX EX`（跨实例锁，配合 `LiveAgent.busy` 同实例兜底）保证一聊一轮；已有活跃轮则幂等返回既存 turnId。`registry`/busy 锁仍使用 `session.id`。
 - 用户消息和 Agent/system 回复都写入 `agent_message.sessionId`。
-- 流式时把 thinking/progress/tool/todo 事件按 `seq` 累积为运行步骤（tool_use 建行、tool_result 按 toolUseId 回填）；turn 结束存完 agent 回复后，批量写入 `agent_message_step`（挂到该消息 id）。
-- turn 结束后回写 `sdkSessionId/status/lastTurnAt`。
+- 不 await 启动 `runTurn`，请求即返回 turnId；`runTurn` 把每条 AgentEvent `XADD` 到 turn 的 Redis Stream，并按 `seq` 累积运行步骤（tool_use 建行、tool_result 按 toolUseId 回填）。
+- 订阅 `turns/:turnId/events` 从 Stream 回放 backlog + BLOCK 追尾，多端各自独立游标；断开订阅不影响 turn。
+- turn 结束（或被 abort/异常）后补发终止 `done`、回写 `sdkSessionId/status/lastTurnAt`、存完 agent 回复后批量写入 `agent_message_step`、释放活跃指针并给事件流设 TTL。
 
 删除：
 
 - 删除单个 chat：拒绝 busy，驱逐 LiveAgent，删除该 session 的运行步骤、消息和 session。
 - 删除 Agent：拒绝其任一 session busy，驱逐全部 LiveAgent，删除所有运行步骤、消息、sessions、Agent。
+- 启动回收：进程重启后游离任务已死，单实例下 boot 时清理残留活跃指针并给残留轮补 `done`（`AGENT_RECLAIM_ON_BOOT`，默认开；多实例须关，靠活跃指针安全 TTL 兜底）。
 
 ## Validation
 
@@ -75,6 +81,8 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - 创建同一 Agent 的两个聊天，分别发送消息，确认 `sdkSessionId`、messages、busy 状态互不影响。
 - Claude 聊天验证 skills/MCP 合并；Codex 聊天传 skills/MCP 应被拒绝。
 - 删除 Agent 前若任一聊天 busy，应返回 `AGENT_BUSY`。
+- 发起一轮长任务后切走再切回 / 关窗重开，进度应续看；第二个客户端打开同一聊天应实时围观同一 turn；点「停止」turn 应中止且已产出部分落库。
+- turn 运行中 `XLEN agent:turn:{turnId}:events` 增长，结束后键带 TTL，会话活跃指针清除。
 
 ## Known Limits
 
@@ -83,3 +91,5 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - 运行步骤已持久化（tool 含完整 input/output），但 tool 入参/返回暂无展开 UI；todo 不重建为面板；空轮次（无回复消息）的步骤不落库。
 - clear 不删除 SDK 已落盘的旧会话文件。
 - Codex SDK 无显式 dispose API，仍依赖实例上限和 GC。
+- 多实例：跨实例 abort 已支持；boot 回收默认仅单实例安全（多实例设 `AGENT_RECLAIM_ON_BOOT=false`，靠活跃指针安全 TTL 兜底）；turn 执行实例未做粘性会话，连续轮靠 `sdkSessionId` 续接。
+- turn 事件流在 Redis 仅保留 TTL（默认 1h），晚于 TTL 打开的端回退读 DB 历史。
