@@ -60,7 +60,11 @@ export function toAgentView(agent: Agent): AgentView {
     }
 }
 
-export function toAgentChatView(session: AgentSession, agent: Agent): AgentChatView {
+export function toAgentChatView(
+    session: AgentSession,
+    agent: Agent,
+    activeTurnId: string | null
+): AgentChatView {
     return {
         id: session.id,
         agentId: session.agentId,
@@ -80,6 +84,7 @@ export function toAgentChatView(session: AgentSession, agent: Agent): AgentChatV
         mcpServers: session.mcpServers,
         status: session.status,
         hasLiveSession: session.sdkSessionId != null,
+        activeTurnId,
         lastTurnAt: session.lastTurnAt ? session.lastTurnAt.toISOString() : null,
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString()

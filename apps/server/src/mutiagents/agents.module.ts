@@ -5,6 +5,7 @@ import { PlatformProviderModule } from '../platform-provider/platform-provider.m
 import { AgentChatsController } from './agent-chats.controller.js'
 import { AgentsController } from './agents.controller.js'
 import { AgentManager } from './agent-manager.service.js'
+import { TurnStream } from './turn-stream.service.js'
 import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
@@ -25,7 +26,7 @@ import { AgentMessageStep } from './entities/agent-message-step.entity.js'
         PlatformProviderModule
     ],
     controllers: [AgentsController, AgentChatsController],
-    providers: [AgentManager],
+    providers: [AgentManager, TurnStream],
     exports: [AgentManager]
 })
 export class AgentsModule {}

@@ -16,7 +16,7 @@ import type {
   TextMessage
 } from '../api'
 import { ApiError, agentApi } from '../api'
-import { agentChatApi, type AgentConverseStream } from '../api/agents'
+import { agentChatApi, type AgentConverseHandlers, type AgentConverseStream } from '../api/agents'
 import { authState } from '../stores/auth'
 import {
   isAgentRunMessage,
@@ -553,17 +553,18 @@ async function loadMessages(chatId: string, silent = false): Promise<void> {
   }
 }
 
-async function cancelCurrentStream(): Promise<void> {
+async function detachStream(): Promise<void> {
   if (!currentStream) return
   const stream = currentStream
   currentStream = null
   streaming.value = false
-  if (activeChatId.value) removeCurrentAgentRun(activeChatId.value)
+  // Only stop receiving; the turn keeps running server-side so other devices —
+  // and this one on re-open — can still watch it.
   await stream.cancel()
 }
 
 async function selectChat(id: string): Promise<void> {
-  if (id !== activeChatId.value) await cancelCurrentStream()
+  if (id !== activeChatId.value) await detachStream()
   activeChatId.value = id
   pendingReply.value = null
   currentRunMessageId = null
@@ -573,10 +574,15 @@ async function selectChat(id: string): Promise<void> {
   if (cached) {
     messages.value = cached
     messagesLoading.value = false
-    return
+  } else {
+    await loadMessages(id)
   }
 
-  await loadMessages(id)
+  // 若该聊天有进行中的轮（可能由本端早前发起、或其它设备发起），订阅其进度实现围观
+  const chat = agentChats.value.find((item) => item.id === id)
+  if (chat?.activeTurnId && activeChatId.value === id) {
+    watchTurn(chat, chat.activeTurnId)
+  }
 }
 
 async function onChatCreated(chat: AgentChatView): Promise<void> {
@@ -606,7 +612,11 @@ async function confirmDeleteChat(): Promise<void> {
   deleteChatError.value = null
   try {
     const deletingActiveChat = chat.id === activeChatId.value
-    if (deletingActiveChat) await cancelCurrentStream()
+    if (deletingActiveChat) {
+      // 删除前先停止进行中的轮（服务端 removeChat 对运行中会话会拒绝），再断开本端订阅
+      await stopCurrentTurn()
+      await detachStream()
+    }
     await agentChatApi.delete(chat.id)
 
     messageCache.delete(chat.id)
@@ -685,6 +695,85 @@ function handleRuntimeEvent(event: AgentEvent): void {
   }
 }
 
+/**
+ * Build the event handlers that drive the in-progress agent-run message and the
+ * right-panel runtime. Shared by both starting a turn (sendMessage) and watching
+ * an already-running turn (watchTurn), so live progress renders identically
+ * whether this device started the turn or is just observing it.
+ */
+function buildConverseHandlers(chat: AgentChatView): AgentConverseHandlers {
+  const chatId = chat.id
+  let assistantText = ''
+  let agentFinished = false
+
+  return {
+    onEvent(event) {
+      if (activeChatId.value !== chatId) return
+      ensureAgentRunMessage(chat)
+      if (event.type === 'done') agentFinished = true
+      handleRuntimeEvent(event)
+      syncAgentRunMessage(chat, event)
+      if (event.type === 'text') {
+        assistantText = assistantText ? `${assistantText}\n\n${event.text}` : event.text
+        updateAgentRunText(chatId, assistantText)
+      } else if (event.type === 'error' && event.fatal && !assistantText) {
+        appendSystemMessage(chatId, event.message)
+      }
+    },
+    onError(message) {
+      if (activeChatId.value !== chatId) return
+      finishAgentRun(chatId, false)
+      runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
+      appendSystemMessage(chatId, message)
+    },
+    onDone() {
+      if (activeChatId.value !== chatId) return
+      streaming.value = false
+      currentStream = null
+      if (!agentFinished) {
+        // 流结束但没收到 done：本轮可能仍在别处运行（仅本端断开），刷新以同步最终历史与活跃状态
+        finishAgentRun(chatId, true)
+        currentRunMessageId = null
+        void reloadAfterTurn(chatId)
+      } else {
+        void refreshChats()
+      }
+    }
+  }
+}
+
+/** turn 结束后用 DB 权威历史覆盖本地乐观态，确保多端最终一致 */
+async function reloadAfterTurn(chatId: string): Promise<void> {
+  await refreshChats()
+  await loadMessages(chatId, true)
+}
+
+/** 订阅一个进行中的 turn 的事件流（回放 + 实时追尾），用于围观 */
+function watchTurn(chat: AgentChatView, turnId: string): void {
+  if (currentStream) return
+  streaming.value = true
+  runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+  const stream = agentChatApi.subscribeTurn(chat.id, turnId, buildConverseHandlers(chat))
+  currentStream = stream
+  stream.started.catch(() => {
+    if (activeChatId.value !== chat.id) return
+    streaming.value = false
+    currentStream = null
+  })
+}
+
+/** 主动停止当前 turn（服务端中止，影响所有观看端） */
+async function stopCurrentTurn(): Promise<void> {
+  const stream = currentStream
+  const chatId = activeChatId.value
+  if (!stream || !chatId) return
+  try {
+    await agentChatApi.abortTurn(chatId, stream.turnId)
+  } catch {
+    /* 已结束或不可达：忽略，done 事件会收尾 */
+  }
+}
+
 async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef }): Promise<void> {
   const chat = activeChat.value
   if (!chat || streaming.value) return
@@ -706,48 +795,8 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
   streaming.value = true
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
 
-  let assistantText = ''
-  let agentFinished = false
-
   try {
-    const stream = agentChatApi.converse(chatId, prompt, {
-      onEvent(event) {
-        if (activeChatId.value !== chatId) return
-        ensureAgentRunMessage(chat)
-        if (event.type === 'done') agentFinished = true
-        handleRuntimeEvent(event)
-        syncAgentRunMessage(chat, event)
-        if (event.type === 'text') {
-          assistantText = assistantText ? `${assistantText}\n\n${event.text}` : event.text
-          updateAgentRunText(chatId, assistantText)
-        } else if (event.type === 'error' && event.fatal && !assistantText) {
-          appendSystemMessage(chatId, event.message)
-        }
-      },
-      onError(message) {
-        if (activeChatId.value !== chatId) return
-        finishAgentRun(chatId, false)
-        runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
-        appendSystemMessage(chatId, message)
-      },
-      onDone() {
-        if (activeChatId.value !== chatId) return
-        streaming.value = false
-        currentStream = null
-        if (!agentFinished) {
-          const message = 'Stream ended before agent sent a final done event'
-          finishAgentRun(chatId, false)
-          runtime.value = {
-            ...runtime.value,
-            phase: 'error',
-            label: 'Stream ended',
-            detail: message
-          }
-          appendSystemMessage(chatId, message)
-        }
-        void refreshChats()
-      }
-    })
+    const stream = await agentChatApi.converse(chatId, prompt, buildConverseHandlers(chat))
     currentStream = stream
     await stream.started
   } catch (err) {
@@ -848,7 +897,8 @@ function onCancelReply(): void {
 
 onMounted(loadWorkspace)
 onUnmounted(() => {
-  void cancelCurrentStream()
+  // 只断开本端订阅，turn 在服务端继续运行；重新打开或在其它设备仍可围观
+  void detachStream()
 })
 </script>
 
@@ -885,8 +935,10 @@ onUnmounted(() => {
       <MessageInput
         :reply-to="pendingReply"
         :disabled="streaming || !activeChatId"
+        :streaming="streaming"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
+        @stop="stopCurrentTurn"
       />
     </main>
     <RightInspector :network="[]" :chat="activeChat" :runtime="runtime" />

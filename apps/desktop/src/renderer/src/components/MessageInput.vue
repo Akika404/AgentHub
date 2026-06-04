@@ -6,11 +6,13 @@ import BaseButton from './ui/BaseButton.vue'
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
   disabled?: boolean
+  streaming?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'send', payload: { text: string; replyTo?: MessageReplyRef }): void
   (e: 'cancel-reply'): void
+  (e: 'stop'): void
 }>()
 
 const text = ref('')
@@ -93,6 +95,15 @@ function onKey(event: KeyboardEvent): void {
           </BaseButton>
         </div>
         <button
+          v-if="streaming"
+          class="bg-surface text-text-main border border-surface-border px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-gray-150 transition-colors"
+          @click="emit('stop')"
+        >
+          <span>停止&nbsp;</span>
+          <span class="material-symbols-outlined text-xl">stop_circle</span>
+        </button>
+        <button
+          v-else
           class="bg-primary text-white px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
           :disabled="disabled || isComposing || !text.trim()"
           @click="submit"

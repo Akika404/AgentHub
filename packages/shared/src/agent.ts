@@ -201,9 +201,24 @@ export interface AgentChatView {
   mcpServers: Record<string, unknown> | null
   status: AgentChatStatus
   hasLiveSession: boolean
+  /**
+   * Id of the turn currently running for this chat, or null when idle. A client
+   * opening the chat subscribes to this turn's event stream to watch live
+   * progress produced by any device.
+   */
+  activeTurnId: string | null
   lastTurnAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * Result of starting a converse turn. The turn runs server-side detached from
+ * the request; subscribe to `/agent-chats/:chatId/turns/:turnId/events` to watch
+ * it (replay + live tail), from this or any other device.
+ */
+export interface StartTurnResult {
+  turnId: string
 }
 
 /**

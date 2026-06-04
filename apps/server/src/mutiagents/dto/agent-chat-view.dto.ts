@@ -22,6 +22,7 @@ export interface AgentChatView {
     mcpServers: Record<string, unknown> | null
     status: AgentSessionStatus
     hasLiveSession: boolean
+    activeTurnId: string | null
     lastTurnAt: string | null
     createdAt: string
     updatedAt: string

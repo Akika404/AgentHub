@@ -77,6 +77,13 @@ export class AgentChatViewDto implements AgentChatView {
     @ApiProperty({ description: '是否有底层 SDK 会话句柄' })
     hasLiveSession!: boolean
 
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '当前正在运行的 turn id；空闲为 null。前端据此订阅进行中轮次的进度流'
+    })
+    activeTurnId!: string | null
+
     @ApiProperty({ type: String, nullable: true, description: '最近一轮对话时间' })
     lastTurnAt!: string | null
 

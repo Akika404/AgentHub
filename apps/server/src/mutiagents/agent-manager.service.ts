@@ -27,9 +27,16 @@ import { agentToConfig, toAgentChatView, toAgentView } from './mappers/agent.map
 import { toAgentChatMessageView } from './mappers/agent-message.mapper.js'
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
 import type { LiveAgent } from './live-agent.js'
+import { TurnStream } from './turn-stream.service.js'
 import { BusinessException } from '../common/index.js'
 import { PlatformProviderService } from '../platform-provider/platform-provider.service.js'
 import type { ProviderType } from '../platform-provider/entities/platform-provider.entity.js'
+
+/** 当前实例正在执行的某一轮 turn 的运行时句柄（用于本地命中 abort） */
+interface RunningTurn {
+    sessionId: string
+    abort: AbortController
+}
 
 const DEFAULT_AGENT_COLOR = '#3370ff'
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
@@ -62,6 +69,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private readonly registry = new Map<string, LiveAgent>()
     /** sessionId/chatId -> 重建中的 Promise，去重并发 rehydrate */
     private readonly rehydrating = new Map<string, Promise<LiveAgent>>()
+    /** turnId -> 本实例正在执行的 turn，用于本地命中 abort */
+    private readonly runningTurns = new Map<string, RunningTurn>()
 
     private readonly maxLive: number
     private readonly maxLiveCodex: number
@@ -78,6 +87,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         @InjectRepository(AgentMessageStep)
         private readonly stepRepo: Repository<AgentMessageStep>,
         private readonly providerService: PlatformProviderService,
+        private readonly turnStream: TurnStream,
         private readonly config: ConfigService
     ) {
         this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
@@ -88,6 +98,21 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     onModuleInit(): void {
         this.sweepTimer = setInterval(() => this.sweepIdle(), Math.min(this.idleTtlMs, 60 * 1000))
         this.sweepTimer.unref?.()
+        // 跨实例 abort：控制频道收到 turnId 时，只有持有该 turn 的实例命中并中止
+        this.turnStream.onAbortRequest((turnId) => {
+            this.runningTurns.get(turnId)?.abort.abort()
+        })
+        // 启动回收：单实例重启后清理上个进程残留的活跃指针（多实例部署应关闭）
+        if (this.config.get<string>('AGENT_RECLAIM_ON_BOOT', 'true') !== 'false') {
+            void this.turnStream
+                .reclaimStaleActiveTurns()
+                .then((n) => {
+                    if (n > 0) this.logger.log(`Reclaimed ${n} stale active turn(s) on boot`)
+                })
+                .catch((err) => {
+                    this.logger.error(`Failed to reclaim stale active turns: ${this.errMsg(err)}`)
+                })
+        }
     }
 
     onModuleDestroy(): void {
@@ -283,7 +308,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             lastTurnAt: null
         })
         const saved = await this.sessionRepo.save(session)
-        return toAgentChatView(saved, agent)
+        return toAgentChatView(saved, agent, null)
     }
 
     async listChats(userId: string): Promise<AgentChatView[]> {
@@ -297,17 +322,21 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             where: { userId, id: In([...new Set(sessions.map((s) => s.agentId))]) }
         })
         const agentById = new Map(agents.map((agent) => [agent.id, agent]))
+        const activeTurns = await this.turnStream.getActiveTurns(sessions.map((s) => s.id))
         return sessions
             .map((session) => {
                 const agent = agentById.get(session.agentId)
-                return agent ? toAgentChatView(session, agent) : null
+                return agent
+                    ? toAgentChatView(session, agent, activeTurns.get(session.id) ?? null)
+                    : null
             })
             .filter((view): view is AgentChatView => view !== null)
     }
 
     async getChat(userId: string, chatId: string): Promise<AgentChatView> {
         const { session, agent } = await this.loadChat(userId, chatId)
-        return toAgentChatView(session, agent)
+        const activeTurnId = await this.turnStream.getActiveTurn(session.id)
+        return toAgentChatView(session, agent, activeTurnId)
     }
 
     async listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
@@ -331,16 +360,33 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         )
     }
 
-    async converseChat(
-        userId: string,
-        chatId: string,
-        prompt: string,
-        clientSignal?: AbortSignal
-    ): Promise<AsyncIterable<AgentEvent>> {
+    /**
+     * 启动一轮对话。turn 作为游离后台任务在服务端运行，与发起它的 HTTP 请求解耦：
+     * 发起端断连不会中止它，任意端可通过 subscribeTurn 回放+追尾实时进度。
+     *
+     * 并发：同一会话同时只允许一轮。若已有活跃轮，幂等返回既存 turnId（让多端收敛
+     * 到同一轮），不报 busy、不重复落库 user 消息。
+     */
+    async startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
         const { session } = await this.loadChat(userId, chatId)
-        const live = await this.getOrRehydrate(session)
 
+        const turnId = randomUUID()
+        const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
+        if (owned !== turnId) {
+            // 已有活跃轮：直接让前端订阅既存轮，不启动新轮
+            return { turnId: owned }
+        }
+
+        let live: LiveAgent
+        try {
+            live = await this.getOrRehydrate(session)
+        } catch (err) {
+            await this.turnStream.releaseActiveTurn(session.id, turnId)
+            throw err
+        }
         if (live.busy) {
+            // 本实例已有该会话在跑（指针应已拦截，这里兜底）
+            await this.turnStream.releaseActiveTurn(session.id, turnId)
             throw BusinessException.agentBusy(`Chat ${chatId} is busy with another turn`)
         }
         live.busy = true
@@ -348,20 +394,39 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
         const abort = new AbortController()
         live.abort = abort
-        if (clientSignal) {
-            if (clientSignal.aborted) abort.abort()
-            else clientSignal.addEventListener('abort', () => abort.abort(), { once: true })
-        }
+        this.runningTurns.set(turnId, { sessionId: session.id, abort })
 
         try {
             await this.saveMessage(userId, session.agentId, session.id, 'user', prompt)
         } catch (err) {
             live.busy = false
             live.abort = null
+            this.runningTurns.delete(turnId)
+            await this.turnStream.releaseActiveTurn(session.id, turnId)
             throw err
         }
 
-        return this.streamTurn(session, live, prompt, abort)
+        // 不 await：游离运行，请求立即返回 turnId
+        void this.runTurn(session, live, prompt, abort, turnId)
+        return { turnId }
+    }
+
+    /** 订阅某一轮的事件流（回放已发生 + 追尾实时），遇 done 结束。供 SSE 端点消费 */
+    async subscribeTurn(
+        userId: string,
+        chatId: string,
+        turnId: string
+    ): Promise<AsyncIterable<AgentEvent>> {
+        await this.loadChat(userId, chatId) // 归属校验：非法 chatId/userId 直接拒绝
+        return this.turnStream.subscribe(chatId, turnId)
+    }
+
+    /** 主动中止某一轮：本地命中直接 abort，并广播控制频道覆盖其它实例 */
+    async abortTurn(userId: string, chatId: string, turnId: string): Promise<{ aborted: true }> {
+        await this.loadChat(userId, chatId)
+        this.runningTurns.get(turnId)?.abort.abort()
+        await this.turnStream.requestAbort(turnId)
+        return { aborted: true }
     }
 
     async clearChat(userId: string, chatId: string): Promise<AgentChatView> {
@@ -373,7 +438,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         await this.sessionRepo.save(session)
         await this.stepRepo.delete({ sessionId: session.id })
         await this.messageRepo.delete({ userId, sessionId: session.id })
-        return toAgentChatView(session, agent)
+        return toAgentChatView(session, agent, null)
     }
 
     async removeChat(userId: string, chatId: string): Promise<{ deleted: true }> {
@@ -386,16 +451,21 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         return { deleted: true }
     }
 
-    private async *streamTurn(
+    /**
+     * 游离运行一轮对话：迭代 adapter 事件流，每条事件 XADD 到 turn 的 Redis Stream
+     * 供多端订阅；结束时落库消息与运行步骤、持久化 SDK 句柄、释放活跃指针。
+     * 不向调用方 yield —— 与任何 HTTP 请求生命周期无关。
+     */
+    private async runTurn(
         session: AgentSession,
         live: LiveAgent,
         prompt: string,
-        abort: AbortController
-    ): AsyncIterable<AgentEvent> {
+        abort: AbortController,
+        turnId: string
+    ): Promise<void> {
         const textParts: string[] = []
         let finalTextFromDone: string | null = null
         let fatalErrorMessage: string | null = null
-        let persistedOutput = false
         // 运行步骤草稿：thinking / progress / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
         const stepDrafts: StepDraft[] = []
         const toolIndexById = new Map<string, number>()
@@ -405,12 +475,23 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 else if (ev.type === 'done' && ev.finalText) finalTextFromDone = ev.finalText
                 else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
                 else this.collectStep(ev, stepDrafts, toolIndexById)
-                yield ev
+                await this.turnStream.publish(turnId, ev)
             }
+        } catch (err) {
+            // adapter 抛出（含 abort）：补一条 done，让订阅者收尾退出
+            fatalErrorMessage ??= this.errMsg(err)
+            await this.turnStream
+                .publish(turnId, {
+                    type: 'done',
+                    vendor: session.vendor,
+                    success: false
+                })
+                .catch(() => undefined)
         } finally {
             live.busy = false
             live.abort = null
             live.lastUsedAt = Date.now()
+            this.runningTurns.delete(turnId)
             try {
                 await this.persistHandle(session, live)
             } catch (err) {
@@ -419,33 +500,32 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 )
             }
             try {
-                if (!persistedOutput) {
-                    const agentText = (finalTextFromDone ?? textParts.join('')).trim()
-                    if (agentText) {
-                        const message = await this.saveMessage(
-                            session.userId,
-                            session.agentId,
-                            session.id,
-                            'agent',
-                            agentText
-                        )
-                        if (message) await this.saveSteps(message.id, session.id, stepDrafts)
-                    } else if (fatalErrorMessage) {
-                        await this.saveMessage(
-                            session.userId,
-                            session.agentId,
-                            session.id,
-                            'system',
-                            fatalErrorMessage
-                        )
-                    }
-                    persistedOutput = true
+                const agentText = (finalTextFromDone ?? textParts.join('')).trim()
+                if (agentText) {
+                    const message = await this.saveMessage(
+                        session.userId,
+                        session.agentId,
+                        session.id,
+                        'agent',
+                        agentText
+                    )
+                    if (message) await this.saveSteps(message.id, session.id, stepDrafts)
+                } else if (fatalErrorMessage) {
+                    await this.saveMessage(
+                        session.userId,
+                        session.agentId,
+                        session.id,
+                        'system',
+                        fatalErrorMessage
+                    )
                 }
             } catch (err) {
                 this.logger.error(
                     `Failed to persist message history for session ${session.id}: ${this.errMsg(err)}`
                 )
             }
+            await this.turnStream.releaseActiveTurn(session.id, turnId).catch(() => undefined)
+            await this.turnStream.finalize(turnId).catch(() => undefined)
         }
     }
 

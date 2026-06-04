@@ -6,13 +6,10 @@ import {
     MessageEvent,
     Param,
     Post,
-    Query,
-    Req,
     Sse,
     UseGuards
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger'
-import type { Request } from 'express'
 import { Observable, from, map } from 'rxjs'
 import { SkipEnvelope } from '../common/decorators/skip-envelope.decorator.js'
 import { ApiEnvelope } from '../common/swagger/api-envelope.decorator.js'
@@ -24,6 +21,7 @@ import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import { ConverseDto } from './dto/converse.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
 import { AgentChatViewDto, DeleteAgentChatResultDto } from './dto/agent-chat-response.dto.js'
+import { StartTurnResultDto, AbortTurnResultDto } from './dto/turn-response.dto.js'
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
 import { AgentChatMessageViewDto } from './dto/agent-message-response.dto.js'
 
@@ -69,24 +67,50 @@ export class AgentChatsController {
         return this.manager.listChatMessages(user.id, chatId)
     }
 
-    @Sse(':chatId/converse')
-    @SkipEnvelope()
+    @Post(':chatId/converse')
     @ApiOperation({
-        summary: '与单 Agent 聊天会话对话（SSE 流）',
+        summary: '启动一轮对话（后台游离运行）',
         description:
-            '返回 text/event-stream，逐条推送统一 AgentEvent。按 chatId 复用/恢复该聊天自己的 SDK 会话。'
+            '在服务端启动一轮对话并立即返回 turnId。该轮与本请求生命周期解耦，发起端断连不会中止它；通过 GET :chatId/turns/:turnId/events 订阅其进度（可多端同时订阅）。若该聊天已有进行中的轮，幂等返回既存 turnId。'
     })
-    @ApiProduces('text/event-stream')
-    async converse(
+    @ApiEnvelope(StartTurnResultDto, { status: 201 })
+    startTurn(
         @CurrentUser() user: User,
         @Param('chatId') chatId: string,
-        @Query() query: ConverseDto,
-        @Req() req: Request
+        @Body() dto: ConverseDto
+    ): Promise<{ turnId: string }> {
+        return this.manager.startTurn(user.id, chatId, dto.prompt)
+    }
+
+    @Sse(':chatId/turns/:turnId/events')
+    @SkipEnvelope()
+    @ApiOperation({
+        summary: '订阅某一轮对话的事件流（SSE，回放 + 实时追尾）',
+        description:
+            '返回 text/event-stream，先回放该轮已发生的全部 AgentEvent，再实时追尾，遇 done 结束。断开本连接不会中止该轮（后台继续运行）；可被多端同时订阅以实时围观。'
+    })
+    @ApiProduces('text/event-stream')
+    async converseEvents(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Param('turnId') turnId: string
     ): Promise<Observable<MessageEvent>> {
-        const abort = new AbortController()
-        req.on('close', () => abort.abort())
-        const stream = await this.manager.converseChat(user.id, chatId, query.prompt, abort.signal)
+        const stream = await this.manager.subscribeTurn(user.id, chatId, turnId)
         return from(stream).pipe(map((ev): MessageEvent => ({ data: ev as object })))
+    }
+
+    @Post(':chatId/turns/:turnId/abort')
+    @ApiOperation({
+        summary: '中止某一轮对话',
+        description: '主动停止一个正在运行的 turn；跨实例广播，已产出的内容仍会落库。'
+    })
+    @ApiEnvelope(AbortTurnResultDto, { status: 201 })
+    abortTurn(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Param('turnId') turnId: string
+    ): Promise<{ aborted: true }> {
+        return this.manager.abortTurn(user.id, chatId, turnId)
     }
 
     @Post(':chatId/clear')

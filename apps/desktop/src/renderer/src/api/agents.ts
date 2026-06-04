@@ -8,6 +8,7 @@ import {
   type ApiResponse,
   type CreateAgentChatPayload,
   type CreateAgentPayload,
+  type StartTurnResult,
   type UpdateAgentPayload
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
@@ -31,7 +32,11 @@ export interface AgentConverseHandlers {
 
 export interface AgentConverseStream {
   streamId: string
+  /** The turn being watched. Aborting this turn stops it server-side for all devices. */
+  turnId: string
+  /** Resolves once the SSE subscription is established (or rejects if it fails). */
   started: Promise<void>
+  /** Detach this client from the turn. Does NOT stop the turn server-side. */
   cancel(): Promise<void>
 }
 
@@ -57,13 +62,19 @@ function cleanup(unsubscribers: Array<() => void>): void {
   unsubscribers.length = 0
 }
 
-function startConverseStream(
+/**
+ * Subscribe to a turn's event stream (replay + live tail). The turn runs
+ * server-side independently of this subscription: cancelling only detaches this
+ * client, it does not stop the turn. Works for both the device that started the
+ * turn and any other device watching the same turn.
+ */
+function subscribeTurn(
   chatId: string,
-  prompt: string,
+  turnId: string,
   handlers: AgentConverseHandlers
 ): AgentConverseStream {
   const streamId = nextStreamId()
-  const path = `/agent-chats/${chatId}/converse?prompt=${encodeURIComponent(prompt)}`
+  const path = `/agent-chats/${chatId}/turns/${turnId}/events`
   const unsubscribers: Array<() => void> = []
 
   const cancel = async (): Promise<void> => {
@@ -117,7 +128,21 @@ function startConverseStream(
       }
     })
 
-  return { streamId, started, cancel }
+  return { streamId, turnId, started, cancel }
+}
+
+/**
+ * Start a turn then immediately subscribe to its events. Returns once the turn
+ * is started (turnId known) and the subscription is wired; `started` resolves
+ * when the SSE connection is live.
+ */
+async function startConverseStream(
+  chatId: string,
+  prompt: string,
+  handlers: AgentConverseHandlers
+): Promise<AgentConverseStream> {
+  const { turnId } = await http.post<StartTurnResult>(`/agent-chats/${chatId}/converse`, { prompt })
+  return subscribeTurn(chatId, turnId, handlers)
 }
 
 /** Multi-agent module client. Maps `/api/agents/*`. */
@@ -139,5 +164,11 @@ export const agentChatApi = {
     http.get<AgentChatMessageView[]>(`/agent-chats/${chatId}/messages`),
   clear: (chatId: string) => http.post<AgentChatView>(`/agent-chats/${chatId}/clear`),
   delete: (chatId: string) => http.delete<{ deleted: true }>(`/agent-chats/${chatId}`),
-  converse: startConverseStream
+  /** Start a turn (runs server-side, detached) and subscribe to its event stream. */
+  converse: startConverseStream,
+  /** Subscribe to an already-running turn's stream (replay + tail) — used to watch live progress. */
+  subscribeTurn,
+  /** Stop a running turn server-side (affects every watching device). */
+  abortTurn: (chatId: string, turnId: string) =>
+    http.post<{ aborted: true }>(`/agent-chats/${chatId}/turns/${turnId}/abort`)
 }
