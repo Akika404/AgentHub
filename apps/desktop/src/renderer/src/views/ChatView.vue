@@ -33,8 +33,12 @@ import MessageInput from '../components/MessageInput.vue'
 import RightInspector from '../components/RightInspector.vue'
 import PinnedBar from '../components/PinnedBar.vue'
 import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
+type ChatListItem = ChatSummary & { pinned: boolean }
+
+const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
 
 interface AgentRuntimeState {
   phase: RuntimePhase
@@ -59,6 +63,11 @@ const agentsError = ref<string | null>(null)
 const messagesLoading = ref(false)
 const streaming = ref(false)
 const createChatOpen = ref(false)
+const pinnedChatIds = ref<Set<string>>(readPinnedChatIds())
+const deleteChatTarget = ref<ChatListItem | null>(null)
+const deleteChatConfirmOpen = ref(false)
+const deletingChat = ref(false)
+const deleteChatError = ref<string | null>(null)
 
 const pendingReply = ref<MessageReplyRef | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
@@ -68,22 +77,40 @@ const activeChat = computed(
   () => agentChats.value.find((chat) => chat.id === activeChatId.value) ?? null
 )
 
-const chats = computed<ChatSummary[]>(() =>
-  agentChats.value.map((chat) => ({
-    id: chat.id,
-    title: titleForChat(chat),
-    preview: previewForChat(chat),
-    kind: 'agent',
-    avatar: {
-      kind: 'initials',
-      text: agentInitials(chat.agent.name),
-      color: chat.agent.color,
-      avatarDataUrl: chat.agent.avatar ?? undefined,
-      tone: chat.status === 'active' ? 'primary' : 'neutral'
-    },
-    active: chat.id === activeChatId.value
-  }))
+const chats = computed<ChatListItem[]>(() =>
+  agentChats.value
+    .map((chat, index) => ({
+      chat,
+      index,
+      pinned: pinnedChatIds.value.has(chat.id)
+    }))
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      return a.index - b.index
+    })
+    .map(({ chat, pinned }) => ({
+      id: chat.id,
+      title: titleForChat(chat),
+      preview: previewForChat(chat),
+      kind: 'agent',
+      avatar: {
+        kind: 'initials',
+        text: agentInitials(chat.agent.name),
+        color: chat.agent.color,
+        avatarDataUrl: chat.agent.avatar ?? undefined,
+        tone: chat.status === 'active' ? 'primary' : 'neutral'
+      },
+      active: chat.id === activeChatId.value,
+      pinned
+    }))
 )
+
+const deleteChatMessage = computed(() => {
+  const chat = deleteChatTarget.value
+  if (!chat) return ''
+  const base = `确认删除聊天「${chat.title}」？聊天记录会一并删除。`
+  return deleteChatError.value ? `${base}\n${deleteChatError.value}` : base
+})
 
 const chatDetail = computed<ChatDetail | null>(() => {
   const chat = activeChat.value
@@ -119,6 +146,45 @@ function previewForChat(chat: AgentChatView): string {
   if (chat.id === activeChatId.value && streaming.value) return runtime.value.label
   if (chat.lastTurnAt) return `最近 ${formatTime(chat.lastTurnAt)}`
   return `${chat.agent.vendor} / ${chat.agent.model}`
+}
+
+function readPinnedChatIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PINNED_CHAT_IDS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writePinnedChatIds(ids: Set<string>): void {
+  localStorage.setItem(PINNED_CHAT_IDS_STORAGE_KEY, JSON.stringify([...ids]))
+}
+
+function prunePinnedChatIds(): void {
+  const validIds = new Set(agentChats.value.map((chat) => chat.id))
+  const next = new Set([...pinnedChatIds.value].filter((id) => validIds.has(id)))
+  if (next.size === pinnedChatIds.value.size) return
+  pinnedChatIds.value = next
+  writePinnedChatIds(next)
+}
+
+function toggleChatPinned(chat: ChatListItem): void {
+  const next = new Set(pinnedChatIds.value)
+  if (next.has(chat.id)) next.delete(chat.id)
+  else next.add(chat.id)
+  pinnedChatIds.value = next
+  writePinnedChatIds(next)
+}
+
+function clearChatWorkspace(): void {
+  activeChatId.value = null
+  messages.value = []
+  currentRunMessageId = null
+  messagesLoading.value = false
+  pendingReply.value = null
+  runtime.value = idleRuntime()
 }
 
 function currentUserSender(): SenderInfo {
@@ -432,14 +498,9 @@ async function loadWorkspace(): Promise<void> {
     agents.value = agentList
     const currentStillExists = agentChats.value.some((chat) => chat.id === activeChatId.value)
     const initial = currentStillExists ? activeChatId.value : agentChats.value[0]?.id
+    prunePinnedChatIds()
     if (initial) await selectChat(initial)
-    else {
-      activeChatId.value = null
-      messages.value = []
-      currentRunMessageId = null
-      messagesLoading.value = false
-      runtime.value = idleRuntime()
-    }
+    else clearChatWorkspace()
   } finally {
     chatsLoading.value = false
   }
@@ -447,6 +508,7 @@ async function loadWorkspace(): Promise<void> {
 
 async function refreshChats(): Promise<void> {
   agentChats.value = await agentChatApi.list()
+  prunePinnedChatIds()
 }
 
 async function refreshAgents(): Promise<void> {
@@ -516,6 +578,48 @@ async function onChatCreated(chat: AgentChatView): Promise<void> {
   agentChats.value = [chat, ...agentChats.value.filter((item) => item.id !== chat.id)]
   await selectChat(chat.id)
   void refreshChats()
+}
+
+function requestDeleteChat(chat: ChatListItem): void {
+  deleteChatTarget.value = chat
+  deleteChatError.value = null
+  deleteChatConfirmOpen.value = true
+}
+
+function closeDeleteChatDialog(): void {
+  if (deletingChat.value) return
+  deleteChatConfirmOpen.value = false
+  deleteChatTarget.value = null
+  deleteChatError.value = null
+}
+
+async function confirmDeleteChat(): Promise<void> {
+  const chat = deleteChatTarget.value
+  if (!chat) return
+
+  deletingChat.value = true
+  deleteChatError.value = null
+  try {
+    const deletingActiveChat = chat.id === activeChatId.value
+    if (deletingActiveChat) await cancelCurrentStream()
+    await agentChatApi.delete(chat.id)
+
+    messageCache.delete(chat.id)
+    agentChats.value = agentChats.value.filter((item) => item.id !== chat.id)
+    prunePinnedChatIds()
+
+    deleteChatConfirmOpen.value = false
+    deleteChatTarget.value = null
+
+    if (!deletingActiveChat) return
+    const nextChatId = chats.value[0]?.id
+    if (nextChatId) await selectChat(nextChatId)
+    else clearChatWorkspace()
+  } catch (err) {
+    deleteChatError.value = err instanceof ApiError ? err.message : '删除聊天失败'
+  } finally {
+    deletingChat.value = false
+  }
 }
 
 function handleRuntimeEvent(event: AgentEvent): void {
@@ -751,6 +855,8 @@ onUnmounted(() => {
       :loading="chatsLoading"
       @select="selectChat"
       @create-chat="openCreateChatDialog"
+      @toggle-pin="toggleChatPinned"
+      @delete-chat="requestDeleteChat"
     />
     <main class="flex-1 flex flex-col h-full bg-surface min-w-0 relative">
       <ChatHeader :detail="chatDetail" />
@@ -786,6 +892,16 @@ onUnmounted(() => {
       :load-error="agentsError"
       @close="createChatOpen = false"
       @created="onChatCreated"
+    />
+    <ConfirmDialog
+      :open="deleteChatConfirmOpen"
+      title="删除聊天"
+      :message="deleteChatMessage"
+      confirm-label="删除"
+      confirming-label="删除中..."
+      :confirming="deletingChat"
+      @close="closeDeleteChatDialog"
+      @confirm="confirmDeleteChat"
     />
   </div>
 </template>

@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ChatSummary } from '../api'
 import { avatarTextColor } from '../utils/avatar'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
+type ChatListItem = ChatSummary & {
+  pinned: boolean
+}
+
 defineProps<{
-  chats: ChatSummary[]
+  chats: ChatListItem[]
   activeChatId: string | null
   loading?: boolean
 }>()
@@ -14,9 +19,27 @@ const emit = defineEmits<{
   (e: 'select', id: string): void
   (e: 'search', value: string): void
   (e: 'create-chat'): void
+  (e: 'toggle-pin', chat: ChatListItem): void
+  (e: 'delete-chat', chat: ChatListItem): void
 }>()
 
 const createMenuOpen = ref(false)
+const chatMenuOpen = ref(false)
+const chatMenuX = ref(0)
+const chatMenuY = ref(0)
+const chatMenuTarget = ref<ChatListItem | null>(null)
+
+const chatMenuItems = computed<MenuItem[]>(() => {
+  const chat = chatMenuTarget.value
+  return [
+    {
+      id: 'toggle-pin',
+      label: chat?.pinned ? '取消置顶' : '置顶聊天',
+      icon: chat?.pinned ? 'keep_off' : 'keep'
+    },
+    { id: 'delete', label: '删除聊天', icon: 'delete' }
+  ]
+})
 
 function toggleCreateMenu(): void {
   createMenuOpen.value = !createMenuOpen.value
@@ -27,6 +50,27 @@ function onCreateChat(): void {
   emit('create-chat')
 }
 
+function openChatMenu(event: MouseEvent, chat: ChatListItem): void {
+  event.preventDefault()
+  createMenuOpen.value = false
+  chatMenuTarget.value = chat
+  chatMenuX.value = event.clientX
+  chatMenuY.value = event.clientY
+  chatMenuOpen.value = true
+}
+
+function closeChatMenu(): void {
+  chatMenuOpen.value = false
+  chatMenuTarget.value = null
+}
+
+function onChatMenuSelect(id: string): void {
+  const chat = chatMenuTarget.value
+  if (!chat) return
+  if (id === 'toggle-pin') emit('toggle-pin', chat)
+  else if (id === 'delete') emit('delete-chat', chat)
+}
+
 function onGlobalMouseDown(event: MouseEvent): void {
   if (!createMenuOpen.value) return
   const target = event.target as HTMLElement | null
@@ -35,7 +79,10 @@ function onGlobalMouseDown(event: MouseEvent): void {
 }
 
 function onKey(event: KeyboardEvent): void {
-  if (event.key === 'Escape') createMenuOpen.value = false
+  if (event.key === 'Escape') {
+    createMenuOpen.value = false
+    closeChatMenu()
+  }
 }
 
 onMounted(() => {
@@ -114,9 +161,10 @@ onBeforeUnmount(() => {
       <div
         v-for="chat in chats"
         :key="chat.id"
-        class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2 mb-1"
+        class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2 mb-1 select-none"
         :class="chat.id === activeChatId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
         @click="emit('select', chat.id)"
+        @contextmenu="openChatMenu($event, chat)"
       >
         <div
           class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden"
@@ -146,15 +194,32 @@ onBeforeUnmount(() => {
           <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
         </div>
         <div class="flex-1 min-w-0">
-          <div
-            class="font-medium truncate text-md"
-            :class="chat.id === activeChatId ? 'text-primary' : 'text-text-main'"
-          >
-            {{ chat.title }}
+          <div class="flex min-w-0 items-center gap-1.5">
+            <div
+              class="font-medium truncate text-md"
+              :class="chat.id === activeChatId ? 'text-primary' : 'text-text-main'"
+            >
+              {{ chat.title }}
+            </div>
+            <span
+              v-if="chat.pinned"
+              class="material-symbols-outlined text-[18px] leading-none text-primary flex-shrink-0"
+              title="已置顶"
+            >
+              keep
+            </span>
           </div>
           <div class="text-text-muted truncate mt-0.5 text-sm">{{ chat.preview }}</div>
         </div>
       </div>
     </div>
+    <ContextMenu
+      :open="chatMenuOpen"
+      :x="chatMenuX"
+      :y="chatMenuY"
+      :items="chatMenuItems"
+      @close="closeChatMenu"
+      @select="onChatMenuSelect"
+    />
   </aside>
 </template>
