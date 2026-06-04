@@ -2,11 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ChatSummary } from '../api'
 import { avatarTextColor } from '../utils/avatar'
+import { formatTime } from '../utils/format'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 type ChatListItem = ChatSummary & {
   pinned: boolean
+  updatedAt?: string
 }
 
 defineProps<{
@@ -161,7 +163,7 @@ onBeforeUnmount(() => {
       <div
         v-for="chat in chats"
         :key="chat.id"
-        class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2 mb-1 select-none"
+        class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2.5 mb-1 select-none"
         :class="chat.id === activeChatId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
         @click="emit('select', chat.id)"
         @contextmenu="openChatMenu($event, chat)"
@@ -194,10 +196,9 @@ onBeforeUnmount(() => {
           <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="flex min-w-0 items-center gap-1.5">
+          <div class="flex min-w-0 items-center gap-2">
             <div
-              class="font-medium truncate text-md"
-              :class="chat.id === activeChatId ? 'text-primary' : 'text-text-main'"
+              class="flex-1 min-w-0 font-medium truncate text-md text-text-main"
             >
               {{ chat.title }}
             </div>
@@ -208,8 +209,11 @@ onBeforeUnmount(() => {
             >
               keep
             </span>
+            <span v-if="chat.updatedAt" class="flex-shrink-0 text-xs text-text-muted">
+              {{ formatTime(chat.updatedAt) }}
+            </span>
           </div>
-          <div class="text-text-muted truncate mt-0.5 text-sm">{{ chat.preview }}</div>
+          <div class="text-text-muted truncate mt-1 text-sm leading-4">{{ chat.preview }}</div>
         </div>
       </div>
     </div>

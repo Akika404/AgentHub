@@ -36,7 +36,7 @@ import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
-type ChatListItem = ChatSummary & { pinned: boolean }
+type ChatListItem = ChatSummary & { pinned: boolean; updatedAt?: string }
 
 const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
 
@@ -101,7 +101,8 @@ const chats = computed<ChatListItem[]>(() =>
         tone: chat.status === 'active' ? 'primary' : 'neutral'
       },
       active: chat.id === activeChatId.value,
-      pinned
+      pinned,
+      updatedAt: chat.lastTurnAt ?? chat.updatedAt
     }))
 )
 
