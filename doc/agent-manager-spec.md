@@ -1,4 +1,4 @@
-AgentManager 后端实现方案
+# AgentManager 后端实现方案
 
 > 本文描述 `apps/server/src/mutiagents/` 的当前设计。字段与接口以实体和 shared 契约为准。
 
