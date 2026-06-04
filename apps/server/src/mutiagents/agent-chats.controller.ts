@@ -71,7 +71,7 @@ export class AgentChatsController {
     @ApiOperation({
         summary: '启动一轮对话（后台游离运行）',
         description:
-            '在服务端启动一轮对话并立即返回 turnId。该轮与本请求生命周期解耦，发起端断连不会中止它；通过 GET :chatId/turns/:turnId/events 订阅其进度（可多端同时订阅）。若该聊天已有进行中的轮，幂等返回既存 turnId。'
+            '在服务端启动一轮对话并立即返回 turnId。该轮与本请求生命周期解耦，发起端断连不会中止它；通过 GET :chatId/turns/:turnId/events 订阅其进度（可多端同时订阅）。若该聊天已有进行中的轮，新 prompt 会返回 busy；观看既存轮请使用 activeTurnId 订阅事件流。'
     })
     @ApiEnvelope(StartTurnResultDto, { status: 201 })
     startTurn(

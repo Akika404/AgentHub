@@ -60,19 +60,19 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
     /**
      * 尝试把 sessionId 标记为「有一轮在跑」。返回最终持锁的 turnId：
      * - 抢锁成功 → 返回传入的 turnId（调用方应启动 runTurn）
-     * - 已有活跃轮 → 返回既存 turnId（调用方应直接让前端订阅，不再启动新轮）
+     * - 已有活跃轮 → 返回既存 turnId（调用方应拒绝新 turn 或引导订阅既存轮）
      */
     async acquireActiveTurn(sessionId: string, turnId: string): Promise<string> {
-        const ok = await this.redis.set(
-            this.activeKey(sessionId),
-            turnId,
-            'EX',
-            TurnStream.ACTIVE_TTL_SEC,
-            'NX'
-        )
-        if (ok === 'OK') return turnId
-        const existing = await this.redis.get(this.activeKey(sessionId))
-        return existing ?? turnId
+        const key = this.activeKey(sessionId)
+        while (true) {
+            const ok = await this.redis.set(key, turnId, 'EX', TurnStream.ACTIVE_TTL_SEC, 'NX')
+            if (ok === 'OK') return turnId
+
+            const existing = await this.redis.get(key)
+            if (existing) return existing
+            // The previous active key expired or was released between SET NX and GET.
+            // Retry so the caller never starts a turn without holding the Redis lock.
+        }
     }
 
     /** 释放活跃指针（仅当持有者是自己这一轮时才删，避免误删后继轮） */

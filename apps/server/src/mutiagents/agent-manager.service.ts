@@ -40,6 +40,7 @@ interface RunningTurn {
 
 const DEFAULT_AGENT_COLOR = '#3370ff'
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000
 type AgentSkillsInput = 'all' | string[] | null | undefined
 
 /** streamTurn 内累积运行步骤的草稿；落库前不带 id/seq/messageId */
@@ -75,6 +76,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private readonly maxLive: number
     private readonly maxLiveCodex: number
     private readonly idleTtlMs: number
+    private readonly turnTimeoutMs: number
     private sweepTimer: NodeJS.Timeout | null = null
 
     constructor(
@@ -93,6 +95,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
         this.maxLiveCodex = this.config.get<number>('AGENT_MAX_LIVE_CODEX', 8)
         this.idleTtlMs = this.config.get<number>('AGENT_IDLE_TTL_MS', 15 * 60 * 1000)
+        this.turnTimeoutMs = this.readPositiveMs('AGENT_TURN_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS)
     }
 
     onModuleInit(): void {
@@ -364,8 +367,8 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
      * 启动一轮对话。turn 作为游离后台任务在服务端运行，与发起它的 HTTP 请求解耦：
      * 发起端断连不会中止它，任意端可通过 subscribeTurn 回放+追尾实时进度。
      *
-     * 并发：同一会话同时只允许一轮。若已有活跃轮，幂等返回既存 turnId（让多端收敛
-     * 到同一轮），不报 busy、不重复落库 user 消息。
+     * 并发：同一会话同时只允许一轮。若已有活跃轮，新 prompt 会被拒绝为 busy；
+     * 观看既存轮应走 subscribeTurn，而不是把新输入静默映射到旧 turn。
      */
     async startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
         const { session } = await this.loadChat(userId, chatId)
@@ -373,8 +376,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const turnId = randomUUID()
         const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
         if (owned !== turnId) {
-            // 已有活跃轮：直接让前端订阅既存轮，不启动新轮
-            return { turnId: owned }
+            throw BusinessException.agentBusy(`Chat ${chatId} is busy with active turn ${owned}`)
         }
 
         let live: LiveAgent
@@ -466,11 +468,34 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const textParts: string[] = []
         let finalTextFromDone: string | null = null
         let fatalErrorMessage: string | null = null
+        let timedOut = false
+        let timeout: NodeJS.Timeout | null = null
         // 运行步骤草稿：thinking / progress / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
         const stepDrafts: StepDraft[] = []
         const toolIndexById = new Map<string, number>()
+        const timeoutPromise =
+            this.turnTimeoutMs > 0
+                ? new Promise<never>((_, reject) => {
+                      timeout = setTimeout(() => {
+                          timedOut = true
+                          abort.abort()
+                          reject(
+                              new Error(`Agent turn timed out after ${this.turnTimeoutMs}ms`)
+                          )
+                      }, this.turnTimeoutMs)
+                      timeout.unref?.()
+                  })
+                : null
         try {
-            for await (const ev of live.adapter.send(prompt, { signal: abort.signal })) {
+            const iterator = live.adapter.send(prompt, { signal: abort.signal })[
+                Symbol.asyncIterator
+            ]()
+            while (true) {
+                const next = timeoutPromise
+                    ? await Promise.race([iterator.next(), timeoutPromise])
+                    : await iterator.next()
+                if (next.done) break
+                const ev = next.value
                 if (ev.type === 'text') textParts.push(ev.text)
                 else if (ev.type === 'done' && ev.finalText) finalTextFromDone = ev.finalText
                 else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
@@ -482,16 +507,26 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             fatalErrorMessage ??= this.errMsg(err)
             await this.turnStream
                 .publish(turnId, {
+                    type: 'error',
+                    vendor: session.vendor,
+                    message: fatalErrorMessage,
+                    fatal: true
+                })
+                .catch(() => undefined)
+            await this.turnStream
+                .publish(turnId, {
                     type: 'done',
                     vendor: session.vendor,
                     success: false
                 })
                 .catch(() => undefined)
         } finally {
+            if (timeout) clearTimeout(timeout)
             live.busy = false
             live.abort = null
             live.lastUsedAt = Date.now()
             this.runningTurns.delete(turnId)
+            if (timedOut) this.registry.delete(session.id)
             try {
                 await this.persistHandle(session, live)
             } catch (err) {
@@ -1073,5 +1108,12 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     private errMsg(err: unknown): string {
         return err instanceof Error ? err.message : String(err)
+    }
+
+    private readPositiveMs(key: string, fallback: number): number {
+        const raw = this.config.get<string | number>(key)
+        if (raw === undefined || raw === null || raw === '') return fallback
+        const n = Number(raw)
+        return Number.isFinite(n) && n > 0 ? n : fallback
     }
 }

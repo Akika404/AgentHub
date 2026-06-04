@@ -215,7 +215,9 @@ export interface AgentChatView {
 /**
  * Result of starting a converse turn. The turn runs server-side detached from
  * the request; subscribe to `/agent-chats/:chatId/turns/:turnId/events` to watch
- * it (replay + live tail), from this or any other device.
+ * it (replay + live tail), from this or any other device. Starting a new turn
+ * while `activeTurnId` is set returns AGENT_BUSY; subscribe to the active turn
+ * to watch it instead.
  */
 export interface StartTurnResult {
   turnId: string

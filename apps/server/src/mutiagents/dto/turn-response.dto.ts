@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger'
 
 /** POST converse 的返回：启动的 turn id。turn 在服务端游离运行，订阅其事件流以观看进度 */
 export class StartTurnResultDto {
-    @ApiProperty({ description: '已启动（或已在运行）的 turn id；订阅其事件流观看进度' })
+    @ApiProperty({ description: '新启动的 turn id；订阅其事件流观看进度' })
     turnId!: string
 }
 
