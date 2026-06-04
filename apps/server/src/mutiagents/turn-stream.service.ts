@@ -13,6 +13,8 @@ import type { AgentEvent } from './adapter/index.js'
  * 另维护两类轻量元数据：
  * - `agent:session:{sessionId}:activeturn` —— 指向该会话当前活跃 turnId，
  *   用 `SET NX` 兼作跨实例并发互斥锁（同一会话同时只允许一轮）。
+ * - `agent:turn:{turnId}:session` —— turn 到 session 的归属索引，防止客户端
+ *   把其它聊天的 turnId 订阅/中止到当前聊天上。
  * - `agent:turn:control` —— pub/sub 频道，承载跨实例 abort 信号。
  */
 @Injectable()
@@ -57,6 +59,10 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
         return `agent:session:${sessionId}:activeturn`
     }
 
+    private turnSessionKey(turnId: string): string {
+        return `agent:turn:${turnId}:session`
+    }
+
     /**
      * 尝试把 sessionId 标记为「有一轮在跑」。返回最终持锁的 turnId：
      * - 抢锁成功 → 返回传入的 turnId（调用方应启动 runTurn）
@@ -66,7 +72,20 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
         const key = this.activeKey(sessionId)
         while (true) {
             const ok = await this.redis.set(key, turnId, 'EX', TurnStream.ACTIVE_TTL_SEC, 'NX')
-            if (ok === 'OK') return turnId
+            if (ok === 'OK') {
+                try {
+                    await this.redis.set(
+                        this.turnSessionKey(turnId),
+                        sessionId,
+                        'EX',
+                        TurnStream.ACTIVE_TTL_SEC
+                    )
+                } catch (err) {
+                    await this.releaseActiveTurn(sessionId, turnId).catch(() => undefined)
+                    throw err
+                }
+                return turnId
+            }
 
             const existing = await this.redis.get(key)
             if (existing) return existing
@@ -79,6 +98,23 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
     async releaseActiveTurn(sessionId: string, turnId: string): Promise<void> {
         const current = await this.redis.get(this.activeKey(sessionId))
         if (current === turnId) await this.redis.del(this.activeKey(sessionId))
+    }
+
+    /** 放弃尚未真正启动的 turn，清理 active 指针与归属索引。 */
+    async abandonTurn(sessionId: string, turnId: string): Promise<void> {
+        await this.releaseActiveTurn(sessionId, turnId)
+        const owner = await this.redis.get(this.turnSessionKey(turnId))
+        if (owner === sessionId) await this.redis.del(this.turnSessionKey(turnId))
+    }
+
+    /** 校验 turn 是否属于该 session；已完成但仍在 TTL 窗口内的 turn 也允许回放。 */
+    async isTurnInSession(sessionId: string, turnId: string): Promise<boolean> {
+        const owner = await this.redis.get(this.turnSessionKey(turnId))
+        if (owner) return owner === sessionId
+
+        // 兼容部署前已经存在但没有归属索引的活跃 turn。
+        const active = await this.redis.get(this.activeKey(sessionId))
+        return active === turnId
     }
 
     /** 读取某会话当前活跃 turnId（无则 null）。供 AgentChatView.activeTurnId 用 */
@@ -114,6 +150,7 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
     /** turn 收尾：给事件流加 TTL，让历史在窗口期内仍可回放，之后自动清理 */
     async finalize(turnId: string): Promise<void> {
         await this.redis.expire(this.eventsKey(turnId), TurnStream.STREAM_TTL_SEC)
+        await this.redis.expire(this.turnSessionKey(turnId), TurnStream.STREAM_TTL_SEC)
     }
 
     /**
@@ -189,6 +226,17 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
             for (const key of keys) {
                 const turnId = await this.redis.get(key)
                 if (turnId) {
+                    const sessionId = this.sessionIdFromActiveKey(key)
+                    if (sessionId) {
+                        await this.redis
+                            .set(
+                                this.turnSessionKey(turnId),
+                                sessionId,
+                                'EX',
+                                TurnStream.STREAM_TTL_SEC
+                            )
+                            .catch(() => undefined)
+                    }
                     // vendor 未知，对前端 done 处理无影响；success=false 标记为被中断
                     await this.publish(turnId, {
                         type: 'done',
@@ -221,5 +269,12 @@ export class TurnStream implements OnModuleInit, OnModuleDestroy {
 
     private errMsg(err: unknown): string {
         return err instanceof Error ? err.message : String(err)
+    }
+
+    private sessionIdFromActiveKey(key: string): string | null {
+        const prefix = 'agent:session:'
+        const suffix = ':activeturn'
+        if (!key.startsWith(prefix) || !key.endsWith(suffix)) return null
+        return key.slice(prefix.length, -suffix.length) || null
     }
 }

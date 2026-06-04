@@ -449,7 +449,20 @@ function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
 
 function ensureAgentRunMessage(chat: AgentChatView): void {
   if (currentRunMessageId) return
+  currentRunMessageId = findReusableRunMessageId(chat.id)
+  if (currentRunMessageId) return
   createAgentRunMessage(chat)
+}
+
+function findReusableRunMessageId(chatId: string): string | null {
+  const cached = messageCache.get(chatId) ?? []
+  const reusable = cached
+    .filter(
+      (message): message is AgentRunMessage =>
+        isAgentRunMessage(message) && message.status !== 'done' && message.status !== 'error'
+    )
+    .at(-1)
+  return reusable?.id ?? null
 }
 
 function updateAgentRunMessage(
@@ -831,11 +844,10 @@ function buildConverseHandlers(chat: AgentChatView): AgentConverseHandlers {
       if (!agentFinished) {
         // 流结束但没收到 done：本轮可能仍在别处运行（仅本端断开），刷新以同步最终历史与活跃状态
         finishAgentRun(chatId, true)
-        currentRunMessageId = null
-        void reloadAfterTurn(chatId)
       } else {
-        void refreshChats()
+        currentRunMessageId = null
       }
+      void reloadAfterTurn(chatId)
     }
   }
 }
@@ -850,6 +862,7 @@ async function reloadAfterTurn(chatId: string): Promise<void> {
 function watchTurn(chat: AgentChatView, turnId: string): void {
   if (currentStream) return
   streaming.value = true
+  currentRunMessageId = findReusableRunMessageId(chat.id)
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
   const stream = agentChatApi.subscribeTurn(chat.id, turnId, buildConverseHandlers(chat))
   currentStream = stream
@@ -857,6 +870,8 @@ function watchTurn(chat: AgentChatView, turnId: string): void {
     if (activeChatId.value !== chat.id) return
     streaming.value = false
     currentStream = null
+    currentRunMessageId = null
+    void reloadAfterTurn(chat.id)
   })
 }
 

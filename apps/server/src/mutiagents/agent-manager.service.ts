@@ -383,12 +383,12 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         try {
             live = await this.getOrRehydrate(session)
         } catch (err) {
-            await this.turnStream.releaseActiveTurn(session.id, turnId)
+            await this.turnStream.abandonTurn(session.id, turnId)
             throw err
         }
         if (live.busy) {
             // 本实例已有该会话在跑（指针应已拦截，这里兜底）
-            await this.turnStream.releaseActiveTurn(session.id, turnId)
+            await this.turnStream.abandonTurn(session.id, turnId)
             throw BusinessException.agentBusy(`Chat ${chatId} is busy with another turn`)
         }
         live.busy = true
@@ -404,7 +404,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             live.busy = false
             live.abort = null
             this.runningTurns.delete(turnId)
-            await this.turnStream.releaseActiveTurn(session.id, turnId)
+            await this.turnStream.abandonTurn(session.id, turnId)
             throw err
         }
 
@@ -419,13 +419,19 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         chatId: string,
         turnId: string
     ): Promise<AsyncIterable<AgentEvent>> {
-        await this.loadChat(userId, chatId) // 归属校验：非法 chatId/userId 直接拒绝
+        const { session } = await this.loadChat(userId, chatId) // 归属校验：非法 chatId/userId 直接拒绝
+        if (!(await this.turnStream.isTurnInSession(session.id, turnId))) {
+            throw BusinessException.notFound(`Turn ${turnId} does not belong to chat ${chatId}`)
+        }
         return this.turnStream.subscribe(chatId, turnId)
     }
 
     /** 主动中止某一轮：本地命中直接 abort，并广播控制频道覆盖其它实例 */
     async abortTurn(userId: string, chatId: string, turnId: string): Promise<{ aborted: true }> {
-        await this.loadChat(userId, chatId)
+        const { session } = await this.loadChat(userId, chatId)
+        if (!(await this.turnStream.isTurnInSession(session.id, turnId))) {
+            throw BusinessException.notFound(`Turn ${turnId} does not belong to chat ${chatId}`)
+        }
         this.runningTurns.get(turnId)?.abort.abort()
         await this.turnStream.requestAbort(turnId)
         return { aborted: true }
@@ -468,6 +474,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const textParts: string[] = []
         let finalTextFromDone: string | null = null
         let fatalErrorMessage: string | null = null
+        let terminalDone: Extract<AgentEvent, { type: 'done' }> | null = null
         let timedOut = false
         let timeout: NodeJS.Timeout | null = null
         // 运行步骤草稿：thinking / progress / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
@@ -496,28 +503,30 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                     : await iterator.next()
                 if (next.done) break
                 const ev = next.value
+                if (ev.type === 'done') {
+                    terminalDone = ev
+                    if (ev.finalText) finalTextFromDone = ev.finalText
+                    continue
+                }
                 if (ev.type === 'text') textParts.push(ev.text)
-                else if (ev.type === 'done' && ev.finalText) finalTextFromDone = ev.finalText
                 else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
                 else this.collectStep(ev, stepDrafts, toolIndexById)
                 await this.turnStream.publish(turnId, ev)
             }
         } catch (err) {
-            // adapter 抛出（含 abort）：补一条 done，让订阅者收尾退出
+            // adapter 抛出（含 abort）：先发布错误；最终 done 在落库与 active 指针释放后统一发布。
             fatalErrorMessage ??= this.errMsg(err)
+            terminalDone = {
+                type: 'done',
+                vendor: session.vendor,
+                success: false
+            }
             await this.turnStream
                 .publish(turnId, {
                     type: 'error',
                     vendor: session.vendor,
                     message: fatalErrorMessage,
                     fatal: true
-                })
-                .catch(() => undefined)
-            await this.turnStream
-                .publish(turnId, {
-                    type: 'done',
-                    vendor: session.vendor,
-                    success: false
                 })
                 .catch(() => undefined)
         } finally {
@@ -560,6 +569,17 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 )
             }
             await this.turnStream.releaseActiveTurn(session.id, turnId).catch(() => undefined)
+            const finalText = (finalTextFromDone ?? textParts.join('')).trim()
+            const done: Extract<AgentEvent, { type: 'done' }> = {
+                type: 'done',
+                vendor: session.vendor,
+                success: terminalDone
+                    ? terminalDone.success && !fatalErrorMessage
+                    : !fatalErrorMessage,
+                ...(finalText ? { finalText } : {}),
+                ...(terminalDone?.usage ? { usage: terminalDone.usage } : {})
+            }
+            await this.turnStream.publish(turnId, done).catch(() => undefined)
             await this.turnStream.finalize(turnId).catch(() => undefined)
         }
     }
