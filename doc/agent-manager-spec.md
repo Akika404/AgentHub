@@ -11,7 +11,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - Agent 只保存可复用配置：展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
 - AgentSession 是一个具体单聊会话：title、workingDirectory、sessionHomeDirectory、sdkSessionId、有效 skills/MCP、status。
 - AgentMessage 按 `sessionId` 隔离 UI 消息历史。
-- AgentMessageStep 按 `messageId` 一对多承载 agent 消息的有序运行步骤（thinking/tool/todo）。
+- AgentMessageStep 按 `messageId` 一对多承载 agent 消息的有序运行步骤（thinking/progress/tool/todo）。
 - LiveAgent 按 `session.id` 存在内存中，同一个 Agent 的不同聊天可以并行运行，只有同一 chat 会互斥。
 
 ## Model
@@ -61,7 +61,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 - Adapter config 中，模型/Provider/systemPrompt/tools/permission/reasoning 来自 Agent；cwd/home/skills/MCP 来自 AgentSession。
 - `registry` 和 busy 锁使用 `session.id`。
 - 用户消息和 Agent/system 回复都写入 `agent_message.sessionId`。
-- 流式时把 thinking/tool/todo 事件按 `seq` 累积为运行步骤（tool_use 建行、tool_result 按 toolUseId 回填）；turn 结束存完 agent 回复后，批量写入 `agent_message_step`（挂到该消息 id）。
+- 流式时把 thinking/progress/tool/todo 事件按 `seq` 累积为运行步骤（tool_use 建行、tool_result 按 toolUseId 回填）；turn 结束存完 agent 回复后，批量写入 `agent_message_step`（挂到该消息 id）。
 - turn 结束后回写 `sdkSessionId/status/lastTurnAt`。
 
 删除：

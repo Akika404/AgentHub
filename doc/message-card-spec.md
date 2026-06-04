@@ -380,16 +380,17 @@ interface AgentRunMessage {
 | 流式事件                             | 卡片变化                                              |
 | ------------------------------------ | ----------------------------------------------------- |
 | 用户发送消息                         | 创建一条 `agent-run`，初始步骤为 `思考中`             |
+| `progress`                           | 完成当前 active 步骤，追加一条过程输出步骤            |
 | `thinking`                           | 当前步骤变为或保持 `思考中`                           |
 | `tool_use` 且 `status === 'started'` | 完成当前 active 步骤，追加 `正在调用 <name>` 工具步骤 |
 | `tool_use` completed/failed          | 当前工具步骤标记为 completed/failed                   |
 | `tool_result`                        | 当前工具步骤完成；非错误时追加 `继续思考`             |
-| `text`                               | 完成当前步骤，把流式文本追加到同一个气泡的 `text`     |
+| `text`                               | 完成当前步骤，把最终文本同步到同一个气泡的 `text`     |
 | `turn_completed`                     | 如果存在 `finalText`，同步到 `text`，并完成当前步骤   |
 | `done`                               | 标记气泡为 `done` 或 `error`                          |
 | stream error                         | 标记气泡为 `error`，并追加系统消息说明错误            |
 
-运行步骤会持久化到后端 `agent_message_step`（thinking/tool/todo，tool 含完整 input/output）。重开/刷新会话时，`messageFromView` 把带 `steps` 的 agent 消息复原为 `agent-run` 卡片（`status: 'done'`）：thinking 标签按序复原为 `思考中`/`继续思考`，tool 标签复原为 `正在调用 <toolName>`。todo 步骤已入库但不重建为卡片步骤。
+运行步骤会持久化到后端 `agent_message_step`（thinking/progress/tool/todo，tool 含完整 input/output）。重开/刷新会话时，`messageFromView` 把带 `steps` 的 agent 消息复原为 `agent-run` 卡片（`status: 'done'`）：thinking 标签按序复原为 `思考中`/`继续思考`，progress 标签复原为 `过程输出`，tool 标签复原为 `正在调用 <toolName>`。todo 步骤已入库但不重建为卡片步骤。
 
 ## 扩展新卡片的约定
 

@@ -2,10 +2,10 @@ import type { ChatMessage, SenderInfo } from '../api'
 
 export interface AgentRunStep {
   id: string
-  type: 'thinking' | 'tool'
+  type: 'thinking' | 'progress' | 'tool'
   label: string
   status: 'active' | 'completed' | 'failed'
-  /** thinking 文本（历史复原时带上，供后续详情查看） */
+  /** thinking/progress 文本（历史复原时带上，供后续详情查看） */
   text?: string
   /** tool 步骤的工具名 / 调用 id / 完整入参与返回（历史复原时带上） */
   toolName?: string

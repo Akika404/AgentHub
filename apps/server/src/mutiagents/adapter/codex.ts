@@ -108,7 +108,27 @@ export class CodexAdapter implements AgentAdapter {
         let finalText: string | undefined
         let usageOut: AgentUsage | undefined
         let latestAgentText: string | undefined
-        const textParts: string[] = []
+        let latestAgentItemId: string | undefined
+        let pendingTextEvent: Extract<AgentEvent, { type: 'text' }> | undefined
+        let textCandidates = 0
+        let textEmitted = false
+        const flushPendingProgress = (): Extract<AgentEvent, { type: 'progress' }> | undefined => {
+            if (!pendingTextEvent) return undefined
+            const itemId = pendingTextEvent.itemId
+            const ev: Extract<AgentEvent, { type: 'progress' }> = {
+                type: 'progress',
+                vendor: this.vendor,
+                text: pendingTextEvent.text,
+                itemId
+            }
+            pendingTextEvent = undefined
+            finalText = undefined
+            if (itemId && latestAgentItemId === itemId) {
+                latestAgentText = undefined
+                latestAgentItemId = undefined
+            }
+            return ev
+        }
 
         try {
             // 首次调用：开新 thread 或按 resumeId 续接；之后复用以维持对话上下文。
@@ -141,21 +161,48 @@ export class CodexAdapter implements AgentAdapter {
                 // 用于个别网关只发增量、不发终态 text 时兜底 finalText
                 if ('item' in ev && ev.item.type === 'agent_message' && ev.item.text) {
                     latestAgentText = ev.item.text
+                    latestAgentItemId = ev.item.id
                 }
                 for (let out of this.translate(ev)) {
-                    this.logger.debug(`[out] ${out.type}`)
                     if (out.type === 'text') {
-                        textParts.push(out.text)
-                        finalText = textParts.join('\n\n')
+                        // Codex may emit progress notes and the final answer as separate
+                        // agent_message items. Keep the latest candidate for final text,
+                        // and flush earlier candidates into the run process panel.
+                        const progress = flushPendingProgress()
+                        if (progress) {
+                            this.logger.debug('[out] progress')
+                            yield progress
+                        }
+                        textCandidates += 1
+                        finalText = out.text
+                        pendingTextEvent = out
+                        continue
                     } else if (out.type === 'turn_completed') {
                         // 对齐 Claude：把最终文本塞进 turn_completed.finalText。
-                        // 优先用累计的 text 流；网关未发 text 时回退到最近一次 agent_message。
-                        finalText = finalText ?? latestAgentText
+                        // 优先用最后一条 completed 文本；网关未发 text 时回退到最近一次 agent_message。
+                        finalText = pendingTextEvent?.text ?? finalText ?? latestAgentText
+                        if (finalText && !textEmitted) {
+                            this.logger.debug('[out] text')
+                            yield {
+                                type: 'text',
+                                vendor: this.vendor,
+                                text: finalText,
+                                itemId: pendingTextEvent?.itemId ?? latestAgentItemId
+                            }
+                            textEmitted = true
+                        }
+                        pendingTextEvent = undefined
                         if (finalText) out = { ...out, finalText }
                         usageOut = out.usage
-                    } else if (out.type === 'error' && out.fatal) {
-                        success = false
+                    } else {
+                        if (out.type === 'error' && out.fatal) success = false
+                        const progress = flushPendingProgress()
+                        if (progress) {
+                            this.logger.debug('[out] progress')
+                            yield progress
+                        }
                     }
+                    this.logger.debug(`[out] ${out.type}`)
                     yield out
                 }
             }
@@ -169,11 +216,22 @@ export class CodexAdapter implements AgentAdapter {
             }
         } finally {
             // 兜底：即便没收到 turn.completed，也用最近一次 agent_message 补 finalText
-            finalText = finalText ?? latestAgentText
+            finalText = pendingTextEvent?.text ?? finalText ?? latestAgentText
+            if (finalText && !textEmitted) {
+                this.logger.debug('[out] text')
+                yield {
+                    type: 'text',
+                    vendor: this.vendor,
+                    text: finalText,
+                    itemId: pendingTextEvent?.itemId ?? latestAgentItemId
+                }
+                textEmitted = true
+            }
+            pendingTextEvent = undefined
             this.logger.debug(
                 `[done] ${JSON.stringify({
                     success,
-                    textEvents: textParts.length,
+                    textCandidates,
                     finalTextLen: finalText?.length ?? 0,
                     finalTextHead: finalText?.slice(0, 80) ?? null
                 })}`

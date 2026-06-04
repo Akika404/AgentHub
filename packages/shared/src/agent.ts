@@ -26,6 +26,7 @@ export interface AgentTodoItem {
 export type AgentEvent =
   | { type: 'session_started'; vendor: AgentVendor; sessionId: string }
   | { type: 'turn_started'; vendor: AgentVendor }
+  | { type: 'progress'; vendor: AgentVendor; text: string; itemId?: string }
   | { type: 'text'; vendor: AgentVendor; text: string; itemId?: string }
   | { type: 'thinking'; vendor: AgentVendor; text: string; itemId?: string }
   | {
@@ -62,14 +63,14 @@ export type AgentEvent =
 export type AgentChatMessageRole = 'user' | 'agent' | 'system'
 
 /** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
-export type AgentMessageStepType = 'thinking' | 'tool' | 'todo'
+export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo'
 
 /** 一条运行步骤的对外视图。镜像 `apps/server/src/mutiagents/dto/agent-message-view.dto.ts` */
 export interface AgentRunStepView {
   id: string
   seq: number
   type: AgentMessageStepType
-  /** thinking 文本；其余类型为 null */
+  /** thinking/progress 文本；其余类型为 null */
   text: string | null
   toolName: string | null
   toolUseId: string | null

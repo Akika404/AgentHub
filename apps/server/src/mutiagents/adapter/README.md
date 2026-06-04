@@ -122,6 +122,7 @@ export type AgentVendor = 'claude' | 'codex'
 export type AgentEvent =
     | { type: 'session_started'; vendor; sessionId: string }
     | { type: 'turn_started'; vendor }
+    | { type: 'progress'; vendor; text: string; itemId? }
     | { type: 'text'; vendor; text: string; itemId? }
     | { type: 'thinking'; vendor; text: string; itemId? }
     | { type: 'tool_use'; vendor; id; name; input; status }
@@ -136,10 +137,10 @@ export type AgentEvent =
 
 - **`session_started`**：会话生命周期内只发一次，携带可用于断点续传的 `sessionId`。
 - **`turn_started` / `turn_completed`**：包裹一次 `send()` 调用。Claude SDK 没有显式 turn 概念，由 Adapter 合成。
-- **`text` vs `thinking`**：`text` 是会被展示给用户的最终回答；`thinking` 是推理过程（应当折叠展示）。两边的 reasoning / thinking block 都映射到 `thinking`。
+- **`progress` / `text` / `thinking`**：`progress` 是助手对当前动作的过程播报，展示在运行过程里；`text` 是会被展示给用户的最终回答；`thinking` 是推理过程（应当折叠展示）。两边的 reasoning / thinking block 都映射到 `thinking`。
 - **`tool_use` + `tool_result`** 通过 `id` 配对。一次工具调用至少产生一条 `tool_use(started)`，工具完成后再产生 `tool_use(completed|failed)` 以及可选的 `tool_result`。
 - **`todo`**：每次 TODO 列表变化都全量推送，上层做 diff。`AgentTodoItem` 是三态 `status: "pending" | "in_progress" | "completed"`，Claude 端直接透传，Codex 端因为 SDK 只暴露 `boolean`，映射为 `completed ? "completed" : "pending"`（拿不到 in_progress 这一态）。
-- **`done`** 是流的终结事件，**保证一定出现**（包括异常路径）。`success: false` 时说明本次 turn 整体失败。`finalText` / `usage` 是最终态摘要，便于上层不维持状态也能拿到结果；Claude 的 `finalText` 来自 result，Codex 的 `finalText` 由本轮 `agent_message` 文本累积得到、并在缺失 `text` 流时回退到最近一次 `agent_message`。为对齐两端，Codex 的 `turn_completed` 也会带上同一份 `finalText`（Claude 本就如此）。
+- **`done`** 是流的终结事件，**保证一定出现**（包括异常路径）。`success: false` 时说明本次 turn 整体失败。`finalText` / `usage` 是最终态摘要，便于上层不维持状态也能拿到结果；Claude 的 `finalText` 来自 result，Codex 的 `finalText` 来自本轮最后一条 `agent_message` 候选文本，并在缺失 `text` 流时回退到最近一次 `agent_message`。为对齐两端，Codex 的 `turn_completed` 也会带上同一份 `finalText`（Claude 本就如此）。
 - **`error.fatal`**：用于区分"局部错误"（如某个工具失败）和"会话级致命错误"（如鉴权失败、网络断开）。fatal 错误后通常紧跟 `done(success=false)`。
 - **调试日志**：两个 Adapter 均通过 `Logger.debug` 打点（`[raw]` SDK 原始事件、`[out]` 翻译后的统一事件类型、`[done]` 本轮汇总：success / finalText 长度 / 文本开头）。默认日志级别下静默；排查事件流问题（如最终文本未送达）时，把 Nest logger 级别开到 `debug` 即可复现完整链路。
 
@@ -370,7 +371,7 @@ case "reasoning":
 
 只在 `completed` 阶段发，避免刷屏。代价是丢失了打字机效果 —— 如果上层需要流式打字，将来可以加一个配置开关。
 
-Codex 的 `turn.completed` 原生只有 usage、没有最终文本字段。Adapter 的做法：本轮 `agent_message`（completed 阶段）的 `text` 用空行拼接作为 `finalText`，并在 `turn_completed` 与 `done` 上**都**带出（对齐 Claude 的 `result.finalText`，避免上层只在 `turn_completed` 分支取文本时拿不到）。此外 Adapter 还会跟踪最近一次 `agent_message` 文本（含 `started` / `updated` 阶段）作为兜底：当个别不合规网关只发增量、不发终态 `item.completed`（因而一个 `text` 事件都没有）时，仍能用它补上 `finalText`，让上层优雅降级而不是空白气泡。
+Codex 的 `turn.completed` 原生只有 usage、没有最终文本字段。Adapter 的做法：本轮 `agent_message`（completed 阶段）的 `text` 作为最终回答候选，只保留最后一条作为 `finalText`，并在 `turn_completed` 与 `done` 上**都**带出（对齐 Claude 的 `result.finalText`，避免上层只在 `turn_completed` 分支取文本时拿不到）。如果某条候选后面又出现工具调用或新的候选，它就会被刷成 `progress` 事件，进入运行过程框；最后一条候选不进 `progress`，避免最终回复在过程区重复出现。此外 Adapter 还会跟踪最近一次 `agent_message` 文本（含 `started` / `updated` 阶段）作为兜底：当个别不合规网关只发增量、不发终态 `item.completed`（因而一个 `text` 事件都没有）时，仍能用它补上 `finalText`，让上层优雅降级而不是空白气泡。
 
 #### c) 工具类 item 的状态翻译
 
@@ -469,7 +470,8 @@ skipGitRepoCheck: true,
 | --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `session_started`     | 首条带 `session_id` 的消息（通常是 `system/init`）              | `thread.started`                                                                                        |
 | `turn_started`        | 由 Adapter 在 `send()` 开头合成                                 | `turn.started`                                                                                          |
-| `text`                | `assistant` 消息中的 `text` block                               | `agent_message` item（仅 completed 阶段）                                                               |
+| `progress`            | （暂不发）                                                      | 非最终 `agent_message` item（仅 completed 阶段）                                                        |
+| `text`                | `assistant` 消息中的 `text` block                               | 最后一条 `agent_message` item（仅 completed 阶段）                                                      |
 | `thinking`            | `assistant` 消息中的 `thinking` block                           | `reasoning` item（仅 completed 阶段）                                                                   |
 | `tool_use(started)`   | `assistant` 中的 `tool_use` block（**`TodoWrite` 除外**）       | `command_execution` / `mcp_tool_call` 的 in_progress 阶段；`file_change` / `web_search` 的 started 阶段 |
 | `tool_use(completed)` | （不发，等价于收到对应的 `tool_result`）                        | item 的 completed 阶段                                                                                  |

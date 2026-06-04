@@ -2,12 +2,12 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 import type { AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 
 /** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
-export type AgentMessageStepType = 'thinking' | 'tool' | 'todo'
+export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo'
 
 /**
  * AgentMessageStep — 一条 agent 消息产出过程中的有序运行步骤。
  *
- * 与 AgentMessage 是一对多：一轮回复的 thinking / 工具调用 / todo 事件按 seq 落库，
+ * 与 AgentMessage 是一对多：一轮回复的 thinking / progress / 工具调用 / todo 事件按 seq 落库，
  * 让重开会话能复原「运行过程 · N 步」折叠条（实时流则走 SSE 即时渲染）。
  * tool 步骤同时持有完整 input 与 output。
  */
@@ -33,7 +33,7 @@ export class AgentMessageStep {
     @Column({ type: 'varchar', length: 16 })
     type!: AgentMessageStepType
 
-    /** thinking 步骤的推理文本；其余类型为 null */
+    /** thinking/progress 步骤的文本；其余类型为 null */
     @Column({ type: 'text', nullable: true })
     text!: string | null
 

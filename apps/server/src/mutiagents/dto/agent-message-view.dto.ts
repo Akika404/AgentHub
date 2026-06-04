@@ -7,7 +7,7 @@ export interface AgentRunStepView {
     id: string
     seq: number
     type: AgentMessageStepType
-    /** thinking 文本；其余类型为 null */
+    /** thinking/progress 文本；其余类型为 null */
     text: string | null
     toolName: string | null
     toolUseId: string | null

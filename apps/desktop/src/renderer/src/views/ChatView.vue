@@ -158,6 +158,15 @@ function runStepFromView(view: AgentRunStepView): AgentRunStep | null {
       text: view.text ?? undefined
     }
   }
+  if (view.type === 'progress') {
+    return {
+      id: view.id,
+      type: 'progress',
+      label: '过程输出',
+      status,
+      text: view.text ?? undefined
+    }
+  }
   if (view.type === 'tool') {
     return {
       id: view.id,
@@ -290,7 +299,8 @@ function startRunStep(
   chatId: string,
   type: AgentRunStep['type'],
   label: string,
-  status: AgentRunMessage['status']
+  status: AgentRunMessage['status'],
+  detail: Partial<AgentRunStep> = {}
 ): void {
   updateAgentRunMessage(chatId, (message) => {
     const last = message.steps[message.steps.length - 1]
@@ -304,17 +314,47 @@ function startRunStep(
     return {
       ...message,
       status,
-      steps: [...steps, { id: runStepId(type), type, label, status: 'active' }]
+      steps: [...steps, { id: runStepId(type), type, label, status: 'active', ...detail }]
     }
   })
 }
 
-function completeActiveRunStep(chatId: string, failed = false): void {
+function appendProgressStep(chatId: string, text: string): void {
+  updateAgentRunMessage(chatId, (message) => {
+    const steps = message.steps.map((step) =>
+      step.status === 'active' ? { ...step, status: 'completed' as const } : step
+    )
+    return {
+      ...message,
+      status: 'thinking',
+      steps: [
+        ...steps,
+        {
+          id: runStepId('progress'),
+          type: 'progress',
+          label: '过程输出',
+          status: 'completed',
+          text
+        }
+      ]
+    }
+  })
+}
+
+function completeActiveRunStep(
+  chatId: string,
+  failed = false,
+  detail: Partial<AgentRunStep> = {}
+): void {
   updateAgentRunMessage(chatId, (message) => ({
     ...message,
     steps: message.steps.map((step) =>
-      step.status === 'active'
-        ? { ...step, status: failed ? ('failed' as const) : ('completed' as const) }
+      step.status === 'active' || (detail.toolUseId && step.toolUseId === detail.toolUseId)
+        ? {
+            ...step,
+            ...detail,
+            status: failed ? ('failed' as const) : ('completed' as const)
+          }
         : step
     )
   }))
@@ -342,18 +382,29 @@ function removeCurrentAgentRun(chatId: string): void {
 
 function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
   switch (event.type) {
+    case 'progress':
+      appendProgressStep(chat.id, event.text)
+      return
     case 'thinking':
       startRunStep(chat.id, 'thinking', '思考中', 'thinking')
       return
     case 'tool_use':
       if (event.status === 'started') {
-        startRunStep(chat.id, 'tool', `正在调用 ${event.name}`, 'tool')
+        startRunStep(chat.id, 'tool', `正在调用 ${event.name}`, 'tool', {
+          toolName: event.name,
+          toolUseId: event.id,
+          input: event.input
+        })
       } else {
-        completeActiveRunStep(chat.id, event.status === 'failed')
+        completeActiveRunStep(chat.id, event.status === 'failed', { toolUseId: event.id })
       }
       return
     case 'tool_result':
-      completeActiveRunStep(chat.id, Boolean(event.isError))
+      completeActiveRunStep(chat.id, Boolean(event.isError), {
+        toolUseId: event.toolUseId,
+        output: event.output,
+        isError: Boolean(event.isError)
+      })
       if (!event.isError) startRunStep(chat.id, 'thinking', '继续思考', 'thinking')
       return
     case 'text':
@@ -469,6 +520,9 @@ async function onChatCreated(chat: AgentChatView): Promise<void> {
 
 function handleRuntimeEvent(event: AgentEvent): void {
   switch (event.type) {
+    case 'progress':
+      runtime.value = { ...runtime.value, phase: 'thinking', label: 'Working', detail: event.text }
+      return
     case 'thinking':
       runtime.value = { ...runtime.value, phase: 'thinking', label: 'Thinking', detail: event.text }
       return

@@ -396,7 +396,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         let finalTextFromDone: string | null = null
         let fatalErrorMessage: string | null = null
         let persistedOutput = false
-        // 运行步骤草稿：thinking / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
+        // 运行步骤草稿：thinking / progress / todo 各自成行，tool 行按 toolUseId 合并 tool_use 与 tool_result
         const stepDrafts: StepDraft[] = []
         const toolIndexById = new Map<string, number>()
         try {
@@ -458,6 +458,9 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         switch (ev.type) {
             case 'thinking':
                 drafts.push({ type: 'thinking', text: ev.text })
+                return
+            case 'progress':
+                drafts.push({ type: 'progress', text: ev.text })
                 return
             case 'tool_use': {
                 const existing = toolIndexById.get(ev.id)

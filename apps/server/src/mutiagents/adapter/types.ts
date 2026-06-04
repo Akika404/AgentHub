@@ -34,7 +34,8 @@ export interface AgentTodoItem {
  * 事件语义：
  * - session_started: 会话建立，首次拿到 sessionId
  * - turn_started: 一轮（一次 prompt）开始
- * - text: 助手输出的自然语言文本（可能分多段）
+ * - progress: 助手对当前动作的过程播报，展示在运行过程里
+ * - text: 助手最终输出的自然语言文本
  * - thinking: 推理/思考过程（codex reasoning / claude thinking block）
  * - tool_use: 工具调用（含 shell、编辑文件、MCP 等）
  * - tool_result: 工具返回结果
@@ -46,6 +47,7 @@ export interface AgentTodoItem {
 export type AgentEvent =
     | { type: 'session_started'; vendor: AgentVendor; sessionId: string }
     | { type: 'turn_started'; vendor: AgentVendor }
+    | { type: 'progress'; vendor: AgentVendor; text: string; itemId?: string }
     | { type: 'text'; vendor: AgentVendor; text: string; itemId?: string }
     | { type: 'thinking'; vendor: AgentVendor; text: string; itemId?: string }
     | {

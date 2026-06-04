@@ -232,7 +232,7 @@ src/mutiagents/
 │   ├── agent.entity.ts               # Agent 配置
 │   ├── agent-session.entity.ts       # 单 Agent 聊天会话
 │   ├── agent-message.entity.ts       # 按 sessionId 隔离的 UI 消息历史
-│   └── agent-message-step.entity.ts  # agent 消息的有序运行步骤（thinking/tool/todo）
+│   └── agent-message-step.entity.ts  # agent 消息的有序运行步骤（thinking/progress/tool/todo）
 └── adapter/                          # Claude / Codex -> AgentEvent
     ├── types.ts                      # AgentVendor / AgentEvent / AgentAdapter / AgentAdapterConfig / 能力描述
     ├── capabilities.ts               # 各 vendor 能力矩阵
@@ -249,7 +249,7 @@ src/mutiagents/
 - **AgentSession**（`agent_session` 表）：一个单 Agent 聊天，包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、
   SDK 句柄和状态。
 - **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
-- **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
+- **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/progress/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
 - **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）

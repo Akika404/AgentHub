@@ -22,7 +22,7 @@ Agent 多单聊会话 Spec
 | Agent            | 用户创建的 Agent 配置，如展示名、头像/颜色标识、vendor、model、Provider、默认目录、system prompt | MySQL `agent`              |
 | AgentSession     | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP             | MySQL `agent_session`      |
 | AgentMessage     | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本                                        | MySQL `agent_message`      |
-| AgentMessageStep | 一条 agent 消息产出过程中的有序运行步骤（thinking / tool / todo）                                | MySQL `agent_message_step` |
+| AgentMessageStep | 一条 agent 消息产出过程中的有序运行步骤（thinking / progress / tool / todo）                     | MySQL `agent_message_step` |
 | LiveAgent        | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt                           | 内存 Map                   |
 
 `agent_session` 是左侧聊天列表的数据源；`agent_message.sessionId` 是消息隔离边界。`agent_message_step` 以 `messageId` 关联某条 agent 消息、`seq` 排序，与该消息一对多；删除 Agent 会删除它的所有聊天和消息，删除/清空聊天会一并删除该聊天的运行步骤。
@@ -32,6 +32,7 @@ Agent 多单聊会话 Spec
 一轮 agent 回复 = 一条 `agent_message`（最终可见文本）+ 一组有序运行步骤。步骤类型与字段：
 
 - `thinking`：推理文本存于 `text`。
+- `progress`：面向用户的过程播报存于 `text`，例如工具调用前的说明文字。
 - `tool`：把同一 `toolUseId` 的 `tool_use` 与 `tool_result` 合并为一行，存 `toolName`、`toolStatus`（started/completed/failed）、`isError`，以及**完整 `input` / `output`**（json）。
 - `todo`：列表快照存于 `todos`（json）。
 
@@ -89,7 +90,7 @@ interface AgentChatView {
 }
 ```
 
-消息视图包含 `chatId` 和 `agentId`，其中 `chatId` 用于前端缓存和 UI 隔离。`agent` 角色的消息可能带 `steps?: AgentRunStepView[]`，承载该轮回复的运行步骤（thinking/tool/todo，tool 含完整 input/output），供前端复原“运行过程”折叠条。
+消息视图包含 `chatId` 和 `agentId`，其中 `chatId` 用于前端缓存和 UI 隔离。`agent` 角色的消息可能带 `steps?: AgentRunStepView[]`，承载该轮回复的运行步骤（thinking/progress/tool/todo，tool 含完整 input/output），供前端复原“运行过程”折叠条。
 
 ## 后端流程
 
@@ -110,7 +111,7 @@ interface AgentChatView {
 2. 按 `session.id` 取或重建 `LiveAgent`；`workingDirectory/sessionHomeDirectory/skills/mcpServers` 来自聊天，模型、Provider、system prompt、tools/permission/reasoning 来自 Agent。
 3. 以 `session.id` 检查 busy，忙则返回 `AGENT_BUSY`。
 4. 保存用户消息到 `agent_message`，包含 `sessionId`。
-5. 流式转发 `AgentEvent`；`text` 事件进入主聊天气泡，thinking/tool/todo 实时更新右侧状态区，同时在内存按 `seq` 累积为运行步骤草稿（`tool_use` 建行，`tool_result` 按 `toolUseId` 回填 output/isError）。
+5. 流式转发 `AgentEvent`；`text` 事件进入主聊天气泡，progress/thinking/tool/todo 实时更新右侧状态区，同时在内存按 `seq` 累积为运行步骤草稿（`tool_use` 建行，`tool_result` 按 `toolUseId` 回填 output/isError）。
 6. turn 结束后回写 `sdkSessionId/lastTurnAt/status`，持久化 agent 或 system 回复消息；若存在 agent 回复，再把累积的运行步骤批量写入 `agent_message_step`（挂到该消息 id）。
 
 ## 桌面端流程
@@ -126,7 +127,7 @@ interface AgentChatView {
 
 - 群聊只做菜单占位，尚未实现。
 - 消息历史 v1 不分页。
-- 运行步骤已持久化（thinking/tool/todo，tool 含完整 input/output），但前端复原折叠条目前只还原 thinking/tool；todo 历史不重建为面板。
+- 运行步骤已持久化（thinking/progress/tool/todo，tool 含完整 input/output），前端复原折叠条目前还原 thinking/progress/tool；todo 历史不重建为面板。
 - tool 的完整 `input`/`output` 已入库，但暂未提供“展开查看工具入参/返回”的 UI（与实时流一致），作为后续可选项。
 - 空轮次（无最终文本也无致命错误）因无父消息行，其运行步骤不落库。
 - clear 不删除底层 SDK 已落盘的旧会话文件。
