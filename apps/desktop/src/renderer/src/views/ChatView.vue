@@ -36,7 +36,7 @@ import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
-type ChatListItem = ChatSummary & { pinned: boolean; updatedAt?: string }
+type ChatListItem = ChatSummary & { pinned: boolean; running?: boolean; updatedAt?: string }
 
 const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
@@ -66,9 +66,10 @@ const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
 const resizingPane = ref<'chat-list' | 'inspector' | null>(null)
 const messageCache = new Map<string, ChatDisplayMessage[]>()
+const turnStreams = new Map<string, AgentConverseStream>()
+const runMessageIds = new Map<string, string>()
+const notifiedTurnIds = new Set<string>()
 let activeLoadId = 0
-let currentStream: AgentConverseStream | null = null
-let currentRunMessageId: string | null = null
 let dragStartX = 0
 let dragStartWidth = 0
 let previousBodyCursor = ''
@@ -78,7 +79,7 @@ const chatsLoading = ref(false)
 const agentsLoading = ref(false)
 const agentsError = ref<string | null>(null)
 const messagesLoading = ref(false)
-const streaming = ref(false)
+const runningChatIds = ref<Set<string>>(new Set())
 const createChatOpen = ref(false)
 const pinnedChatIds = ref<Set<string>>(readPinnedChatIds())
 const deleteChatTarget = ref<ChatListItem | null>(null)
@@ -92,6 +93,10 @@ const runtime = ref<AgentRuntimeState>(idleRuntime())
 
 const activeChat = computed(
   () => agentChats.value.find((chat) => chat.id === activeChatId.value) ?? null
+)
+
+const streaming = computed(() =>
+  activeChatId.value ? runningChatIds.value.has(activeChatId.value) : false
 )
 
 const chats = computed<ChatListItem[]>(() =>
@@ -119,6 +124,7 @@ const chats = computed<ChatListItem[]>(() =>
       },
       active: chat.id === activeChatId.value,
       pinned,
+      running: isChatRunning(chat.id),
       updatedAt: chat.lastTurnAt ?? chat.updatedAt
     }))
 )
@@ -161,9 +167,37 @@ function titleForChat(chat: AgentChatView): string {
 }
 
 function previewForChat(chat: AgentChatView): string {
-  if (chat.id === activeChatId.value && streaming.value) return runtime.value.label
+  if (isChatRunning(chat.id)) {
+    if (chat.id === activeChatId.value) return runtime.value.label
+    return '正在运行'
+  }
   if (chat.lastTurnAt) return `最近 ${formatTime(chat.lastTurnAt)}`
   return `${chat.agent.vendor} / ${chat.agent.model}`
+}
+
+function isChatRunning(chatId: string): boolean {
+  return runningChatIds.value.has(chatId)
+}
+
+function setChatRunning(chatId: string, running: boolean): void {
+  const next = new Set(runningChatIds.value)
+  if (running) next.add(chatId)
+  else next.delete(chatId)
+  runningChatIds.value = next
+}
+
+function markChatActiveTurn(chatId: string, turnId: string | null): void {
+  agentChats.value = agentChats.value.map((chat) =>
+    chat.id === chatId ? { ...chat, activeTurnId: turnId } : chat
+  )
+}
+
+function reconcileRunningIndicators(): void {
+  const next = new Set(turnStreams.keys())
+  for (const chat of agentChats.value) {
+    if (chat.activeTurnId) next.add(chat.id)
+  }
+  runningChatIds.value = next
 }
 
 function readPinnedChatIds(): Set<string> {
@@ -279,7 +313,6 @@ function toggleChatPinned(chat: ChatListItem): void {
 function clearChatWorkspace(): void {
   activeChatId.value = null
   messages.value = []
-  currentRunMessageId = null
   messagesLoading.value = false
   pendingReply.value = null
   runtime.value = idleRuntime()
@@ -424,6 +457,15 @@ function runStepId(type: AgentRunStep['type']): string {
   return `run-step-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 }
 
+function initialThinkingStep(): AgentRunStep {
+  return {
+    id: runStepId('thinking'),
+    type: 'thinking',
+    label: '思考中',
+    status: 'active'
+  }
+}
+
 function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
   const message: AgentRunMessage = {
     id: `m-agent-run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -432,25 +474,24 @@ function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
     timestamp: new Date().toISOString(),
     sender: agentSender(chat),
     status: 'thinking',
-    steps: [
-      {
-        id: runStepId('thinking'),
-        type: 'thinking',
-        label: '思考中',
-        status: 'active'
-      }
-    ],
+    steps: [initialThinkingStep()],
     text: ''
   }
-  currentRunMessageId = message.id
+  runMessageIds.set(chat.id, message.id)
   appendMessage(chat.id, message)
   return message
 }
 
 function ensureAgentRunMessage(chat: AgentChatView): void {
-  if (currentRunMessageId) return
-  currentRunMessageId = findReusableRunMessageId(chat.id)
-  if (currentRunMessageId) return
+  const cached = messageCache.get(chat.id) ?? []
+  const existingId = runMessageIds.get(chat.id)
+  if (existingId && cached.some((message) => message.id === existingId)) return
+
+  const reusableId = findReusableRunMessageId(chat.id)
+  if (reusableId) {
+    runMessageIds.set(chat.id, reusableId)
+    return
+  }
   createAgentRunMessage(chat)
 }
 
@@ -465,14 +506,38 @@ function findReusableRunMessageId(chatId: string): string | null {
   return reusable?.id ?? null
 }
 
+function prepareRunMessageForReplay(chat: AgentChatView): string | null {
+  const messageId = findReusableRunMessageId(chat.id)
+  if (!messageId) {
+    runMessageIds.delete(chat.id)
+    return null
+  }
+
+  updateCachedMessages(chat.id, (cached) =>
+    cached.map((message) =>
+      message.id === messageId && isAgentRunMessage(message)
+        ? {
+            ...message,
+            status: 'thinking',
+            steps: [initialThinkingStep()],
+            text: ''
+          }
+        : message
+    )
+  )
+  runMessageIds.set(chat.id, messageId)
+  return messageId
+}
+
 function updateAgentRunMessage(
   chatId: string,
   updater: (message: AgentRunMessage) => AgentRunMessage
 ): void {
-  if (!currentRunMessageId) return
+  const runMessageId = runMessageIds.get(chatId)
+  if (!runMessageId) return
   updateCachedMessages(chatId, (cached) =>
     cached.map((message) =>
-      message.id === currentRunMessageId && isAgentRunMessage(message) ? updater(message) : message
+      message.id === runMessageId && isAgentRunMessage(message) ? updater(message) : message
     )
   )
 }
@@ -553,13 +618,14 @@ function finishAgentRun(chatId: string, success: boolean): void {
     ...message,
     status: success ? 'done' : 'error'
   }))
-  currentRunMessageId = null
+  runMessageIds.delete(chatId)
 }
 
 function removeCurrentAgentRun(chatId: string): void {
-  if (!currentRunMessageId) return
-  removeMessage(chatId, currentRunMessageId)
-  currentRunMessageId = null
+  const runMessageId = runMessageIds.get(chatId)
+  if (!runMessageId) return
+  removeMessage(chatId, runMessageId)
+  runMessageIds.delete(chatId)
 }
 
 function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
@@ -612,11 +678,13 @@ async function loadWorkspace(): Promise<void> {
     const [chatList, agentList] = await Promise.all([agentChatApi.list(), agentApi.list()])
     agentChats.value = chatList
     agents.value = agentList
+    reconcileRunningIndicators()
     const currentStillExists = agentChats.value.some((chat) => chat.id === activeChatId.value)
     const initial = currentStillExists ? activeChatId.value : agentChats.value[0]?.id
     prunePinnedChatIds()
     if (initial) await selectChat(initial)
     else clearChatWorkspace()
+    void syncTurnWatchers()
   } finally {
     chatsLoading.value = false
   }
@@ -625,6 +693,8 @@ async function loadWorkspace(): Promise<void> {
 async function refreshChats(): Promise<void> {
   agentChats.value = await agentChatApi.list()
   prunePinnedChatIds()
+  reconcileRunningIndicators()
+  void syncTurnWatchers()
 }
 
 async function refreshAgents(): Promise<void> {
@@ -648,8 +718,9 @@ async function loadMessages(chatId: string, silent = false): Promise<void> {
   const chat = agentChats.value.find((item) => item.id === chatId)
   if (!chat) return
 
-  const loadId = ++activeLoadId
-  if (!silent) {
+  const updatesActiveChat = activeChatId.value === chatId
+  const loadId = updatesActiveChat ? ++activeLoadId : activeLoadId
+  if (!silent && updatesActiveChat) {
     messagesLoading.value = true
     messages.value = []
   }
@@ -658,27 +729,34 @@ async function loadMessages(chatId: string, silent = false): Promise<void> {
     const history = await agentChatApi.listMessages(chatId)
     const next = history.map((message) => messageFromView(message, chat))
     messageCache.set(chatId, next)
-    if (loadId === activeLoadId && activeChatId.value === chatId) messages.value = next
+    if (updatesActiveChat && loadId === activeLoadId && activeChatId.value === chatId) {
+      messages.value = next
+    }
   } finally {
-    if (loadId === activeLoadId) messagesLoading.value = false
+    if (updatesActiveChat && loadId === activeLoadId) messagesLoading.value = false
   }
 }
 
-async function detachStream(): Promise<void> {
-  if (!currentStream) return
-  const stream = currentStream
-  currentStream = null
-  streaming.value = false
+async function detachTurn(chatId: string): Promise<void> {
+  const stream = turnStreams.get(chatId)
+  if (!stream) return
+  turnStreams.delete(chatId)
+  setChatRunning(chatId, false)
   // Only stop receiving; the turn keeps running server-side so other devices —
   // and this one on re-open — can still watch it.
   await stream.cancel()
 }
 
+async function detachAllTurns(): Promise<void> {
+  const streams = [...turnStreams.entries()]
+  turnStreams.clear()
+  runningChatIds.value = new Set()
+  await Promise.all(streams.map(([, stream]) => stream.cancel()))
+}
+
 async function selectChat(id: string): Promise<void> {
-  if (id !== activeChatId.value) await detachStream()
   activeChatId.value = id
   pendingReply.value = null
-  currentRunMessageId = null
   runtime.value = idleRuntime()
 
   const cached = messageCache.get(id)
@@ -692,7 +770,10 @@ async function selectChat(id: string): Promise<void> {
   // 若该聊天有进行中的轮（可能由本端早前发起、或其它设备发起），订阅其进度实现围观
   const chat = agentChats.value.find((item) => item.id === id)
   if (chat?.activeTurnId && activeChatId.value === id) {
-    watchTurn(chat, chat.activeTurnId)
+    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+    void watchTurn(chat, chat.activeTurnId)
+  } else if (turnStreams.has(id)) {
+    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
   }
 }
 
@@ -723,15 +804,17 @@ async function confirmDeleteChat(): Promise<void> {
   deleteChatError.value = null
   try {
     const deletingActiveChat = chat.id === activeChatId.value
-    if (deletingActiveChat) {
+    if (isChatRunning(chat.id) || turnStreams.has(chat.id)) {
       // 删除前先停止进行中的轮（服务端 removeChat 对运行中会话会拒绝），再断开本端订阅
-      await stopCurrentTurn()
-      await detachStream()
+      await stopTurn(chat.id)
+      await detachTurn(chat.id)
     }
     await agentChatApi.delete(chat.id)
 
     messageCache.delete(chat.id)
+    runMessageIds.delete(chat.id)
     agentChats.value = agentChats.value.filter((item) => item.id !== chat.id)
+    reconcileRunningIndicators()
     prunePinnedChatIds()
 
     deleteChatConfirmOpen.value = false
@@ -812,17 +895,22 @@ function handleRuntimeEvent(event: AgentEvent): void {
  * an already-running turn (watchTurn), so live progress renders identically
  * whether this device started the turn or is just observing it.
  */
-function buildConverseHandlers(chat: AgentChatView): AgentConverseHandlers {
+function buildConverseHandlers(chat: AgentChatView, turnId: string): AgentConverseHandlers {
   const chatId = chat.id
   let assistantText = ''
   let agentFinished = false
+  let success = false
 
   return {
     onEvent(event) {
-      if (activeChatId.value !== chatId) return
+      const activeStream = turnStreams.get(chatId)
+      if (activeStream && activeStream.turnId !== turnId) return
       ensureAgentRunMessage(chat)
-      if (event.type === 'done') agentFinished = true
-      handleRuntimeEvent(event)
+      if (event.type === 'done') {
+        agentFinished = true
+        success = event.success
+      }
+      if (activeChatId.value === chatId) handleRuntimeEvent(event)
       syncAgentRunMessage(chat, event)
       if (event.type === 'text') {
         assistantText = assistantText ? `${assistantText}\n\n${event.text}` : event.text
@@ -832,22 +920,29 @@ function buildConverseHandlers(chat: AgentChatView): AgentConverseHandlers {
       }
     },
     onError(message) {
-      if (activeChatId.value !== chatId) return
+      const activeStream = turnStreams.get(chatId)
+      if (activeStream && activeStream.turnId !== turnId) return
       finishAgentRun(chatId, false)
-      runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
+      if (activeChatId.value === chatId) {
+        runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
+      }
       appendSystemMessage(chatId, message)
     },
     onDone() {
-      if (activeChatId.value !== chatId) return
-      streaming.value = false
-      currentStream = null
+      const activeStream = turnStreams.get(chatId)
+      if (activeStream && activeStream.turnId !== turnId) return
+      turnStreams.delete(chatId)
+      setChatRunning(chatId, false)
+      markChatActiveTurn(chatId, null)
       if (!agentFinished) {
-        // 流结束但没收到 done：本轮可能仍在别处运行（仅本端断开），刷新以同步最终历史与活跃状态
-        finishAgentRun(chatId, true)
+        // 流结束但没收到 Agent done：多半只是本端订阅断开了，turn 可能仍在服务端运行。
+        // 刷新 activeTurnId 后若仍活跃，立刻重连到 Redis Stream 的 backlog + live tail。
+        void reloadAfterStreamDrop(chatId)
       } else {
-        currentRunMessageId = null
+        runMessageIds.delete(chatId)
+        notifyTurnCompleted(chat, turnId, success)
+        void reloadAfterTurn(chatId)
       }
-      void reloadAfterTurn(chatId)
     }
   }
 }
@@ -858,33 +953,121 @@ async function reloadAfterTurn(chatId: string): Promise<void> {
   await loadMessages(chatId, true)
 }
 
+/** 订阅意外断开时恢复围观；若后端已结束，则回落为一次普通历史刷新 */
+async function reloadAfterStreamDrop(chatId: string): Promise<void> {
+  await refreshChats()
+
+  const chat = agentChats.value.find((item) => item.id === chatId)
+  if (chat?.activeTurnId) {
+    void watchTurn(chat, chat.activeTurnId)
+    return
+  }
+
+  runMessageIds.delete(chatId)
+  await loadMessages(chatId, true)
+}
+
 /** 订阅一个进行中的 turn 的事件流（回放 + 实时追尾），用于围观 */
-function watchTurn(chat: AgentChatView, turnId: string): void {
-  if (currentStream) return
-  streaming.value = true
-  currentRunMessageId = findReusableRunMessageId(chat.id)
-  runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
-  const stream = agentChatApi.subscribeTurn(chat.id, turnId, buildConverseHandlers(chat))
-  currentStream = stream
+async function watchTurn(chat: AgentChatView, turnId: string): Promise<void> {
+  const existing = turnStreams.get(chat.id)
+  if (existing?.turnId === turnId) {
+    setChatRunning(chat.id, true)
+    return
+  }
+  if (existing) await detachTurn(chat.id)
+
+  setChatRunning(chat.id, true)
+  markChatActiveTurn(chat.id, turnId)
+  if (!messageCache.has(chat.id)) {
+    try {
+      await loadMessages(chat.id, true)
+    } catch {
+      /* Live replay can still render; history reload is retried after the turn settles. */
+    }
+  }
+  prepareRunMessageForReplay(chat)
+  if (activeChatId.value === chat.id) {
+    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+  }
+
+  const stream = agentChatApi.subscribeTurn(chat.id, turnId, buildConverseHandlers(chat, turnId))
+  turnStreams.set(chat.id, stream)
   stream.started.catch(() => {
-    if (activeChatId.value !== chat.id) return
-    streaming.value = false
-    currentStream = null
-    currentRunMessageId = null
+    if (turnStreams.get(chat.id)?.turnId !== turnId) return
+    turnStreams.delete(chat.id)
+    setChatRunning(chat.id, false)
+    runMessageIds.delete(chat.id)
     void reloadAfterTurn(chat.id)
   })
 }
 
+function syncTurnWatchers(): void {
+  for (const [chatId, stream] of turnStreams) {
+    const chat = agentChats.value.find((item) => item.id === chatId)
+    if (!chat) {
+      void stream.cancel()
+      turnStreams.delete(chatId)
+      setChatRunning(chatId, false)
+      continue
+    }
+    if (chat.activeTurnId && chat.activeTurnId !== stream.turnId) {
+      void detachTurn(chatId).then(() => {
+        if (chat.activeTurnId) void watchTurn(chat, chat.activeTurnId)
+      })
+    }
+  }
+
+  for (const chat of agentChats.value) {
+    if (!chat.activeTurnId) continue
+    if (turnStreams.get(chat.id)?.turnId === chat.activeTurnId) continue
+    void watchTurn(chat, chat.activeTurnId)
+  }
+}
+
+function notifyTurnCompleted(chat: AgentChatView, turnId: string, success: boolean): void {
+  if (notifiedTurnIds.has(turnId)) return
+  notifiedTurnIds.add(turnId)
+
+  const BrowserNotification = window.Notification
+  if (!BrowserNotification) return
+
+  const title = success ? 'Agent 任务已完成' : 'Agent 任务未完成'
+  const body = titleForChat(chat)
+  const show = (): void => {
+    try {
+      new BrowserNotification(title, { body })
+    } catch {
+      /* Notifications are best-effort; the chat history remains the source of truth. */
+    }
+  }
+
+  if (BrowserNotification.permission === 'granted') {
+    show()
+    return
+  }
+  if (BrowserNotification.permission === 'default') {
+    void BrowserNotification.requestPermission().then((permission) => {
+      if (permission === 'granted') show()
+    })
+  }
+}
+
 /** 主动停止当前 turn（服务端中止，影响所有观看端） */
-async function stopCurrentTurn(): Promise<void> {
-  const stream = currentStream
-  const chatId = activeChatId.value
-  if (!stream || !chatId) return
+async function stopTurn(chatId: string): Promise<void> {
+  const stream = turnStreams.get(chatId)
+  const turnId = stream?.turnId ?? agentChats.value.find((chat) => chat.id === chatId)?.activeTurnId
+  if (!turnId) return
   try {
-    await agentChatApi.abortTurn(chatId, stream.turnId)
+    await agentChatApi.abortTurn(chatId, turnId)
   } catch {
     /* 已结束或不可达：忽略，done 事件会收尾 */
   }
+}
+
+async function stopCurrentTurn(): Promise<void> {
+  const chatId = activeChatId.value
+  if (!chatId) return
+  await stopTurn(chatId)
 }
 
 async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef }): Promise<void> {
@@ -905,18 +1088,48 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
 
   appendMessage(chatId, userMessage)
   pendingReply.value = null
-  streaming.value = true
+  setChatRunning(chatId, true)
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
 
+  let stream: AgentConverseStream | null = null
+  let handlers: AgentConverseHandlers | null = null
+  const earlyEvents: AgentEvent[] = []
+  const earlyErrors: string[] = []
+  let earlyDone = false
+  const proxyHandlers: AgentConverseHandlers = {
+    onEvent(event) {
+      if (handlers) handlers.onEvent(event)
+      else earlyEvents.push(event)
+    },
+    onError(message) {
+      if (handlers) handlers.onError?.(message)
+      else earlyErrors.push(message)
+    },
+    onDone() {
+      if (handlers) handlers.onDone?.()
+      else earlyDone = true
+    }
+  }
+
   try {
-    const stream = await agentChatApi.converse(chatId, prompt, buildConverseHandlers(chat))
-    currentStream = stream
+    stream = await agentChatApi.converse(chatId, prompt, proxyHandlers)
+    handlers = buildConverseHandlers(chat, stream.turnId)
+    turnStreams.set(chatId, stream)
+    markChatActiveTurn(chatId, stream.turnId)
+    for (const event of earlyEvents) handlers.onEvent(event)
+    for (const message of earlyErrors) handlers.onError?.(message)
+    if (earlyDone) handlers.onDone?.()
     await stream.started
   } catch (err) {
+    if (stream) {
+      turnStreams.delete(chatId)
+      setChatRunning(chatId, false)
+      void reloadAfterStreamDrop(chatId)
+      return
+    }
     removeMessage(chatId, userMessage.id)
     if (activeChatId.value !== chatId) return
-    streaming.value = false
-    currentStream = null
+    setChatRunning(chatId, false)
     removeCurrentAgentRun(chatId)
     const message = err instanceof Error ? err.message : String(err)
     runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
@@ -1017,7 +1230,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', normalizePaneWidths)
   stopPaneResize()
   // 只断开本端订阅，turn 在服务端继续运行；重新打开或在其它设备仍可围观
-  void detachStream()
+  void detachAllTurns()
 })
 </script>
 

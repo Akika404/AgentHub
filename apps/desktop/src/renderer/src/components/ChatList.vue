@@ -8,6 +8,7 @@ import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 type ChatListItem = ChatSummary & {
   pinned: boolean
+  running?: boolean
   updatedAt?: string
 }
 
@@ -169,7 +170,7 @@ onBeforeUnmount(() => {
         @contextmenu="openChatMenu($event, chat)"
       >
         <div
-          class="w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden"
+          class="relative w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden"
           :class="
             chat.avatar.avatarDataUrl
               ? ''
@@ -194,12 +195,19 @@ onBeforeUnmount(() => {
           />
           <span v-else-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
           <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
+          <span
+            v-if="chat.running"
+            class="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-surface bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
+            title="正在运行"
+          >
+            <span
+              class="block h-full w-full rounded-full bg-emerald-400 animate-ping opacity-60"
+            ></span>
+          </span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex min-w-0 items-center gap-2">
-            <div
-              class="flex-1 min-w-0 font-medium truncate text-md text-text-main"
-            >
+            <div class="flex-1 min-w-0 font-medium truncate text-md text-text-main">
               {{ chat.title }}
             </div>
             <span

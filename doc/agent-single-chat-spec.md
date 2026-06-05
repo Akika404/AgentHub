@@ -19,13 +19,13 @@
 
 ## 数据模型
 
-| 概念             | 含义                                                                                             | 存储                       |
-| ---------------- | ------------------------------------------------------------------------------------------------ | -------------------------- |
-| Agent            | 用户创建的 Agent 配置，如展示名、头像/颜色标识、vendor、model、Provider、默认目录、system prompt | MySQL `agent`              |
-| AgentSession     | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP             | MySQL `agent_session`      |
-| AgentMessage     | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本                                        | MySQL `agent_message`      |
-| AgentMessageStep | 一条 agent 消息产出过程中的有序运行步骤（thinking / progress / tool / todo）                     | MySQL `agent_message_step` |
-| LiveAgent        | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt                           | 内存 Map                   |
+| 概念             | 含义                                                                                                               | 存储                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| Agent            | 用户创建的 Agent 配置，如展示名、头像/颜色标识、vendor、model、Provider、默认目录、system prompt                   | MySQL `agent`              |
+| AgentSession     | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP                               | MySQL `agent_session`      |
+| AgentMessage     | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本                                                          | MySQL `agent_message`      |
+| AgentMessageStep | 一条 agent 消息产出过程中的有序运行步骤（thinking / progress / tool / todo）                                       | MySQL `agent_message_step` |
+| LiveAgent        | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt                                             | 内存 Map                   |
 | Turn 事件流      | 一轮对话的事件广播+回放载体，一轮一条 Redis Stream；另含会话活跃指针、turn/session 归属索引与跨实例 abort 控制频道 | Redis Streams / pub/sub    |
 
 `agent_session` 是左侧聊天列表的数据源；`agent_message.sessionId` 是消息隔离边界。`agent_message_step` 以 `messageId` 关联某条 agent 消息、`seq` 排序，与该消息一对多；删除 Agent 会删除它的所有聊天和消息，删除/清空聊天会一并删除该聊天的运行步骤。
@@ -45,18 +45,18 @@
 
 所有接口前缀为 `/api`，并且需要 `Authorization: Bearer <token>`。
 
-| Method     | Path                                       | 说明                                                |
-| ---------- | ------------------------------------------ | --------------------------------------------------- |
-| `GET`      | `/agents`                                  | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗 |
-| `POST`     | `/agent-chats`                             | 创建单 Agent 聊天                                   |
-| `GET`      | `/agent-chats`                             | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用     |
-| `GET`      | `/agent-chats/:chatId`                     | 查询单个聊天                                        |
-| `GET`      | `/agent-chats/:chatId/messages`            | 查询该聊天 UI 消息历史，按时间升序                  |
-| `POST`     | `/agent-chats/:chatId/converse`            | 启动一轮对话（后台游离运行），body 传 `prompt`，返回 `{ turnId }` |
-| `GET @Sse` | `/agent-chats/:chatId/turns/:turnId/events`| 订阅该轮事件流，先回放后追尾，逐条推送 `AgentEvent`，遇 `done` 结束 |
-| `POST`     | `/agent-chats/:chatId/turns/:turnId/abort` | 主动中止该轮（跨实例广播）                           |
-| `POST`     | `/agent-chats/:chatId/clear`               | 清空该聊天 SDK 句柄和 UI 消息历史                   |
-| `DELETE`   | `/agent-chats/:chatId`                     | 删除该聊天                                          |
+| Method     | Path                                        | 说明                                                                |
+| ---------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| `GET`      | `/agents`                                   | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗                 |
+| `POST`     | `/agent-chats`                              | 创建单 Agent 聊天                                                   |
+| `GET`      | `/agent-chats`                              | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用                     |
+| `GET`      | `/agent-chats/:chatId`                      | 查询单个聊天                                                        |
+| `GET`      | `/agent-chats/:chatId/messages`             | 查询该聊天 UI 消息历史，按时间升序                                  |
+| `POST`     | `/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离运行），body 传 `prompt`，返回 `{ turnId }`   |
+| `GET @Sse` | `/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流，先回放后追尾，逐条推送 `AgentEvent`，遇 `done` 结束 |
+| `POST`     | `/agent-chats/:chatId/turns/:turnId/abort`  | 主动中止该轮（跨实例广播）                                          |
+| `POST`     | `/agent-chats/:chatId/clear`                | 清空该聊天 SDK 句柄和 UI 消息历史                                   |
+| `DELETE`   | `/agent-chats/:chatId`                      | 删除该聊天                                                          |
 
 > 契约变更：旧版 `GET @Sse /agent-chats/:chatId/converse?prompt=` 一个端点既启动又流式返回、且客户端断连即中止；现拆分为「`POST converse` 启动（返回 turnId）」+「`GET turns/:turnId/events` 订阅」。启动是写操作、订阅是读操作，且订阅可被多端并发，是后台运行与多端围观的前提。
 
@@ -138,15 +138,15 @@ interface AgentChatView {
 
 ## 后台运行与多端围观
 
-| 机制         | 实现                                                                                   |
-| ------------ | -------------------------------------------------------------------------------------- |
-| 后台运行     | turn 是游离任务，生命周期与 HTTP 请求解耦；切走/关窗/断连只取消订阅，turn 继续跑到结束 |
-| 多端实时围观 | 一轮一条 Redis Stream，订阅端「回放 backlog + BLOCK 追尾」，多消费者各自游标，天然扇出 |
-| 发现进行中轮 | `AgentChatView.activeTurnId` 暴露当前活跃 turnId；任意端打开聊天据此订阅围观           |
-| 并发互斥     | 会话活跃指针 `SET NX`（跨实例锁）+ `LiveAgent.busy`（同实例兜底），一个聊天同时仅一轮  |
-| 归属校验     | `agent:turn:{turnId}:session` 记录 turn 所属 session；订阅和 abort 都必须匹配当前聊天 |
-| 主动停止     | `abort` 端点本地命中 + 控制频道跨实例广播                                               |
-| 超时兜底     | `AGENT_TURN_TIMEOUT_MS` 限制单轮最长运行时间；超时会 abort、发布 fatal error，并以 `done(success=false)` 收口 |
+| 机制         | 实现                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 后台运行     | turn 是游离任务，生命周期与 HTTP 请求解耦；切走/关窗/断连只取消订阅，turn 继续跑到结束                                                                                          |
+| 多端实时围观 | 一轮一条 Redis Stream，订阅端「回放 backlog + BLOCK 追尾」，多消费者各自游标，天然扇出                                                                                          |
+| 发现进行中轮 | `AgentChatView.activeTurnId` 暴露当前活跃 turnId；桌面端加载/刷新聊天列表后会订阅所有活跃 turn，打开聊天时直接展示该订阅维护的实时进度                                          |
+| 并发互斥     | 会话活跃指针 `SET NX`（跨实例锁）+ `LiveAgent.busy`（同实例兜底），一个聊天同时仅一轮                                                                                           |
+| 归属校验     | `agent:turn:{turnId}:session` 记录 turn 所属 session；订阅和 abort 都必须匹配当前聊天                                                                                           |
+| 主动停止     | `abort` 端点本地命中 + 控制频道跨实例广播                                                                                                                                       |
+| 超时兜底     | `AGENT_TURN_TIMEOUT_MS` 限制单轮最长运行时间；超时会 abort、发布 fatal error，并以 `done(success=false)` 收口                                                                   |
 | 启动回收     | 进程重启后游离任务已死；单实例下 boot 时清理残留活跃指针、补 turn/session 归属索引并给残留轮补 `done`（`AGENT_RECLAIM_ON_BOOT`，默认开，多实例应关）；另有活跃指针安全 TTL 兜底 |
 
 > 选型：广播/回放用 **Redis Streams**，不引入 MQ。`XADD`/`XREAD BLOCK` 单原语即覆盖「回放历史 + 实时追尾 + 多消费者各自游标 + MAXLEN/TTL 裁剪」，正合围观语义；MQ 对单服务、单轮、低频事件属过度设计。封装见 `turn-stream.service.ts`。
@@ -155,9 +155,9 @@ interface AgentChatView {
 
 - `ChatList` 的 `+` 弹出菜单，包含“创建聊天”和禁用占位“创建群聊”。
 - 创建聊天弹窗加载已有 Agent，选择 Agent 后默认填入 Agent 的默认工作目录。
-- 聊天列表加载 `/agent-chats`，每条 `AgentChatView` 映射为 `ChatSummary`。
-- 发送消息：先 `POST converse` 拿到 `turnId`，再订阅 `turns/:turnId/events`；切换/卸载只「detach」（取消订阅，不中止 turn）。
-- 打开聊天后若 `AgentChatView.activeTurnId` 非空，自动订阅该轮（回放+追尾）实现围观；回放事件复用与发送一致的 handler 渲染「进行中」的运行折叠条。若本地缓存里已有该聊天未完成的临时 `agent-run` 消息，会优先复用它，避免切走/切回后出现两张 Agent 运行卡；流结束后会重新加载 DB 历史，用后端权威消息覆盖本地临时态。
+- 聊天列表加载 `/agent-chats`，每条 `AgentChatView` 映射为 `ChatSummary`；若存在 `activeTurnId`，列表项显示运行标志，并为该 turn 建立后台订阅。
+- 发送消息：先 `POST converse` 拿到 `turnId`，再订阅 `turns/:turnId/events`；切换聊天不会取消订阅，卸载页面只「detach」（取消订阅，不中止 turn）。
+- 后台订阅按 chat 维护，事件复用与发送一致的 handler 渲染「进行中」的运行折叠条；当前打开聊天同步右侧 runtime，非当前聊天只更新对应 message cache 与列表运行态。若本地缓存里已有该聊天未完成的临时 `agent-run` 消息，会优先复用它，避免切走/切回后出现两张 Agent 运行卡；复用时会先把该临时卡重置为初始运行态，再用 Redis backlog 重建步骤，避免重复追加旧步骤。流结束后会重新加载 DB 历史，用后端权威消息覆盖本地临时态，并发出桌面通知；如果订阅结束但尚未收到 Agent `done`，前端会刷新 `activeTurnId` 并在该 turn 仍活跃时自动重新订阅。
 - 输入区在有轮运行时显示「停止」按钮，点击调 `abort` 端点。
 - `messageFromView` 在 `agent` 消息带 `steps` 时重建为 `AgentRunMessage`（运行过程折叠条）：thinking 标签按序复原为"思考中/继续思考"，tool 标签复原为"正在调用 {toolName}"，状态置 `done`；否则维持纯文本气泡。重开/刷新会话即可看到历史运行过程。
 - 右侧状态区显示 Agent 摘要和当前聊天的真实 `workingDirectory/sessionHomeDirectory`。

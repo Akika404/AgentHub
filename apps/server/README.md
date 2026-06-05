@@ -256,27 +256,27 @@ src/mutiagents/
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法       | 路径                                           | 功能                               |
-| ---------- | ---------------------------------------------- | ---------------------------------- |
-| POST       | `/api/agents`                                  | 创建 Agent 配置，不开聊天          |
-| GET        | `/api/agents`                                  | 列出当前用户 AgentList             |
-| GET        | `/api/agents/:agentId`                         | 查询单个 Agent                     |
-| PATCH      | `/api/agents/:agentId`                         | 修改 Agent 配置                    |
-| DELETE     | `/api/agents/:agentId`                         | 删除 Agent，并删除其全部聊天和消息 |
-| POST       | `/api/agent-chats`                             | 创建单 Agent 聊天                  |
-| GET        | `/api/agent-chats`                             | 列出当前用户单 Agent 聊天          |
-| GET        | `/api/agent-chats/:chatId`                     | 查询聊天详情                       |
-| GET        | `/api/agent-chats/:chatId/messages`            | 查询聊天消息历史                   |
-| POST       | `/api/agent-chats/:chatId/converse`            | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
-| GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events`| 订阅该轮事件流（回放+追尾），遇 `done` 结束 |
-| POST       | `/api/agent-chats/:chatId/turns/:turnId/abort` | 中止该轮（跨实例广播）             |
-| POST       | `/api/agent-chats/:chatId/clear`               | 清空聊天句柄和 UI 消息历史         |
-| DELETE     | `/api/agent-chats/:chatId`                     | 删除聊天                           |
+| 方法       | 路径                                            | 功能                                                                                   |
+| ---------- | ----------------------------------------------- | -------------------------------------------------------------------------------------- |
+| POST       | `/api/agents`                                   | 创建 Agent 配置，不开聊天                                                              |
+| GET        | `/api/agents`                                   | 列出当前用户 AgentList                                                                 |
+| GET        | `/api/agents/:agentId`                          | 查询单个 Agent                                                                         |
+| PATCH      | `/api/agents/:agentId`                          | 修改 Agent 配置                                                                        |
+| DELETE     | `/api/agents/:agentId`                          | 删除 Agent，并删除其全部聊天和消息                                                     |
+| POST       | `/api/agent-chats`                              | 创建单 Agent 聊天                                                                      |
+| GET        | `/api/agent-chats`                              | 列出当前用户单 Agent 聊天                                                              |
+| GET        | `/api/agent-chats/:chatId`                      | 查询聊天详情                                                                           |
+| GET        | `/api/agent-chats/:chatId/messages`             | 查询聊天消息历史                                                                       |
+| POST       | `/api/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
+| GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流（回放+追尾），遇 `done` 结束                                            |
+| POST       | `/api/agent-chats/:chatId/turns/:turnId/abort`  | 中止该轮（跨实例广播）                                                                 |
+| POST       | `/api/agent-chats/:chatId/clear`                | 清空聊天句柄和 UI 消息历史                                                             |
+| DELETE     | `/api/agent-chats/:chatId`                      | 删除聊天                                                                               |
 
 Agent 可保存头像 data URL/URL 与颜色标识；未设置头像时，前端用颜色和名称前两个字生成默认头像。创建聊天时 `workingDirectory` 必填；system prompt 不在聊天上设置，运行时继承 Agent。Claude 聊天会把 Agent 原 skills 复制到会话私有
 home，再导入本聊天指定的 skill 文件夹；MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
 
-一轮对话（turn）启动后即在服务端游离运行，与发起请求解耦：发起端切走/关窗/断连只取消订阅，turn 继续跑到结束；任意端可订阅 `turns/:turnId/events` 回放+实时追尾同一轮，实现多端围观；`AgentChatView.activeTurnId` 暴露当前活跃轮以便打开聊天时自动围观。相关环境变量：`AGENT_RECLAIM_ON_BOOT`（默认开，进程重启清理残留活跃指针；多实例部署应设 `false`）和 `AGENT_TURN_TIMEOUT_MS`（默认 30 分钟，超时会 abort 当前 turn 并向订阅端发送 `error` + `done`，释放活跃指针）。
+一轮对话（turn）启动后即在服务端游离运行，与发起请求解耦：发起端切走/关窗/断连只取消订阅，turn 继续跑到结束；任意端可订阅 `turns/:turnId/events` 回放+实时追尾同一轮，实现多端围观；`AgentChatView.activeTurnId` 暴露当前活跃轮，桌面端会在聊天列表加载/刷新后订阅所有活跃轮，并在列表显示运行标志。相关环境变量：`AGENT_RECLAIM_ON_BOOT`（默认开，进程重启清理残留活跃指针；多实例部署应设 `false`）和 `AGENT_TURN_TIMEOUT_MS`（默认 30 分钟，超时会 abort 当前 turn 并向订阅端发送 `error` + `done`，释放活跃指针）。
 
 ### 数据库与限制
 

@@ -54,7 +54,7 @@ case 'tool_result':
 ```ts
 const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
 if (owned !== turnId) {
-    return { turnId: owned }
+  return { turnId: owned }
 }
 ```
 
@@ -86,6 +86,15 @@ await detachStream()
 - 第一张临时 Agent 卡停在「继续思考」。
 - 第二张 Agent 卡继续接收同一个 turn 的后续事件。
 - 如果后续事件里有最终文本，第二张卡显示回答，看起来像 Agent 又主动发了一条消息。
+
+另一个相近表现是：本端 SSE 订阅在窗口切走/恢复后意外结束，但 Agent 没有发出 `done`。
+后端仍在运行，前端却把 `currentStream` 清空后只刷新了一次历史，没有根据仍存在的
+`activeTurnId` 重新订阅。结果就是停留在旧步骤上不再变化；关闭并重启前端后，因为会重新
+加载 DB 历史或重新 watch active turn，才看到完整步骤和最终结果。
+
+当前前端修复策略：不再用单个 `currentStream/currentRunMessageId` 绑定当前聊天视图，而是
+按 `chatId` 维护后台订阅和临时运行卡；聊天列表加载/刷新后会订阅所有 `activeTurnId`，切换聊天
+只切换展示，不取消其它运行中会话的订阅。
 
 ### 3. 服务端先发布 `done`，再落库和释放 active 指针
 
@@ -156,7 +165,9 @@ return this.turnStream.subscribe(chatId, turnId)
 5. `runTurn()` 不再把 adapter 的 `done` 立即写入 Redis Stream，而是先记录终态。
 6. DB 历史保存、active 指针释放完成后，再统一发布最终 `done`，然后给 stream 和归属索引设置 TTL。
 7. 前端 `watchTurn()` 会优先复用当前 chat 缓存里的未完成 `agent-run` 消息。
-8. 前端流结束后统一 `reloadAfterTurn()`，用 DB 权威历史覆盖本地临时运行态。
+8. 复用未完成运行卡时先重置为初始运行态，再用 Redis backlog 重建步骤，避免重连后重复追加旧步骤。
+9. 前端流结束后统一 `reloadAfterTurn()`，用 DB 权威历史覆盖本地临时运行态。
+10. 如果订阅结束但尚未收到 Agent `done`，前端会刷新 `activeTurnId`；若 turn 仍活跃，立即重新订阅 Redis Stream。
 
 相关文件：
 
@@ -185,6 +196,8 @@ pnpm typecheck
 7. 预期：返回 not found，不会收到其它 chat 的事件流，也不会中止其它 chat 的 turn。
 8. 让 adapter 超过 `AGENT_TURN_TIMEOUT_MS` 不结束。
 9. 预期：前端收到 error + done，active turn 被释放，之后可以启动下一轮。
+10. 在 turn 运行中切走 Electron 窗口或切到其它应用，再切回。
+11. 预期：若底层订阅仍连接，步骤继续实时刷新；若订阅已断开但 turn 仍 active，前端会自动重连并通过 backlog 补齐中间步骤。
 
 ## 以后如何避免
 
