@@ -1,6 +1,6 @@
 ---
 name: spec-kit
-description: 在开发新功能（feature）时使用此 skill。它强制执行一套"先写 spec 和 plan 文档、再实现、最后回顾文档与 README"的开发流程。当用户提到开发新功能、新增模块、实现某个功能时应主动使用。
+description: 在开发新功能（feature）时使用此 skill。它强制执行一套"先写 spec 和 plan 文档、再实现、最后回顾文档与 README"的开发流程。当用户提到开发新功能、新增模块、实现某个功能时应主动使用，若是 小功能修改 或者 用户明确不使用 spec 则不使用。
 ---
 
 # Spec-Kit
@@ -39,15 +39,15 @@ Spec 确认后，编写一份完整且详细的实现计划：
 代码完成后必须执行以下检查：
 
 1. **回顾 Spec**：重新审视 spec 文档，检查是否有：
-  - 功能遗漏
-  - 部分功能因受限未完全实现
+- 功能遗漏
+- 部分功能因受限未完全实现
 
-   若存在以上情况，**必须明确告知用户**，并同步修改 spec 文档（特别是 `Known Limits` 部分）。
+若存在以上情况，**必须明确告知用户**，并同步修改 spec 文档（特别是 `Known Limits` 部分）。
 
 2. **更新 README**：检查以下文件是否需要更新描述，若需要则修改：
-  - 根目录 `README.md`
-  - `apps/server/README.md`（如果存在）
-  - `apps/desktop/README.md`（如果存在）
+- 根目录 `README.md`
+- `apps/server/README.md`（如果存在）
+- `apps/desktop/README.md`（如果存在）
 
 ## Spec 文档格式
 

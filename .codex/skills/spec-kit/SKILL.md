@@ -1,6 +1,6 @@
 ---
 name: spec-kit
-description: 在开发新功能（feature）时使用此 skill。它强制执行一套"先写 spec 和 plan 文档、再实现、最后回顾文档与 README"的开发流程。当用户提到开发新功能、新增模块、实现某个功能时应主动使用。
+description: 在开发新功能（feature）时使用此 skill。它强制执行一套"先写 spec 和 plan 文档、再实现、最后回顾文档与 README"的开发流程。当用户提到开发新功能、新增模块、实现某个功能时应主动使用，若是 小功能修改 或者 用户明确不使用 spec 则不使用。
 ---
 
 # Spec-Kit
