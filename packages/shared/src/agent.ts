@@ -92,7 +92,7 @@ export interface AgentChatMessageView {
   steps?: AgentRunStepView[]
 }
 
-/** Vendor capability matrix (asymmetric: codex lacks systemPrompt/skills/mcp). */
+/** Vendor capability matrix (asymmetric: codex lacks skills/mcp). */
 export interface AgentCapabilities {
   supportsSystemPrompt: boolean
   supportsSkills: boolean
@@ -124,7 +124,7 @@ export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {
     supportsResumeById: true
   },
   codex: {
-    supportsSystemPrompt: false,
+    supportsSystemPrompt: true,
     supportsSkills: false,
     supportsMcp: false,
     supportsResumeById: true

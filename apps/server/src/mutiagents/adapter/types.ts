@@ -113,8 +113,8 @@ export interface AgentAdapterConfig {
     reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
     /**
-     * 系统提示词。Claude 走 options.systemPrompt；Codex SDK 无此字段，
-     * capabilities().supportsSystemPrompt 为 false，上层应在创建时拦截而非静默丢弃。
+     * 系统提示词。Claude 走 options.systemPrompt；Codex 走
+     * CodexOptions.config.instructions（由 core 映射成 base_instructions）。
      */
     systemPrompt?: string
     /**

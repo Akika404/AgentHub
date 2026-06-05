@@ -14,9 +14,11 @@ export const CLAUDE_CAPABILITIES: AgentCapabilities = {
 }
 
 export const CODEX_CAPABILITIES: AgentCapabilities = {
-    // Codex ThreadOptions 无 systemPrompt/skills；MCP 配置形态与统一接口(Claude 形状)
-    // 不同且未做翻译，故声明不支持，由上层在创建时显式拦截而非静默丢弃。
-    supportsSystemPrompt: false,
+    // Codex ThreadOptions 无 systemPrompt 字段，但 CodexOptions.config.instructions
+    // 会被 core 映射成 base_instructions，因此可支持 Agent 级 systemPrompt。
+    supportsSystemPrompt: true,
+    // MCP 配置形态与统一接口(Claude 形状)不同且未做翻译；skills 也无对等概念。
+    // 这两项仍声明不支持，由上层在创建时显式拦截而非静默丢弃。
     supportsSkills: false,
     supportsMcp: false,
     supportsResumeById: true

@@ -24,6 +24,7 @@ AgentHub 的形态类似飞书：用户可以把多个虚拟员工（Agent）拉
 | Usage 字段 | `input_tokens` / `output_tokens` / `cache_read_input_tokens` / `total_cost_usd` | `input_tokens` / `output_tokens` / `cached_input_tokens` / `reasoning_output_tokens`                    |
 | 权限/沙箱  | `permissionMode` + `allowDangerouslySkipPermissions`                            | `sandboxMode` + `approvalPolicy`                                                                        |
 | 配置网关   | `ANTHROPIC_BASE_URL` 环境变量                                                   | `model_providers` 配置树                                                                                |
+| 系统提示词 | `options.systemPrompt`                                                          | `CodexOptions.config.instructions`                                                                      |
 
 如果让上层编排逻辑直接对接两套 SDK，会出现大量 `if (vendor === "claude") ... else ...` 的分支代码，且任何 SDK 的 API 升级都会污染上层。Adapter 把差异封装在一层之内，给出一套稳定的对外契约。
 
@@ -571,8 +572,8 @@ async function broadcast(prompt: string) {
 
 > 自 AgentManager 接入后，以下原限制已落地（见 `../README.md`）：MCP 配置、systemPrompt、skills、
 > 工具白名单均已加入 `AgentAdapterConfig` 并由 Claude 端透传；`resumeWith()` 支持按
-> 外部 sessionId 跨进程恢复；`capabilities()` 声明厂商不对称（Codex 不支持
-> systemPrompt/skills/MCP）。Claude skills 由 AgentManager 导入到 per-agent `.claude/skills`，
+> 外部 sessionId 跨进程恢复；`capabilities()` 声明厂商不对称（Codex 支持
+> systemPrompt，但不支持 skills/MCP）。Claude skills 由 AgentManager 导入到 per-agent `.claude/skills`，
 > ClaudeAdapter 通过 per-agent `CLAUDE_CONFIG_DIR` + `settingSources=['user','project']` 加载。下表为仍存在的限制。
 
 | 限制                                    | 影响                                  | 解决方向                                                                       |
@@ -582,7 +583,7 @@ async function broadcast(prompt: string) {
 | Codex 的 todo 拿不到 in_progress        | 上层只能看到两态                      | SDK 限制；等 Codex SDK 升级或自行从相邻状态推断                                |
 | 权限审批未实现（本期 auto-approve）     | 自动化"全开"，无法对接 UI 审批        | Claude 端接 `canUseTool`（已留 `permissionMode` seam）；Codex SDK 暂无回调 API |
 | Claude 的 AskUserQuestion 卡死          | 反问场景下流会挂起                    | 需切到 streaming input 模式 + 双向回调，重构较大                               |
-| Codex 的 systemPrompt/skills/MCP 不支持 | 这些配置在 Codex 上无效               | `capabilities()` 已声明；Manager 创建时显式拒绝而非静默丢弃                    |
+| Codex 的 skills/MCP 不支持              | 这些配置在 Codex 上无效               | `capabilities()` 已声明；Manager 创建时显式拒绝而非静默丢弃                    |
 | 无 cost / rate-limit 上报               | Codex SDK 没有 cost 字段              | 等 SDK 升级；或基于 token 数 + 模型价格表自己算                                |
 | 不支持图片输入                          | Codex 的 `local_image` UserInput 未接 | `send()` 改成接受 `string \| UserInput[]`                                      |
 

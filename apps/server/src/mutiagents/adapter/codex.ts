@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { Codex } from '@openai/codex-sdk'
-import type { Thread, ThreadEvent, ThreadItem } from '@openai/codex-sdk'
+import type { CodexOptions, Thread, ThreadEvent, ThreadItem } from '@openai/codex-sdk'
 import type {
     AgentAdapter,
     AgentAdapterConfig,
@@ -41,6 +41,28 @@ function buildCodexEnv(config: AgentAdapterConfig): Record<string, string> {
     return env
 }
 
+function buildCodexConfig(config: AgentAdapterConfig): CodexOptions['config'] | undefined {
+    const codexConfig: CodexOptions['config'] = {}
+    const systemPrompt = config.systemPrompt?.trim()
+    if (systemPrompt) codexConfig.instructions = systemPrompt
+
+    if (config.baseUrl) {
+        Object.assign(codexConfig, {
+            model_providers: {
+                test_provider: {
+                    name: 'test',
+                    base_url: config.baseUrl,
+                    wire_api: 'responses',
+                    requires_openai_auth: true
+                }
+            },
+            model_provider: 'test_provider'
+        })
+    }
+
+    return Object.keys(codexConfig).length > 0 ? codexConfig : undefined
+}
+
 export class CodexAdapter implements AgentAdapter {
     readonly vendor = 'codex' as const
     readonly id: string
@@ -66,19 +88,7 @@ export class CodexAdapter implements AgentAdapter {
         this.codex = new Codex({
             apiKey: config.apiKey,
             baseUrl: config.baseUrl,
-            config: config.baseUrl
-                ? {
-                      model_providers: {
-                          test_provider: {
-                              name: 'test',
-                              base_url: config.baseUrl,
-                              wire_api: 'responses',
-                              requires_openai_auth: true
-                          }
-                      },
-                      model_provider: 'test_provider'
-                  }
-                : undefined,
+            config: buildCodexConfig(config),
             env: buildCodexEnv(config)
         })
         return this.codex
