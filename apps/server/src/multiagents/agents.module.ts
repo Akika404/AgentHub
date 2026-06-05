@@ -5,14 +5,20 @@ import { PlatformProviderModule } from '../platform-provider/platform-provider.m
 import { AgentChatsController } from './agent-chats.controller.js'
 import { AgentsController } from './agents.controller.js'
 import { AgentManager } from './agent-manager.service.js'
-import { TurnStream } from './turn-stream.service.js'
+import { AgentConfigService } from './agents/agent-config.service.js'
+import { AgentPolicyService } from './agents/agent-policy.service.js'
+import { AgentChatService } from './chats/agent-chat.service.js'
+import { AgentMessageHistoryService } from './messages/agent-message-history.service.js'
+import { AgentRuntimeService } from './runtime/agent-runtime.service.js'
+import { TurnStream } from './runtime/turn-stream.service.js'
+import { AgentWorkspaceService } from './workspace/agent-workspace.service.js'
 import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
 import { AgentMessageStep } from './entities/agent-message-step.entity.js'
 
 /**
- * AgentsModule — 用户虚拟员工管理（AgentManager）。
+ * AgentsModule — 用户虚拟员工管理。
  *
  * 注册 Agent / AgentSession / AgentMessage / AgentMessageStep 四个实体
  * （autoLoadEntities 已开，forFeature 即建表）；
@@ -26,7 +32,16 @@ import { AgentMessageStep } from './entities/agent-message-step.entity.js'
         PlatformProviderModule
     ],
     controllers: [AgentsController, AgentChatsController],
-    providers: [AgentManager, TurnStream],
+    providers: [
+        AgentManager,
+        AgentConfigService,
+        AgentChatService,
+        AgentPolicyService,
+        AgentWorkspaceService,
+        AgentMessageHistoryService,
+        AgentRuntimeService,
+        TurnStream
+    ],
     exports: [AgentManager]
 })
 export class AgentsModule {}

@@ -12,14 +12,16 @@
 
 ## 涉及文件
 
-- `apps/server/src/mutiagents/adapter/capabilities.ts`
+- `apps/server/src/multiagents/adapter/capabilities.ts`
   - 将 Codex `supportsSkills` 改为 `true`。
-- `apps/server/src/mutiagents/adapter/types.ts`
+- `apps/server/src/multiagents/adapter/types.ts`
   - 更新 skills 注释，说明 Codex 通过工作目录 `.codex/skills` 发现。
-- `apps/server/src/mutiagents/dto/create-agent-chat.dto.ts`
+- `apps/server/src/multiagents/dto/create-agent-chat.dto.ts`
   - 将 `workingDirectory` 改为可选。
   - 更新 skills 注释，不再写死 Claude。
-- `apps/server/src/mutiagents/agent-manager.service.ts`
+- `apps/server/src/multiagents/workspace/agent-workspace.service.ts`
+- `apps/server/src/multiagents/agents/agent-config.service.ts`
+- `apps/server/src/multiagents/chats/agent-chat.service.ts`
   - 增加 vendor 配置目录辅助函数。
   - 创建 / 更新 Agent 时按 vendor 初始化 Agent Home skills 目录。
   - skill 导入目标按 vendor 写入 `.claude/skills` 或 `.codex/skills`。
@@ -45,7 +47,7 @@
 ## 实现步骤
 
 1. 改后端能力声明和 DTO。
-2. 重构 `AgentManager` 目录工具：
+2. 重构 `AgentWorkspaceService` 目录工具：
    - `vendorConfigDirectoryName(vendor)`
    - `vendorConfigRoot(baseDirectory, vendor)`
    - `vendorSkillsRoot(baseDirectory, vendor)`

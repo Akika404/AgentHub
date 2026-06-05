@@ -437,7 +437,7 @@ env.CODEX_HOME ??= config.agentHomeDirectory
 ```
 
 这样重建 `LiveAgent` 时能按同一个聊天私有目录恢复 Codex 会话，也避免多个聊天共享全局 Codex 状态。注意 Codex CLI 要求
-`CODEX_HOME` 目录必须已经存在；`AgentManager.ensureRuntimeDirectories()` 会在创建 Agent/Chat 时预先创建。
+`CODEX_HOME` 目录必须已经存在；`AgentWorkspaceService` 会在创建 Agent/Chat 时预先创建运行目录。
 
 #### f) Effort 映射
 

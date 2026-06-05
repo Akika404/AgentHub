@@ -7,7 +7,7 @@
 ## 步骤
 
 1. 更新能力声明：
-  - `apps/server/src/mutiagents/adapter/capabilities.ts`
+  - `apps/server/src/multiagents/adapter/capabilities.ts`
   - `packages/shared/src/agent.ts`
 2. 更新 Codex 运行时配置：
   - 导入 `CodexOptions`。
@@ -19,12 +19,12 @@
 
 ## 文件
 
-- `apps/server/src/mutiagents/adapter/codex.ts`
-- `apps/server/src/mutiagents/adapter/capabilities.ts`
-- `apps/server/src/mutiagents/adapter/types.ts`
-- `apps/server/src/mutiagents/dto/agent-view.dto.ts`
+- `apps/server/src/multiagents/adapter/codex.ts`
+- `apps/server/src/multiagents/adapter/capabilities.ts`
+- `apps/server/src/multiagents/adapter/types.ts`
+- `apps/server/src/multiagents/dto/agent-view.dto.ts`
 - `packages/shared/src/agent.ts`
-- `apps/server/src/mutiagents/adapter/README.md`
+- `apps/server/src/multiagents/adapter/README.md`
 
 ## 验证
 

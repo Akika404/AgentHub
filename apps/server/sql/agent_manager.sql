@@ -1,7 +1,7 @@
 -- =============================================================================
 -- AgentManager 模块建表 SQL（参考存档）
 --
--- 真实结构以 apps/server/src/mutiagents/entities/*.entity.ts 为准。
+-- 真实结构以 apps/server/src/multiagents/entities/*.entity.ts 为准。
 -- 当前模型：
 --   Agent（用户拥有的可复用配置）
 --   AgentSession（一个单 Agent 聊天会话）

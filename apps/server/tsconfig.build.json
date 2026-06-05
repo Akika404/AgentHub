@@ -9,6 +9,6 @@
     "dist",
     "test",
     "**/*spec.ts",
-    "src/mutiagents/adapter/test"
+    "src/multiagents/adapter/test"
   ]
 }

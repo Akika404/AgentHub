@@ -1,6 +1,6 @@
 # Agent 会话工作区 Vendor 配置同步
 
-> 模块范围：`apps/server/src/mutiagents`、`packages/shared/src/agent.ts`、桌面端 Agent/Chat 创建表单。
+> 模块范围：`apps/server/src/multiagents`、`packages/shared/src/agent.ts`、桌面端 Agent/Chat 创建表单。
 
 ## Context
 

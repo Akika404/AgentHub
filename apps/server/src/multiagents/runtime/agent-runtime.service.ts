@@ -1,0 +1,403 @@
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
+import { randomUUID } from 'node:crypto'
+import {
+    createAgent,
+    type AgentEvent,
+    type AgentVendor
+} from '../adapter/index.js'
+import { Agent } from '../entities/agent.entity.js'
+import { AgentSession } from '../entities/agent-session.entity.js'
+import type { LiveAgent } from '../live-agent.js'
+import { agentToConfig } from '../mappers/agent.mapper.js'
+import { TurnStream } from './turn-stream.service.js'
+import { BusinessException } from '../../common/index.js'
+import { PlatformProviderService } from '../../platform-provider/platform-provider.service.js'
+import {
+    AgentMessageHistoryService,
+    type StepDraft
+} from '../messages/agent-message-history.service.js'
+
+interface RunningTurn {
+    sessionId: string
+    abort: AbortController
+}
+
+const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000
+
+@Injectable()
+export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(AgentRuntimeService.name)
+
+    private readonly registry = new Map<string, LiveAgent>()
+    private readonly rehydrating = new Map<string, Promise<LiveAgent>>()
+    private readonly runningTurns = new Map<string, RunningTurn>()
+
+    private readonly maxLive: number
+    private readonly maxLiveCodex: number
+    private readonly idleTtlMs: number
+    private readonly turnTimeoutMs: number
+    private sweepTimer: NodeJS.Timeout | null = null
+
+    constructor(
+        @InjectRepository(Agent)
+        private readonly agentRepo: Repository<Agent>,
+        @InjectRepository(AgentSession)
+        private readonly sessionRepo: Repository<AgentSession>,
+        private readonly providerService: PlatformProviderService,
+        private readonly turnStream: TurnStream,
+        private readonly messages: AgentMessageHistoryService,
+        private readonly config: ConfigService
+    ) {
+        this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
+        this.maxLiveCodex = this.config.get<number>('AGENT_MAX_LIVE_CODEX', 8)
+        this.idleTtlMs = this.config.get<number>('AGENT_IDLE_TTL_MS', 15 * 60 * 1000)
+        this.turnTimeoutMs = this.readPositiveMs('AGENT_TURN_TIMEOUT_MS', DEFAULT_TURN_TIMEOUT_MS)
+    }
+
+    onModuleInit(): void {
+        this.sweepTimer = setInterval(() => this.sweepIdle(), Math.min(this.idleTtlMs, 60 * 1000))
+        this.sweepTimer.unref?.()
+        this.turnStream.onAbortRequest((turnId) => {
+            this.runningTurns.get(turnId)?.abort.abort()
+        })
+        if (this.config.get<string>('AGENT_RECLAIM_ON_BOOT', 'true') !== 'false') {
+            void this.turnStream
+                .reclaimStaleActiveTurns()
+                .then((n) => {
+                    if (n > 0) this.logger.log(`Reclaimed ${n} stale active turn(s) on boot`)
+                })
+                .catch((err) => {
+                    this.logger.error(`Failed to reclaim stale active turns: ${this.errMsg(err)}`)
+                })
+        }
+    }
+
+    onModuleDestroy(): void {
+        if (this.sweepTimer) clearInterval(this.sweepTimer)
+        this.registry.clear()
+    }
+
+    async startTurn(session: AgentSession, prompt: string): Promise<{ turnId: string }> {
+        const turnId = randomUUID()
+        const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
+        if (owned !== turnId) {
+            throw BusinessException.agentBusy(
+                `Chat ${session.id} is busy with active turn ${owned}`
+            )
+        }
+
+        let live: LiveAgent
+        try {
+            live = await this.getOrRehydrate(session)
+        } catch (err) {
+            await this.turnStream.abandonTurn(session.id, turnId)
+            throw err
+        }
+        if (live.busy) {
+            await this.turnStream.abandonTurn(session.id, turnId)
+            throw BusinessException.agentBusy(`Chat ${session.id} is busy with another turn`)
+        }
+        live.busy = true
+        live.lastUsedAt = Date.now()
+
+        const abort = new AbortController()
+        live.abort = abort
+        this.runningTurns.set(turnId, { sessionId: session.id, abort })
+
+        try {
+            await this.messages.saveMessage(session.userId, session.agentId, session.id, 'user', prompt)
+        } catch (err) {
+            live.busy = false
+            live.abort = null
+            this.runningTurns.delete(turnId)
+            await this.turnStream.abandonTurn(session.id, turnId)
+            throw err
+        }
+
+        void this.runTurn(session, live, prompt, abort, turnId)
+        return { turnId }
+    }
+
+    async subscribeTurn(
+        session: AgentSession,
+        chatId: string,
+        turnId: string
+    ): Promise<AsyncIterable<AgentEvent>> {
+        if (!(await this.turnStream.isTurnInSession(session.id, turnId))) {
+            throw BusinessException.notFound(`Turn ${turnId} does not belong to chat ${chatId}`)
+        }
+        return this.turnStream.subscribe(chatId, turnId)
+    }
+
+    async abortTurn(session: AgentSession, chatId: string, turnId: string): Promise<{ aborted: true }> {
+        if (!(await this.turnStream.isTurnInSession(session.id, turnId))) {
+            throw BusinessException.notFound(`Turn ${turnId} does not belong to chat ${chatId}`)
+        }
+        this.runningTurns.get(turnId)?.abort.abort()
+        await this.turnStream.requestAbort(turnId)
+        return { aborted: true }
+    }
+
+    async getActiveTurn(sessionId: string): Promise<string | null> {
+        return this.turnStream.getActiveTurn(sessionId)
+    }
+
+    async getActiveTurns(sessionIds: string[]): Promise<Map<string, string>> {
+        return this.turnStream.getActiveTurns(sessionIds)
+    }
+
+    assertNotBusy(sessionId: string): void {
+        const live = this.registry.get(sessionId)
+        if (live?.busy) {
+            throw BusinessException.agentBusy(`Chat ${sessionId} is busy; cannot mutate mid-turn`)
+        }
+    }
+
+    evictSession(sessionId: string): void {
+        this.registry.delete(sessionId)
+    }
+
+    evictSessions(sessionIds: string[]): void {
+        for (const sessionId of sessionIds) this.registry.delete(sessionId)
+    }
+
+    private async runTurn(
+        session: AgentSession,
+        live: LiveAgent,
+        prompt: string,
+        abort: AbortController,
+        turnId: string
+    ): Promise<void> {
+        const textParts: string[] = []
+        let finalTextFromDone: string | null = null
+        let fatalErrorMessage: string | null = null
+        let terminalDone: Extract<AgentEvent, { type: 'done' }> | null = null
+        let timedOut = false
+        let timeout: NodeJS.Timeout | null = null
+        const stepDrafts: StepDraft[] = []
+        const toolIndexById = new Map<string, number>()
+        const timeoutPromise =
+            this.turnTimeoutMs > 0
+                ? new Promise<never>((_, reject) => {
+                      timeout = setTimeout(() => {
+                          timedOut = true
+                          abort.abort()
+                          reject(
+                              new Error(`Agent turn timed out after ${this.turnTimeoutMs}ms`)
+                          )
+                      }, this.turnTimeoutMs)
+                      timeout.unref?.()
+                  })
+                : null
+        try {
+            const iterator = live.adapter.send(prompt, { signal: abort.signal })[
+                Symbol.asyncIterator
+            ]()
+            while (true) {
+                const next = timeoutPromise
+                    ? await Promise.race([iterator.next(), timeoutPromise])
+                    : await iterator.next()
+                if (next.done) break
+                const ev = next.value
+                if (ev.type === 'done') {
+                    terminalDone = ev
+                    if (ev.finalText) finalTextFromDone = ev.finalText
+                    continue
+                }
+                if (ev.type === 'text') textParts.push(ev.text)
+                else if (ev.type === 'error' && ev.fatal) fatalErrorMessage = ev.message
+                else this.messages.collectStep(ev, stepDrafts, toolIndexById)
+                await this.turnStream.publish(turnId, ev)
+            }
+        } catch (err) {
+            fatalErrorMessage ??= this.errMsg(err)
+            terminalDone = {
+                type: 'done',
+                vendor: session.vendor,
+                success: false
+            }
+            await this.turnStream
+                .publish(turnId, {
+                    type: 'error',
+                    vendor: session.vendor,
+                    message: fatalErrorMessage,
+                    fatal: true
+                })
+                .catch(() => undefined)
+        } finally {
+            if (timeout) clearTimeout(timeout)
+            live.busy = false
+            live.abort = null
+            live.lastUsedAt = Date.now()
+            this.runningTurns.delete(turnId)
+            if (timedOut) this.registry.delete(session.id)
+            try {
+                await this.persistHandle(session, live)
+            } catch (err) {
+                this.logger.error(
+                    `Failed to persist session handle ${session.id}: ${this.errMsg(err)}`
+                )
+            }
+            try {
+                const agentText = (finalTextFromDone ?? textParts.join('')).trim()
+                if (agentText) {
+                    const message = await this.messages.saveMessage(
+                        session.userId,
+                        session.agentId,
+                        session.id,
+                        'agent',
+                        agentText
+                    )
+                    if (message) await this.messages.saveSteps(message.id, session.id, stepDrafts)
+                } else if (fatalErrorMessage) {
+                    await this.messages.saveMessage(
+                        session.userId,
+                        session.agentId,
+                        session.id,
+                        'system',
+                        fatalErrorMessage
+                    )
+                }
+            } catch (err) {
+                this.logger.error(
+                    `Failed to persist message history for session ${session.id}: ${this.errMsg(err)}`
+                )
+            }
+            await this.turnStream.releaseActiveTurn(session.id, turnId).catch(() => undefined)
+            const finalText = (finalTextFromDone ?? textParts.join('')).trim()
+            const done: Extract<AgentEvent, { type: 'done' }> = {
+                type: 'done',
+                vendor: session.vendor,
+                success: terminalDone
+                    ? terminalDone.success && !fatalErrorMessage
+                    : !fatalErrorMessage,
+                ...(finalText ? { finalText } : {}),
+                ...(terminalDone?.usage ? { usage: terminalDone.usage } : {})
+            }
+            await this.turnStream.publish(turnId, done).catch(() => undefined)
+            await this.turnStream.finalize(turnId).catch(() => undefined)
+        }
+    }
+
+    private async persistHandle(session: AgentSession, live: LiveAgent): Promise<void> {
+        const latest = live.adapter.sessionId
+        if (latest && latest !== session.sdkSessionId) session.sdkSessionId = latest
+        session.status = 'active'
+        session.lastTurnAt = new Date()
+        await this.sessionRepo.save(session)
+    }
+
+    private async getOrRehydrate(session: AgentSession): Promise<LiveAgent> {
+        const existing = this.registry.get(session.id)
+        if (existing) {
+            existing.lastUsedAt = Date.now()
+            return existing
+        }
+        const inflight = this.rehydrating.get(session.id)
+        if (inflight) return inflight
+
+        const promise = this.buildLiveAgent(session)
+            .then((live) => {
+                this.evictIfNeeded(live.vendor)
+                this.registry.set(session.id, live)
+                return live
+            })
+            .finally(() => this.rehydrating.delete(session.id))
+
+        this.rehydrating.set(session.id, promise)
+        return promise
+    }
+
+    private async buildLiveAgent(session: AgentSession): Promise<LiveAgent> {
+        const agent = await this.agentRepo.findOne({
+            where: { id: session.agentId, userId: session.userId }
+        })
+        if (!agent) {
+            throw BusinessException.agentUnavailable(
+                `Agent ${session.agentId} missing for chat ${session.id}`
+            )
+        }
+
+        let provider
+        try {
+            provider = await this.providerService.resolveRuntimeConfig(
+                session.userId,
+                agent.platformProviderId
+            )
+        } catch {
+            throw BusinessException.agentUnavailable(
+                `Agent ${agent.id} 引用的 Provider ${agent.platformProviderId} 不可用（可能已被删除）`
+            )
+        }
+
+        const config = agentToConfig(agent, session, provider.apiKey, provider.baseUrl, session.id)
+
+        let adapter
+        try {
+            adapter = createAgent(agent.vendor, config)
+        } catch (err) {
+            throw BusinessException.agentUnavailable(
+                `Failed to create ${agent.vendor} adapter: ${this.errMsg(err)}`
+            )
+        }
+        if (session.sdkSessionId) adapter.resumeWith(session.sdkSessionId)
+
+        return {
+            sessionId: session.id,
+            agentId: agent.id,
+            vendor: agent.vendor,
+            adapter,
+            busy: false,
+            abort: null,
+            lastUsedAt: Date.now()
+        }
+    }
+
+    private evictIfNeeded(incomingVendor: AgentVendor): void {
+        if (incomingVendor === 'codex') {
+            this.evictVendorOverCap('codex', this.maxLiveCodex - 1)
+        }
+        this.evictTotalOverCap(this.maxLive - 1)
+    }
+
+    private evictVendorOverCap(vendor: AgentVendor, cap: number): void {
+        const ofVendor = [...this.registry.values()].filter((l) => l.vendor === vendor)
+        this.evictLruIdle(ofVendor, ofVendor.length - cap)
+    }
+
+    private evictTotalOverCap(cap: number): void {
+        this.evictLruIdle([...this.registry.values()], this.registry.size - cap)
+    }
+
+    private evictLruIdle(candidates: LiveAgent[], count: number): void {
+        if (count <= 0) return
+        const idle = candidates.filter((l) => !l.busy).sort((a, b) => a.lastUsedAt - b.lastUsedAt)
+        for (let i = 0; i < count && i < idle.length; i++) {
+            this.registry.delete(idle[i].sessionId)
+            this.logger.debug(`Evicted idle live agent ${idle[i].sessionId} (${idle[i].vendor})`)
+        }
+    }
+
+    private sweepIdle(): void {
+        const now = Date.now()
+        for (const live of [...this.registry.values()]) {
+            if (!live.busy && now - live.lastUsedAt > this.idleTtlMs) {
+                this.registry.delete(live.sessionId)
+            }
+        }
+    }
+
+    private errMsg(err: unknown): string {
+        return err instanceof Error ? err.message : String(err)
+    }
+
+    private readPositiveMs(key: string, fallback: number): number {
+        const raw = this.config.get<string | number>(key)
+        if (raw === undefined || raw === null || raw === '') return fallback
+        const n = Number(raw)
+        return Number.isFinite(n) && n > 0 ? n : fallback
+    }
+}

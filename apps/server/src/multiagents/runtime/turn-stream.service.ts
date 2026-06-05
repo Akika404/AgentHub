@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import type { Redis } from 'ioredis'
-import { REDIS_CLIENT } from '../redis/redis.module.js'
-import type { AgentEvent } from './adapter/index.js'
+import { REDIS_CLIENT } from '../../redis/redis.module.js'
+import type { AgentEvent } from '../adapter/index.js'
 
 /**
  * TurnStream — 一轮对话（turn）的事件广播与回放底层，基于 Redis Streams。

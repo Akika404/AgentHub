@@ -1,7 +1,7 @@
 # Agent 多单聊会话 Spec
 
 > 本文描述 AgentHub 当前“用户与单个 Agent 的多个独立聊天会话”的端到端设计。
-> 后端模块位于 `apps/server/src/mutiagents/`；桌面端入口为
+> 后端模块位于 `apps/server/src/multiagents/`；桌面端入口为
 > `apps/desktop/src/renderer/src/views/ChatView.vue`。
 
 ## 目标

@@ -1,6 +1,6 @@
 /**
  * Multi-agent module contract.
- * Mirrors `apps/server/src/mutiagents/dto/*` and `adapter/types.ts`.
+ * Mirrors `apps/server/src/multiagents/dto/*` and `adapter/types.ts`.
  */
 
 export type AgentVendor = 'claude' | 'codex'
@@ -66,7 +66,7 @@ export type AgentChatMessageRole = 'user' | 'agent' | 'system'
 /** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
 export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo' | 'plan'
 
-/** 一条运行步骤的对外视图。镜像 `apps/server/src/mutiagents/dto/agent-message-view.dto.ts` */
+/** 一条运行步骤的对外视图。镜像 `apps/server/src/multiagents/dto/agent-message-view.dto.ts` */
 export interface AgentRunStepView {
   id: string
   seq: number
@@ -114,7 +114,7 @@ export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhig
 
 /**
  * Per-vendor capability matrix. Mirrors
- * `apps/server/src/mutiagents/adapter/capabilities.ts` (single source of truth);
+ * `apps/server/src/multiagents/adapter/capabilities.ts` (single source of truth);
  * lets forms gate fields without constructing an adapter.
  */
 export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {

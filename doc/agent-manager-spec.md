@@ -1,6 +1,6 @@
 # AgentManager 后端实现方案
 
-> 本文描述 `apps/server/src/mutiagents/` 的当前设计。字段与接口以实体和 shared 契约为准。
+> 本文描述 `apps/server/src/multiagents/` 的当前设计。字段与接口以实体和 shared 契约为准。
 
 ## Context
 
@@ -27,6 +27,19 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 | Turn 事件流      | Redis                | 一轮一条 Stream 广播 AgentEvent；会话活跃指针 + 跨实例 abort 控制频道 |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
+
+## Code Layout
+
+`AgentManager` 现在只作为 controller-facing facade，保持控制器注入入口稳定；实际职责按服务拆分：
+
+- `agents/agent-config.service.ts`：Agent 配置 CRUD、Provider/model/vendor 兼容校验、更新后驱逐相关 live session。
+- `agents/agent-policy.service.ts`：纯业务规则与归一化，例如 vendor 能力、颜色/标题、skills/MCP 合并。
+- `chats/agent-chat.service.ts`：AgentSession lifecycle、消息历史查询、start/subscribe/abort turn 的归属入口。
+- `runtime/agent-runtime.service.ts`：LiveAgent registry、rehydrate、后台 turn 执行、timeout、abort、active turn 状态。
+- `runtime/turn-stream.service.ts`：Redis Stream 事件广播/回放、session active 指针、turn 归属索引、跨实例 abort 控制频道。
+- `messages/agent-message-history.service.ts`：UI 消息和运行步骤的读取、落库、清理，以及 AgentEvent -> StepDraft 合并。
+- `workspace/agent-workspace.service.ts`：工作目录、Agent Home、vendor 配置同步、skill 导入。
+- `adapter/`：Claude/Codex SDK 到统一 `AgentEvent` 的转换。
 
 ## Backend API
 

@@ -16,7 +16,7 @@
 
 因此分阶段实施：**Phase 1**（Todo 卡片，纯前端，低风险） → **Phase 2a**（Plan 正文卡片，只读展示） → **Phase 2b**（Plan 审批回路，需新增反向通道，最重，建议独立排期）。
 
-> **契约镜像约束**（来自 `apps/server/CLAUDE.md` 与 shared 注释）：`packages/shared/src/agent.ts` 与 `apps/server/src/mutiagents/adapter/types.ts` 是手工镜像的两份定义，凡改 AgentEvent/step 类型必须同步两处。
+> **契约镜像约束**（来自 `apps/server/CLAUDE.md` 与 shared 注释）：`packages/shared/src/agent.ts` 与 `apps/server/src/multiagents/adapter/types.ts` 是手工镜像的两份定义，凡改 AgentEvent/step 类型必须同步两处。
 
 ---
 
@@ -60,15 +60,15 @@
 
 ### 改动点（服务端 + shared + 前端）
 
-1. **契约（两处镜像同步）**：`packages/shared/src/agent.ts` 与 `apps/server/src/mutiagents/adapter/types.ts`
+1. **契约（两处镜像同步）**：`packages/shared/src/agent.ts` 与 `apps/server/src/multiagents/adapter/types.ts`
    - `AgentEvent` 增加 `{ type: 'plan'; vendor: AgentVendor; plan: string }`。
    - `AgentMessageStepType` 增加 `'plan'`（`agent.ts` + `entities/agent-message-step.entity.ts` + `dto/agent-message-view.dto.ts` 三处镜像）。
 
-2. **适配器 `apps/server/src/mutiagents/adapter/claude.ts`**
+2. **适配器 `apps/server/src/multiagents/adapter/claude.ts`**
    - 在 `translate()` 的 `tool_use` 分支（约 281–355 行），`TASK_TOOLS` 判断之后、默认透传之前，增加 `if (name === 'ExitPlanMode')`：从 `b.input.plan` 提取正文 → `yield { type:'plan', vendor, plan }`，并 `this.suppressedToolUseIds.add(id)`（沿用现有机制吞掉其 `tool_result`）。
 
-3. **落库 `apps/server/src/mutiagents/agent-manager.service.ts`**
-   - `StepDraft`（约 48 行）已有 text；`collectStep`（约 594 行）增加 `case 'plan': drafts.push({ type:'plan', text: ev.plan })`。计划正文复用 `text` 列，无需新增实体列。`saveSteps` 已透传 `text`。
+3. **落库 `apps/server/src/multiagents/messages/agent-message-history.service.ts`**
+   - `StepDraft` 已有 text；`collectStep` 增加 `case 'plan': drafts.push({ type:'plan', text: ev.plan })`。计划正文复用 `text` 列，无需新增实体列。`saveSteps` 已透传 `text`。
 
 4. **mapper/dto**：`mappers/agent-message.mapper.ts` 已透传 `text/type`，无需改（仅类型联合扩了 `'plan'`）。
 

@@ -9,7 +9,7 @@
 2. **退出登录 = 加 sign-out 接口 + 服务端 token 失效**：无状态 JWT 要服务端失效，须引入按 `jti` 的黑名单存储 → **启用项目内现已停用的 Redis 模块**。
 3. **逻辑删除 = `status` 枚举列**（`active` / `deactivated`），与现有 `AgentSession.status` 约定一致，不用 `deletedAt`。
 
-模块结构完全对照现有 `mutiagents`（Controller → Service → Repository/Entity + Mapper + 三类 DTO 分离），并遵循 `apps/server/CLAUDE.md`：DTO 与 Entity 分离、错误统一经 `BusinessException` 抛出、响应用 `@ApiEnvelope` 出文档。**注意 ESM：所有相对 import 带 `.js` 后缀。**
+模块结构完全对照现有 `multiagents`（Controller → Service → Repository/Entity + Mapper + 三类 DTO 分离），并遵循 `apps/server/CLAUDE.md`：DTO 与 Entity 分离、错误统一经 `BusinessException` 抛出、响应用 `@ApiEnvelope` 出文档。**注意 ESM：所有相对 import 带 `.js` 后缀。**
 
 ## 功能与接口设计（前缀 `/api`）
 

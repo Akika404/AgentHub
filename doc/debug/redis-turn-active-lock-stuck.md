@@ -171,8 +171,9 @@ return this.turnStream.subscribe(chatId, turnId)
 
 相关文件：
 
-- `apps/server/src/mutiagents/turn-stream.service.ts`
-- `apps/server/src/mutiagents/agent-manager.service.ts`
+- `apps/server/src/multiagents/runtime/turn-stream.service.ts`
+- `apps/server/src/multiagents/runtime/agent-runtime.service.ts`
+- `apps/server/src/multiagents/chats/agent-chat.service.ts`
 - `apps/desktop/src/renderer/src/views/ChatView.vue`
 - `packages/shared/src/agent.ts`
 - `apps/server/.env.example`

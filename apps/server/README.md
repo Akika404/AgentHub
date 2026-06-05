@@ -20,7 +20,7 @@ apps/server/
     ├── health/
     │   ├── health.controller.ts  # GET /api/health
     │   └── health.service.ts     # 同时探测 MySQL & Redis
-    ├── mutiagents/               # 用户虚拟员工管理（AgentManager）：Agent 配置 + 会话句柄 + vendor adapter（详见下文「多 Agent 管理模块」）
+    ├── multiagents/              # 用户虚拟员工管理：Agent 配置 + 聊天会话 + 后台 turn runtime（详见下文「多 Agent 管理模块」）
     ├── user/                     # 用户管理 + JWT 认证基座（详见下文「用户管理模块」）
     └── platform-provider/        # 用户自建模型平台（Provider）管理（详见下文「Provider 管理模块」）
 ```
@@ -144,8 +144,8 @@ src/user/
 ## Provider 管理模块（`src/platform-provider/`）
 
 用户自建「模型平台/供应商」的增删改查，外加连接测试与模型拉取。每个 Provider 归属创建它的用户，复用 `user` 模块导出的
-`JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `mutiagents` 的 `agent`「不存
-apiKey」相反——本模块的语义就是用户自带密钥，故必须落库；`mutiagents` 的 Agent 正是引用本模块的 Provider 取运行时凭证（
+`JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `multiagents` 的 `agent`「不存
+apiKey」相反——本模块的语义就是用户自带密钥，故必须落库；`multiagents` 的 Agent 正是引用本模块的 Provider 取运行时凭证（
 `resolveRuntimeConfig`）。
 
 ### 目录结构
@@ -214,7 +214,7 @@ src/platform-provider/
 - `baseUrl` 仅校验 `http(s)://` 前缀，未做更严格的 URL 规范化；`modelList` 上限 200。
 - 未写单测（项目当前无测试框架）。
 
-## 多 Agent 管理模块（`src/mutiagents/`）
+## 多 Agent 管理模块（`src/multiagents/`）
 
 用户「虚拟员工」（Agent）的创建、管理与单 Agent 聊天会话。每个 Agent 归属创建它的用户；同一个 Agent 可以创建多个互不影响的
 `AgentSession`。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
@@ -222,13 +222,24 @@ src/platform-provider/
 ### 目录结构
 
 ```
-src/mutiagents/
+src/multiagents/
 ├── agents.module.ts                  # 装配实体和 controllers
 ├── agents.controller.ts              # /agents：Agent 配置管理
 ├── agent-chats.controller.ts         # /agent-chats：单 Agent 聊天会话
-├── agent-manager.service.ts          # Agent + chat lifecycle；按 userId 隔离
-├── turn-stream.service.ts            # 一轮一条 Redis Stream：广播/回放事件 + 活跃指针 + 跨实例 abort
+├── agent-manager.service.ts          # controller-facing facade，保持对外注入入口稳定
 ├── live-agent.ts                     # 内存活实例：adapter + busy + abort + lastUsedAt
+├── agents/
+│   ├── agent-config.service.ts       # Agent 配置 CRUD；Provider/model/vendor 能力校验
+│   └── agent-policy.service.ts       # 纯业务规则：能力、颜色/标题、skills/MCP 合并
+├── chats/
+│   └── agent-chat.service.ts         # AgentSession lifecycle、消息查询、turn 入口委托
+├── runtime/
+│   ├── agent-runtime.service.ts      # LiveAgent registry、后台 turn、abort、活跃状态
+│   └── turn-stream.service.ts        # Redis Stream 广播/回放 + 活跃指针 + 跨实例 abort
+├── messages/
+│   └── agent-message-history.service.ts # UI 消息与运行步骤的读取/落库/清理
+├── workspace/
+│   └── agent-workspace.service.ts    # 工作目录、vendor 配置同步、skill 导入
 ├── entities/
 │   ├── agent.entity.ts               # Agent 配置
 │   ├── agent-session.entity.ts       # 单 Agent 聊天会话

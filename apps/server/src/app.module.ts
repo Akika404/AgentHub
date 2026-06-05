@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { RedisModule } from './redis/redis.module.js'
 import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
-import { AgentsModule } from './mutiagents/agents.module.js'
+import { AgentsModule } from './multiagents/agents.module.js'
 import { UserModule } from './user/user.module.js'
 import { PlatformProviderModule } from './platform-provider/platform-provider.module.js'
 

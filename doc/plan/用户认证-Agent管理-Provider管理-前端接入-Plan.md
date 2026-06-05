@@ -20,7 +20,7 @@
 
 > ⚠️ **需要后端配合的改动（用户负责）**
 >
-> 扩展 `apps/server/src/mutiagents/dto/agent-view.dto.ts` 的 `AgentView`，新增（与本计划 `packages/shared/src/agent.ts` 对齐）：
+> 扩展 `apps/server/src/multiagents/dto/agent-view.dto.ts` 的 `AgentView`，新增（与本计划 `packages/shared/src/agent.ts` 对齐）：
 > - `systemPrompt: string | null`
 > - `skills: 'all' | string[] | null`
 > - `mcpServers: Record<string, unknown> | null`
