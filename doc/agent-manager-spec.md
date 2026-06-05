@@ -79,7 +79,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 
 - `pnpm -F @agenthub/server typecheck`
 - 创建同一 Agent 的两个聊天，分别发送消息，确认 `sdkSessionId`、messages、busy 状态互不影响。
-- Claude 聊天验证 skills/MCP 合并；Codex 聊天传 skills/MCP 应被拒绝。
+- Claude 聊天验证 skills/MCP 合并；Codex 聊天验证 skills 同步到 `.codex/skills`，Codex MCP 仍应被拒绝。
 - 删除 Agent 前若任一聊天 busy，应返回 `AGENT_BUSY`。
 - 发起一轮长任务后切走再切回 / 关窗重开，进度应续看；第二个客户端打开同一聊天应实时围观同一 turn；点「停止」turn 应中止且已产出部分落库。
 - turn 运行中 `XLEN agent:turn:{turnId}:events` 增长，结束后键带 TTL，会话活跃指针清除。

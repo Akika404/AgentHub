@@ -68,7 +68,7 @@
 - **`App.vue`**：顶层加登录态门禁——未登录渲染全屏 `views/AuthView.vue`；已登录渲染现有外壳，主区按 nav 切换：chat（现状不动）/ agents（`AgentsView`）/ settings（`SettingsView`）。侧边栏 user 改为来自 auth store（经 `userToAvatar`）。接线用户菜单动作。
 - **`views/AuthView.vue`** — 登录 / 注册切换（account + password；注册成功后用同账号自动登录或提示登录，按后端「注册不自动登录」语义：注册成功→切到登录态/自动调 login）。沿用 Tailwind 设计 token。
 - **`views/AgentsView.vue`** — 两列：左 Agent 列表（名称 + vendor + 运行状态），右详情面板（vendor、model、PlatformProvider 名称、workingDirectory、capabilities、status、systemPrompt、skills、mcp、allowedTools）。顶部「新建 Agent」按钮 → `components/AgentCreateDialog.vue`；详情面板含删除。
-- **`components/AgentCreateDialog.vue`** — 新建表单：name、vendor、platformProvider（下拉，取自 `providerApi.list`）、model（依所选 provider 的 modelList 联动）、workingDirectory，以及 systemPrompt / skills / mcp / allowedTools（按 vendor capabilities 动态启用/禁用——codex 支持 systemPrompt，但不支持 skills/mcp，前端按 capabilities 灰显并提示，避免提交后端报 BAD_REQUEST）。
+- **`components/AgentCreateDialog.vue`** — 新建表单：name、vendor、platformProvider（下拉，取自 `providerApi.list`）、model（依所选 provider 的 modelList 联动）、workingDirectory，以及 systemPrompt / skills / mcp / allowedTools（按 vendor capabilities 动态启用/禁用——codex 支持 systemPrompt/skills，但不支持 mcp，前端按 capabilities 灰显并提示，避免提交后端报 BAD_REQUEST）。
 - **`views/SettingsView.vue`** — 左设置侧栏（项：PlatformProvider，预留可扩展）；右内容区在选中 PlatformProvider 时再分两栏：左 `components/ProviderList.vue`（列表 + 添加按钮 → `ProviderEditDialog.vue`），右 `components/ProviderDetail.vue`（platformName、type 展示名、baseUrl、apiKeyMasked、modelList、测连接、刷新模型、编辑、删除）。
 - **`components/UserMenu.vue`** — 头像弹出小菜单：更新昵称（弹输入框→`authApi.updateUser`）、更换头像（文件选择→dataURL→`authApi.updateUser({ avatar })`）、退出登录（`authApi.logout`→清 store）。点击外部关闭。
 - **`components/GlobalSidebar.vue`** — 头像按钮改为切换 UserMenu（不再直接触发选图）；保留现有导航/设置按钮样式与 token。

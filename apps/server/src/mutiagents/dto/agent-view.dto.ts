@@ -30,7 +30,7 @@ export interface AgentView {
 
     /**
      * 详情面板展示用的配置字段。是否真正生效取决于 vendor 能力（见 capabilities）；
-     * 未配置时为 null。codex 支持 systemPrompt，但不支持 skills / mcp。
+     * 未配置时为 null。codex 支持 systemPrompt / skills，但不支持 mcp。
      */
     systemPrompt: string | null
     /** "all" 或技能名数组；未配置为 null */

@@ -81,7 +81,7 @@ export class CreateAgentDto {
 
     /**
      * 待导入的本地 Skill 文件夹路径。每个路径可以是单个含 SKILL.md 的 skill 目录，
-     * 也可以是包含多个 skill 子目录的 skills 根目录；导入后会复制到 agentHomeDirectory/.claude/skills。
+     * 也可以是包含多个 skill 子目录的 skills 根目录；导入后会复制到当前 vendor 的 skills 目录。
      */
     @IsOptional()
     @IsArray()

@@ -36,12 +36,15 @@ const selectedAgent = computed(
   () => props.agents.find((agent) => agent.id === form.agentId) ?? null
 )
 const visibleError = computed(() => submitError.value ?? props.loadError ?? null)
+const selectedVendorConfigName = computed(() =>
+  selectedAgent.value?.vendor === 'codex' ? '.codex' : '.claude'
+)
 
 function reset(): void {
   const first = props.agents[0] ?? null
   form.agentId = first?.id ?? ''
   form.title = ''
-  form.workingDirectory = first?.workingDirectory ?? ''
+  form.workingDirectory = ''
   form.skillSourceDirectories = ''
   form.mcpServers = ''
   submitError.value = null
@@ -64,13 +67,9 @@ watch(
 
 watch(
   () => form.agentId,
-  (agentId, previousAgentId) => {
+  (agentId) => {
     const agent = props.agents.find((item) => item.id === agentId)
     if (!agent) return
-    const previous = props.agents.find((item) => item.id === previousAgentId)
-    if (!form.workingDirectory.trim() || form.workingDirectory === previous?.workingDirectory) {
-      form.workingDirectory = agent.workingDirectory
-    }
     if (!agent.capabilities.supportsSkills) form.skillSourceDirectories = ''
     if (!agent.capabilities.supportsMcp) form.mcpServers = ''
   }
@@ -86,14 +85,13 @@ function parseList(value: string): string[] {
 function buildPayload(): CreateAgentChatPayload | string {
   const agent = selectedAgent.value
   if (!agent) return '请选择 Agent'
-  if (!form.workingDirectory.trim()) return '请输入工作目录'
 
   const payload: CreateAgentChatPayload = {
-    agentId: agent.id,
-    workingDirectory: form.workingDirectory.trim()
+    agentId: agent.id
   }
 
   if (form.title.trim()) payload.title = form.title.trim()
+  if (form.workingDirectory.trim()) payload.workingDirectory = form.workingDirectory.trim()
 
   const folders = parseList(form.skillSourceDirectories)
   if (folders.length) {
@@ -180,13 +178,19 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-text-main mb-1.5">工作目录</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">
+          工作目录
+          <span class="font-normal text-text-muted">（可选）</span>
+        </label>
         <BaseInput
           v-model="form.workingDirectory"
           mono
           type="text"
-          placeholder="/path/to/workspace"
+          placeholder="留空自动创建 AgentHome/TaskN"
         />
+        <p class="mt-1 text-xs text-text-muted">
+          不能与 Agent Home 相同；留空时后端会选择下一个 Task 序号。
+        </p>
       </div>
 
       <div>
@@ -207,8 +211,11 @@ async function onSubmit(): Promise<void> {
           :disabled="!selectedAgent?.capabilities.supportsSkills"
           mono
           type="text"
-          placeholder="/path/to/skill 或 /path/to/.claude/skills"
+          :placeholder="`/path/to/skill 或 /path/to/${selectedVendorConfigName}/skills`"
         />
+        <p class="mt-1 text-xs text-text-muted">
+          导入到本聊天工作目录的 {{ selectedVendorConfigName }}/skills。
+        </p>
       </div>
 
       <div>

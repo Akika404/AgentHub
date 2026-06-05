@@ -69,7 +69,7 @@ export class AgentViewDto implements AgentView {
     model!: string
 
     @ApiProperty({
-        description: 'Agent 私有持久目录；存放该 Agent 独立的 .claude/skills 等配置'
+        description: 'Agent 私有持久目录；存放该 Agent 独立的 .claude/.codex 等 vendor 配置'
     })
     agentHomeDirectory!: string
 

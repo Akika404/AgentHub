@@ -36,7 +36,7 @@ export class AgentChatsController {
     @ApiOperation({
         summary: '创建单 Agent 聊天',
         description:
-            '选择一个已有 Agent 创建独立聊天会话。workingDirectory 为会话级必填；systemPrompt 继承 Agent 配置。'
+            '选择一个已有 Agent 创建独立聊天会话。workingDirectory 可选；未提供时在 Agent Home 下自动创建递增 Task 目录。systemPrompt 继承 Agent 配置。'
     })
     @ApiEnvelope(AgentChatViewDto, { status: 201 })
     create(@CurrentUser() user: User, @Body() dto: CreateAgentChatDto): Promise<AgentChatView> {

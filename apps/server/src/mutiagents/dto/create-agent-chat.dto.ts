@@ -12,11 +12,11 @@ export class CreateAgentChatDto {
     @IsString()
     title?: string
 
+    @IsOptional()
     @IsString()
-    @IsNotEmpty()
-    workingDirectory!: string
+    workingDirectory?: string
 
-    /** 本聊天要导入的本地 Skill 文件夹路径。仅 Claude 支持。 */
+    /** 本聊天要导入的本地 Skill 文件夹路径。是否支持取决于 vendor 能力。 */
     @IsOptional()
     @IsArray()
     @IsString({ each: true })

@@ -245,10 +245,10 @@ src/mutiagents/
 
 ### 模型
 
-- **Agent**（`agent` 表）：可复用配置，包含展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等；不存
+- **Agent**（`agent` 表）：可复用配置，包含展示名、头像/颜色标识、vendor、Provider、model、Agent Home、system prompt、skills/MCP/tools 等；不存
   `apiKey/baseUrl`。
 - **AgentSession**（`agent_session` 表）：一个单 Agent 聊天，包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、
-  SDK 句柄和状态。
+  SDK 句柄和状态；创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd。
 - **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
 - **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/progress/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
 - **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。

@@ -119,8 +119,8 @@ export interface AgentAdapterConfig {
     systemPrompt?: string
     /**
      * 预加载的 skills。Claude 走 options.skills（"all" 或名称数组）；
-     * skill 文件本身需由上层放到可发现目录（本项目使用 per-agent CLAUDE_CONFIG_DIR）。
-     * Codex 无 skills 概念，capabilities().supportsSkills 为 false。
+     * Codex 通过工作目录下的 .codex/skills 发现。skill 文件本身需由上层
+     * 从 Agent Home 同步到当前会话的 workingDirectory。
      */
     skills?: 'all' | string[]
     /**

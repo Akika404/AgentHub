@@ -92,7 +92,7 @@ export interface AgentChatMessageView {
   steps?: AgentRunStepView[]
 }
 
-/** Vendor capability matrix (asymmetric: codex lacks skills/mcp). */
+/** Vendor capability matrix (asymmetric: codex lacks mcp). */
 export interface AgentCapabilities {
   supportsSystemPrompt: boolean
   supportsSkills: boolean
@@ -125,7 +125,7 @@ export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {
   },
   codex: {
     supportsSystemPrompt: true,
-    supportsSkills: false,
+    supportsSkills: true,
     supportsMcp: false,
     supportsResumeById: true
   }
@@ -237,7 +237,7 @@ export interface CreateAgentPayload {
   agentHomeDirectory?: string
   workingDirectory: string
   systemPrompt?: string
-  /** Local skill directories to copy into this Agent's private `.claude/skills`. */
+  /** Local skill directories to copy into this Agent's vendor skills directory. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[]
   mcpServers?: Record<string, unknown>
@@ -259,7 +259,7 @@ export interface UpdateAgentPayload {
   model?: string
   workingDirectory?: string
   systemPrompt?: string | null
-  /** Local skill directories to copy into this Agent's private `.claude/skills`. */
+  /** Local skill directories to copy into this Agent's vendor skills directory. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[] | null
   mcpServers?: Record<string, unknown> | null
@@ -275,8 +275,9 @@ export interface UpdateAgentPayload {
 export interface CreateAgentChatPayload {
   agentId: string
   title?: string
-  workingDirectory: string
-  /** Local skill directories copied into this chat's private home. */
+  /** Omit to let the server create AgentHome/TaskN. */
+  workingDirectory?: string
+  /** Local skill directories copied into this chat's working directory vendor skills folder. */
   skillSourceDirectories?: string[]
   /** MCP servers shallow-merged with the Agent-level config. */
   mcpServers?: Record<string, unknown>

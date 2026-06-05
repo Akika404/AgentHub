@@ -41,6 +41,7 @@ interface RunningTurn {
 const DEFAULT_AGENT_COLOR = '#3370ff'
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000
+const DEFAULT_TASK_DIRECTORY_PREFIX = 'Task'
 type AgentSkillsInput = 'all' | string[] | null | undefined
 
 /** streamTurn 内累积运行步骤的草稿；落库前不带 id/seq/messageId */
@@ -131,6 +132,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     async createAgent(userId: string, dto: CreateAgentDto): Promise<AgentView> {
         this.assertConfigSupported(dto)
         this.assertSkillsShape(dto.skills)
+        const caps = getCapabilities(dto.vendor)
 
         const provider = await this.providerService.resolveRuntimeConfig(
             userId,
@@ -144,13 +146,12 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             dto.agentHomeDirectory ?? dto.workingDirectory
         )
         await this.ensureRuntimeDirectories(dto.vendor, workingDirectory, agentHomeDirectory)
-        const importedSkillNames =
-            dto.vendor === 'claude'
-                ? await this.importSkillSourceDirectories(
-                      dto.skillSourceDirectories ?? [],
-                      agentHomeDirectory
-                  )
-                : []
+        const importedSkillNames = caps.supportsSkills
+            ? await this.importSkillSourceDirectories(
+                  dto.skillSourceDirectories ?? [],
+                  this.vendorSkillsRoot(agentHomeDirectory, dto.vendor)
+              )
+            : []
         const skills = this.mergeSkills(dto.skills, importedSkillNames)
 
         const agent = this.agentRepo.create({
@@ -231,7 +232,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             caps.supportsSkills && dto.skillSourceDirectories
                 ? await this.importSkillSourceDirectories(
                       dto.skillSourceDirectories,
-                      agent.agentHomeDirectory
+                      this.vendorSkillsRoot(agent.agentHomeDirectory, vendor)
                   )
                 : []
         const skills = caps.supportsSkills
@@ -278,23 +279,28 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         const agent = await this.loadAgent(userId, dto.agentId)
         this.assertChatConfigSupported(agent.vendor, dto)
 
-        const workingDirectory = this.normalizeDirectoryPath(dto.workingDirectory)
+        await this.ensureAgentHomeDirectory(agent.vendor, agent.agentHomeDirectory)
+        const workingDirectory = await this.resolveChatWorkingDirectory(
+            agent,
+            dto.workingDirectory
+        )
         const sessionId = randomUUID()
         const sessionHomeDirectory = resolve(
             join(agent.agentHomeDirectory, '.agenthub', 'chats', sessionId)
         )
 
-        await this.ensureRuntimeDirectories(agent.vendor, workingDirectory, sessionHomeDirectory)
-        if (agent.vendor === 'claude') {
-            await this.copyAgentSkillDirectories(agent.agentHomeDirectory, sessionHomeDirectory)
-        }
-        const importedSkillNames =
-            agent.vendor === 'claude'
-                ? await this.importSkillSourceDirectories(
-                      dto.skillSourceDirectories ?? [],
-                      sessionHomeDirectory
-                  )
-                : []
+        await this.ensureChatRuntimeDirectories(agent.vendor, workingDirectory, sessionHomeDirectory)
+        await this.syncVendorConfigToWorkingDirectory(
+            agent.vendor,
+            agent.agentHomeDirectory,
+            workingDirectory
+        )
+        const importedSkillNames = getCapabilities(agent.vendor).supportsSkills
+            ? await this.importSkillSourceDirectories(
+                  dto.skillSourceDirectories ?? [],
+                  this.vendorSkillsRoot(workingDirectory, agent.vendor)
+              )
+            : []
 
         const session = this.sessionRepo.create({
             id: sessionId,
@@ -721,10 +727,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     ): Promise<void> {
         try {
             await mkdir(workingDirectory, { recursive: true })
-            await mkdir(agentHomeDirectory, { recursive: true })
-            if (vendor === 'claude') {
-                await mkdir(this.agentSkillsRoot(agentHomeDirectory), { recursive: true })
-            }
+            await this.ensureAgentHomeDirectory(vendor, agentHomeDirectory)
         } catch (err) {
             throw BusinessException.badRequest(
                 `Failed to prepare Agent directories: ${this.errMsg(err)}`,
@@ -733,22 +736,112 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private agentSkillsRoot(agentHomeDirectory: string): string {
-        return join(agentHomeDirectory, '.claude', 'skills')
+    private async ensureAgentHomeDirectory(
+        vendor: AgentVendor,
+        agentHomeDirectory: string
+    ): Promise<void> {
+        await mkdir(agentHomeDirectory, { recursive: true })
+        await mkdir(this.vendorSkillsRoot(agentHomeDirectory, vendor), { recursive: true })
     }
 
-    private async copyAgentSkillDirectories(
-        agentHomeDirectory: string,
+    private async ensureChatRuntimeDirectories(
+        vendor: AgentVendor,
+        workingDirectory: string,
         sessionHomeDirectory: string
     ): Promise<void> {
-        const sourceRoot = this.agentSkillsRoot(agentHomeDirectory)
-        if (!(await this.isDirectory(sourceRoot))) return
-        const destinationRoot = this.agentSkillsRoot(sessionHomeDirectory)
         try {
+            await mkdir(workingDirectory, { recursive: true })
+            await mkdir(sessionHomeDirectory, { recursive: true })
+            if (vendor === 'claude') {
+                await mkdir(this.vendorConfigRoot(sessionHomeDirectory, vendor), {
+                    recursive: true
+                })
+            }
+        } catch (err) {
+            throw BusinessException.badRequest(
+                `Failed to prepare chat directories: ${this.errMsg(err)}`,
+                { workingDirectory, sessionHomeDirectory }
+            )
+        }
+    }
+
+    private vendorConfigDirectoryName(vendor: AgentVendor): '.claude' | '.codex' {
+        return vendor === 'claude' ? '.claude' : '.codex'
+    }
+
+    private vendorConfigRoot(baseDirectory: string, vendor: AgentVendor): string {
+        return join(baseDirectory, this.vendorConfigDirectoryName(vendor))
+    }
+
+    private vendorSkillsRoot(baseDirectory: string, vendor: AgentVendor): string {
+        return join(this.vendorConfigRoot(baseDirectory, vendor), 'skills')
+    }
+
+    private async resolveChatWorkingDirectory(
+        agent: Agent,
+        rawWorkingDirectory: string | undefined
+    ): Promise<string> {
+        const trimmed = rawWorkingDirectory?.trim() ?? ''
+        const workingDirectory = trimmed
+            ? this.normalizeDirectoryPath(trimmed)
+            : await this.allocateDefaultTaskDirectory(agent.agentHomeDirectory)
+        this.assertDifferentDirectories(
+            workingDirectory,
+            agent.agentHomeDirectory,
+            'Chat workingDirectory cannot be the same as Agent home directory'
+        )
+        return workingDirectory
+    }
+
+    private async allocateDefaultTaskDirectory(agentHomeDirectory: string): Promise<string> {
+        for (let i = 1; i <= 10000; i++) {
+            const candidate = resolve(
+                join(agentHomeDirectory, `${DEFAULT_TASK_DIRECTORY_PREFIX}${i}`)
+            )
+            try {
+                await mkdir(candidate, { recursive: false })
+                return candidate
+            } catch (err) {
+                if (this.errCode(err) === 'EEXIST') continue
+                throw BusinessException.badRequest(
+                    `Failed to allocate default chat working directory: ${this.errMsg(err)}`,
+                    { agentHomeDirectory, candidate }
+                )
+            }
+        }
+        throw BusinessException.badRequest(
+            `Cannot allocate a default chat working directory under ${agentHomeDirectory}`
+        )
+    }
+
+    private assertDifferentDirectories(a: string, b: string, message: string): void {
+        if (resolve(a) === resolve(b)) {
+            throw BusinessException.badRequest(message, {
+                workingDirectory: a,
+                agentHomeDirectory: b
+            })
+        }
+    }
+
+    private async syncVendorConfigToWorkingDirectory(
+        vendor: AgentVendor,
+        agentHomeDirectory: string,
+        workingDirectory: string
+    ): Promise<void> {
+        const sourceRoot = this.vendorConfigRoot(agentHomeDirectory, vendor)
+        if (!(await this.isDirectory(sourceRoot))) return
+        const destinationRoot = this.vendorConfigRoot(workingDirectory, vendor)
+        try {
+            await mkdir(destinationRoot, { recursive: true })
             const entries = await readdir(sourceRoot, { withFileTypes: true })
             for (const entry of entries) {
                 const source = join(sourceRoot, entry.name)
                 const destination = join(destinationRoot, entry.name)
+                if (entry.isDirectory() && entry.name === 'skills') {
+                    await this.copyMissingSkillDirectories(source, destination)
+                    continue
+                }
+                if (await this.pathExists(destination)) continue
                 await cp(source, destination, {
                     recursive: true,
                     errorOnExist: true,
@@ -757,16 +850,36 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
             }
         } catch (err) {
             throw BusinessException.badRequest(
-                `Failed to copy Agent skills into chat home: ${this.errMsg(err)}`,
+                `Failed to sync ${this.vendorConfigDirectoryName(vendor)} into working directory: ${this.errMsg(err)}`,
                 { sourceRoot, destinationRoot }
             )
         }
     }
 
+    private async copyMissingSkillDirectories(
+        sourceRoot: string,
+        destinationRoot: string
+    ): Promise<void> {
+        if (!(await this.isDirectory(sourceRoot))) return
+        await mkdir(destinationRoot, { recursive: true })
+        const entries = await readdir(sourceRoot, { withFileTypes: true })
+        for (const entry of entries) {
+            const source = join(sourceRoot, entry.name)
+            const destination = join(destinationRoot, entry.name)
+            if (await this.pathExists(destination)) continue
+            await cp(source, destination, {
+                recursive: true,
+                errorOnExist: true,
+                force: false
+            })
+        }
+    }
+
     private async importSkillSourceDirectories(
         sourceDirectories: string[],
-        agentHomeDirectory: string
+        destinationSkillsRoot: string
     ): Promise<string[]> {
+        await mkdir(destinationSkillsRoot, { recursive: true })
         const importedNames: string[] = []
         const seen = new Set<string>()
         for (const raw of sourceDirectories) {
@@ -781,7 +894,7 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                     })
                 }
                 seen.add(skill.name)
-                const destination = join(this.agentSkillsRoot(agentHomeDirectory), skill.name)
+                const destination = join(destinationSkillsRoot, skill.name)
                 try {
                     await cp(skillDir, destination, {
                         recursive: true,
@@ -803,9 +916,15 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
     private async collectSkillDirectories(sourceRoot: string): Promise<string[]> {
         if (await this.hasSkillFile(sourceRoot)) return [sourceRoot]
 
-        const claudeSkillsRoot = join(sourceRoot, '.claude', 'skills')
-        if (await this.isDirectory(claudeSkillsRoot)) {
-            return this.collectChildSkillDirectories(claudeSkillsRoot)
+        const vendorSkillDirs: string[] = []
+        for (const vendor of ['claude', 'codex'] as const) {
+            const skillsRoot = this.vendorSkillsRoot(sourceRoot, vendor)
+            if (await this.isDirectory(skillsRoot)) {
+                vendorSkillDirs.push(...(await this.collectChildSkillDirectories(skillsRoot)))
+            }
+        }
+        if (vendorSkillDirs.length > 0) {
+            return vendorSkillDirs
         }
 
         const childSkillDirs = await this.collectChildSkillDirectories(sourceRoot)
@@ -876,6 +995,15 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
         try {
             const s = await stat(path)
             return s.isDirectory()
+        } catch {
+            return false
+        }
+    }
+
+    private async pathExists(path: string): Promise<boolean> {
+        try {
+            await stat(path)
+            return true
         } catch {
             return false
         }
@@ -1128,6 +1256,12 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
 
     private errMsg(err: unknown): string {
         return err instanceof Error ? err.message : String(err)
+    }
+
+    private errCode(err: unknown): string | undefined {
+        return typeof err === 'object' && err !== null && 'code' in err
+            ? String((err as { code?: unknown }).code)
+            : undefined
     }
 
     private readPositiveMs(key: string, fallback: number): number {

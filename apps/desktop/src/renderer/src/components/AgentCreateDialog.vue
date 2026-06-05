@@ -64,6 +64,7 @@ const suspendDependentWatchers = ref(false)
 const isEdit = computed(() => props.agent !== null)
 const caps = computed(() => VENDOR_CAPABILITIES[form.vendor])
 const previewColor = computed(() => (isHexColor(form.color) ? form.color : DEFAULT_AGENT_COLOR))
+const vendorConfigName = computed(() => (form.vendor === 'claude' ? '.claude' : '.codex'))
 
 /** Providers whose protocol type is compatible with the chosen vendor. */
 const compatibleProviders = computed(() =>
@@ -375,7 +376,7 @@ async function onSubmit(): Promise<void> {
           placeholder="/path/to/agent-home"
         />
         <p class="mt-1 text-xs text-text-muted">
-          单聊时作为工作目录；Agent 私有 skills 会放在这里的 .claude/skills。
+          Agent Home；新聊天默认会在这里创建 TaskN，skills 会放在 {{ vendorConfigName }}/skills。
         </p>
       </div>
 
@@ -431,13 +432,13 @@ async function onSubmit(): Promise<void> {
           :disabled="!caps.supportsSkills"
           mono
           type="text"
-          placeholder="/path/to/skill 或 /path/to/.claude/skills，逗号分隔"
+          :placeholder="`/path/to/skill 或 /path/to/${vendorConfigName}/skills，逗号分隔`"
         />
         <p class="mt-1 text-xs text-text-muted">
           {{
             isEdit
-              ? '保存时导入到 Agent 目录的 .claude/skills。'
-              : '创建时复制到 Agent 目录的 .claude/skills。'
+              ? `保存时导入到 Agent 目录的 ${vendorConfigName}/skills。`
+              : `创建时复制到 Agent 目录的 ${vendorConfigName}/skills。`
           }}
         </p>
       </div>

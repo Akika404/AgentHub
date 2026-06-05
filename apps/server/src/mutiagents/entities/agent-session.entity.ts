@@ -40,11 +40,11 @@ export class AgentSession {
     @Column({ type: 'varchar', length: 128, nullable: true })
     title!: string | null
 
-    /** 本聊天实际工作目录；创建聊天时必填 */
+    /** 本聊天实际工作目录；创建聊天时可省略，由后端分配 AgentHome/TaskN */
     @Column({ type: 'varchar', length: 1024 })
     workingDirectory!: string
 
-    /** 本聊天私有 home；Claude skills 等会话级资源写入这里 */
+    /** 本聊天私有 home；用于 SDK 状态隔离，vendor 配置发现目录同步到 workingDirectory */
     @Column({ type: 'varchar', length: 1024 })
     sessionHomeDirectory!: string
 

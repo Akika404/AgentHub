@@ -9,8 +9,8 @@
 单 Agent 聊天不再等同于 Agent 本身。用户点击聊天页左侧搜索框旁的 `+`，选择“创建聊天”，在弹窗中选择已有 Agent，并为这次聊天设置：
 
 - 标题（可选；为空时客户端显示 Agent 名称 + 创建时间）。
-- 工作目录（必填，会话级覆盖）。
-- Skill 文件夹（可选，仅支持 Claude；导入到本聊天私有 home）。
+- 工作目录（可选；不填时后端在 Agent Home 下创建递增 `TaskN`）。
+- Skill 文件夹（可选；导入到本聊天工作目录的 vendor skills 目录）。
 - MCP Servers JSON（可选，仅支持 Claude；与 Agent 原配置浅合并，同名 server 以聊天配置覆盖）。
 
 新建聊天不支持设置 system prompt；运行时沿用 Agent 自身的 system prompt。一个 Agent 可以创建多个单 Agent 聊天，它们拥有独立的 SDK 句柄、工作目录、消息历史和运行时 busy 锁。
@@ -109,10 +109,10 @@ interface AgentChatView {
 创建聊天时：
 
 1. 校验 Agent 存在且属于当前用户。
-2. 校验 vendor 能力：Codex 不接受 skillSourceDirectories / mcpServers。
-3. 规范化并创建 `workingDirectory`。
+2. 校验 vendor 能力：Codex 接受 skills，但仍不接受 mcpServers。
+3. 规范化并创建 `workingDirectory`；未提供时分配 `<agentHomeDirectory>/TaskN`，且禁止与 Agent Home 相同。
 4. 创建 `sessionHomeDirectory = <agentHomeDirectory>/.agenthub/chats/<chatId>`。
-5. Claude 聊天复制 Agent 原 `.claude/skills` 到会话私有 home，再导入本聊天指定 skill 文件夹。
+5. 将 Agent Home 下当前 vendor 的 `.claude` / `.codex` 配置合并到工作目录，目标已有文件/skill 优先；再导入本聊天指定 skill 文件夹。
 6. 计算有效 skills：Agent 原 skills 与导入 skill 名称去重合并；Agent 原值为 `all` 时保持 `all`。
 7. 计算有效 MCP：Agent 原 `mcpServers` 与聊天配置浅合并。
 8. 保存 `agent_session`，不开启底层 SDK 会话。

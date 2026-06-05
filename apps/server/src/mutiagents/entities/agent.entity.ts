@@ -51,7 +51,7 @@ export class Agent {
     @Column({ type: 'varchar', length: 128 })
     model!: string
 
-    /** Agent 私有持久目录；存放其独立的 .claude/skills 等配置。 */
+    /** Agent 私有持久目录；存放其独立的 .claude/.codex 等 vendor 配置。 */
     @Column({ type: 'varchar', length: 1024 })
     agentHomeDirectory!: string
 
