@@ -30,6 +30,7 @@ export interface RendererApi {
   streamStart(req: ApiStreamRequest): Promise<ApiProxyResponse>
   streamCancel(streamId: string): Promise<void>
   selectDirectory(): Promise<string | null>
+  selectDirectories(): Promise<string[]>
   onStream(name: 'event' | 'error' | 'done', callback: (payload: unknown) => void): () => void
 }
 

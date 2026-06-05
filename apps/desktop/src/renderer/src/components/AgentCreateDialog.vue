@@ -148,6 +148,10 @@ function appendListValue(value: string, item: string): string {
   return items.join(', ')
 }
 
+function appendListValues(value: string, nextItems: string[]): string {
+  return nextItems.reduce((current, item) => appendListValue(current, item), value)
+}
+
 function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (!form.name.trim()) return '请输入名称'
   if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
@@ -254,9 +258,9 @@ async function chooseSkillDirectory(): Promise<void> {
   if (!caps.value.supportsSkills || selectingSkillDirectory.value) return
   selectingSkillDirectory.value = true
   try {
-    const directory = await window.api.selectDirectory()
-    if (directory) {
-      form.skillSourceDirectories = appendListValue(form.skillSourceDirectories, directory)
+    const directories = await window.api.selectDirectories()
+    if (directories.length > 0) {
+      form.skillSourceDirectories = appendListValues(form.skillSourceDirectories, directories)
     }
   } catch {
     error.value = '选择 Skill 目录失败'

@@ -15,6 +15,17 @@ function registerDialogHandlers(): void {
       : await dialog.showOpenDialog(options)
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
+
+  ipcMain.handle('dialog:select-directories', async (event): Promise<string[]> => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory', 'multiSelections']
+    }
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? [] : result.filePaths
+  })
 }
 
 function createWindow(): void {
