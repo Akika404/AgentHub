@@ -58,6 +58,7 @@ const form = reactive({
 const error = ref<string | null>(null)
 const avatarError = ref<string | null>(null)
 const submitting = ref(false)
+const selectingAgentDirectory = ref(false)
 const selectingSkillDirectory = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const suspendDependentWatchers = ref(false)
@@ -234,6 +235,21 @@ function onAvatarFileChange(event: Event): void {
     })
 }
 
+async function chooseAgentDirectory(): Promise<void> {
+  if (selectingAgentDirectory.value) return
+  selectingAgentDirectory.value = true
+  try {
+    const directory = await window.api.selectDirectory()
+    if (directory) {
+      form.workingDirectory = directory
+    }
+  } catch {
+    error.value = '选择 Agent 目录失败'
+  } finally {
+    selectingAgentDirectory.value = false
+  }
+}
+
 async function chooseSkillDirectory(): Promise<void> {
   if (!caps.value.supportsSkills || selectingSkillDirectory.value) return
   selectingSkillDirectory.value = true
@@ -391,12 +407,25 @@ async function onSubmit(): Promise<void> {
 
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">Agent 目录</label>
-        <BaseInput
-          v-model="form.workingDirectory"
-          mono
-          type="text"
-          placeholder="/path/to/agent-home"
-        />
+        <div class="flex gap-2">
+          <BaseInput
+            v-model="form.workingDirectory"
+            class="min-w-0 flex-1"
+            mono
+            type="text"
+            placeholder="/path/to/agent-home"
+          />
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            :disabled="selectingAgentDirectory"
+            @click="chooseAgentDirectory"
+          >
+            <span class="material-symbols-outlined text-xl">folder_open</span>
+            {{ selectingAgentDirectory ? '选择中...' : '选择目录' }}
+          </BaseButton>
+        </div>
         <p class="mt-1 text-xs text-text-muted">
           Agent Home；新聊天默认会在这里创建 TaskN，skills 会放在 {{ vendorConfigName }}/skills。
         </p>
