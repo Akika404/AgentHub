@@ -180,7 +180,14 @@ export class ClaudeAdapter implements AgentAdapter {
                 ...(this.config.baseUrl ? { ANTHROPIC_BASE_URL: this.config.baseUrl } : {})
             }
         }
-        if (this.config.systemPrompt) opts.systemPrompt = this.config.systemPrompt
+        const systemPrompt = this.config.systemPrompt?.trim()
+        if (systemPrompt) {
+            opts.systemPrompt = {
+                type: 'preset',
+                preset: 'claude_code',
+                append: systemPrompt
+            }
+        }
         if (this.config.skills) opts.skills = this.config.skills
         if (this.config.mcpServers) {
             opts.mcpServers = this.config.mcpServers as Record<string, McpServerConfig>

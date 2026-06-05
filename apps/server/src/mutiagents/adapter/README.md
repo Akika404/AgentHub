@@ -571,7 +571,8 @@ async function broadcast(prompt: string) {
 ### 8.1 当前限制
 
 > 自 AgentManager 接入后，以下原限制已落地（见 `../README.md`）：MCP 配置、systemPrompt、skills、
-> 工具白名单均已加入 `AgentAdapterConfig` 并由 Claude 端透传；`resumeWith()` 支持按
+> 工具白名单均已加入 `AgentAdapterConfig`；Claude 端将 systemPrompt 追加到 `claude_code` 预设；
+> `resumeWith()` 支持按
 > 外部 sessionId 跨进程恢复；`capabilities()` 声明厂商不对称（Codex 支持
 > systemPrompt/skills，但不支持 MCP）。AgentManager 会将 Agent Home 下的 vendor 配置
 > 同步到会话 workingDirectory；ClaudeAdapter 通过 `CLAUDE_CONFIG_DIR` + `settingSources=['user','project']`
