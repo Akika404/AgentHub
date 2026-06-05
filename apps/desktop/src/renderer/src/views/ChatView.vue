@@ -377,7 +377,25 @@ function runStepFromView(view: AgentRunStepView): AgentRunStep | null {
       isError: view.isError ?? undefined
     }
   }
-  // todo 步骤不在运行条里复原（实时态走独立面板）
+  if (view.type === 'todo') {
+    const todos = view.todos ?? []
+    return {
+      id: view.id,
+      type: 'todo',
+      label: planLabel(todos),
+      status: 'completed',
+      todos
+    }
+  }
+  if (view.type === 'plan') {
+    return {
+      id: view.id,
+      type: 'plan',
+      label: '计划',
+      status: 'completed',
+      text: view.text ?? undefined
+    }
+  }
   return null
 }
 
@@ -628,6 +646,60 @@ function removeCurrentAgentRun(chatId: string): void {
   runMessageIds.delete(chatId)
 }
 
+function planLabel(todos: AgentTodoItem[]): string {
+  const done = todos.filter((todo) => todo.status === 'completed').length
+  return `计划 · ${done}/${todos.length}`
+}
+
+function upsertTodoStep(chatId: string, todos: AgentTodoItem[]): void {
+  updateAgentRunMessage(chatId, (message) => {
+    const hasTodoStep = message.steps.some((step) => step.type === 'todo')
+    if (hasTodoStep) {
+      return {
+        ...message,
+        steps: message.steps.map((step) =>
+          step.type === 'todo' ? { ...step, label: planLabel(todos), todos } : step
+        )
+      }
+    }
+    // todo 是全量快照、单例：用 completed 状态插入，避免干扰活动步骤推进逻辑
+    return {
+      ...message,
+      steps: [
+        ...message.steps,
+        {
+          id: runStepId('todo'),
+          type: 'todo',
+          label: planLabel(todos),
+          status: 'completed',
+          todos
+        }
+      ]
+    }
+  })
+}
+
+function upsertPlanStep(chatId: string, plan: string): void {
+  updateAgentRunMessage(chatId, (message) => {
+    const hasPlanStep = message.steps.some((step) => step.type === 'plan')
+    if (hasPlanStep) {
+      return {
+        ...message,
+        steps: message.steps.map((step) =>
+          step.type === 'plan' ? { ...step, text: plan } : step
+        )
+      }
+    }
+    return {
+      ...message,
+      steps: [
+        ...message.steps,
+        { id: runStepId('plan'), type: 'plan', label: '计划', status: 'completed', text: plan }
+      ]
+    }
+  })
+}
+
 function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
   switch (event.type) {
     case 'progress':
@@ -656,6 +728,12 @@ function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
       if (!event.isError) startRunStep(chat.id, 'thinking', '继续思考', 'thinking')
       return
     case 'text':
+      return
+    case 'todo':
+      upsertTodoStep(chat.id, event.items)
+      return
+    case 'plan':
+      upsertPlanStep(chat.id, event.plan)
       return
     case 'turn_completed':
       if (event.finalText) updateAgentRunText(chat.id, event.finalText)

@@ -1,8 +1,8 @@
-import type { ChatMessage, SenderInfo } from '../api'
+import type { AgentTodoItem, ChatMessage, SenderInfo } from '../api'
 
 export interface AgentRunStep {
   id: string
-  type: 'thinking' | 'progress' | 'tool'
+  type: 'thinking' | 'progress' | 'tool' | 'todo' | 'plan'
   label: string
   status: 'active' | 'completed' | 'failed'
   /** thinking/progress 文本（历史复原时带上，供后续详情查看） */
@@ -13,6 +13,8 @@ export interface AgentRunStep {
   input?: unknown
   output?: unknown
   isError?: boolean
+  /** todo 步骤的任务清单快照（计划卡片渲染用） */
+  todos?: AgentTodoItem[]
 }
 
 export interface AgentRunMessage {

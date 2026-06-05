@@ -344,6 +344,14 @@ export class ClaudeAdapter implements AgentAdapter {
                             // TaskList / TaskGet 只读,直接吞掉,不重发快照
                             continue
                         }
+                        // plan 模式产物: ExitPlanMode 的 input.plan 是计划正文
+                        if (name === 'ExitPlanMode') {
+                            const input = b.input as { plan?: unknown } | undefined
+                            const plan = typeof input?.plan === 'string' ? input.plan : ''
+                            this.suppressedToolUseIds.add(id)
+                            yield { type: 'plan', vendor: this.vendor, plan }
+                            continue
+                        }
                         yield {
                             type: 'tool_use',
                             vendor: this.vendor,

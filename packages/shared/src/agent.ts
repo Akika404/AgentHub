@@ -45,6 +45,7 @@ export type AgentEvent =
       isError?: boolean
     }
   | { type: 'todo'; vendor: AgentVendor; items: AgentTodoItem[] }
+  | { type: 'plan'; vendor: AgentVendor; plan: string }
   | {
       type: 'turn_completed'
       vendor: AgentVendor
@@ -63,7 +64,7 @@ export type AgentEvent =
 export type AgentChatMessageRole = 'user' | 'agent' | 'system'
 
 /** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
-export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo'
+export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo' | 'plan'
 
 /** 一条运行步骤的对外视图。镜像 `apps/server/src/mutiagents/dto/agent-message-view.dto.ts` */
 export interface AgentRunStepView {

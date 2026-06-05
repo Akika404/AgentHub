@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { AgentTodoItem } from '../../api'
 import type { AgentRunMessage, AgentRunStep } from '../../types/chatDisplay'
 import { formatTime } from '../../utils/format'
 import SenderAvatar from './SenderAvatar.vue'
@@ -9,21 +10,36 @@ const props = defineProps<{ message: AgentRunMessage }>()
 const expanded = ref(false)
 
 const hasText = computed(() => props.message.text.trim().length > 0)
+// 取最后一条快照：todo 每次更新都作为全量快照，历史数据里可能存有多条，
+// 最新的那条才是最终状态（旧逻辑取 find 第一条会退化成只含首个 pending 任务）。
+const planStep = computed(() => props.message.steps.filter((step) => step.type === 'todo').at(-1))
+const planTodos = computed<AgentTodoItem[]>(() => planStep.value?.todos ?? [])
+const planDocStep = computed(() => props.message.steps.filter((step) => step.type === 'plan').at(-1))
+const planDoc = computed(() => planDocStep.value?.text?.trim() ?? '')
+const visibleSteps = computed(() =>
+  props.message.steps.filter((step) => step.type !== 'todo' && step.type !== 'plan')
+)
 const activeStep = computed(() => props.message.steps.find((step) => step.status === 'active'))
 const completedCount = computed(
-  () => props.message.steps.filter((step) => step.status !== 'active').length
+  () => visibleSteps.value.filter((step) => step.status !== 'active').length
 )
+const hasPlan = computed(() => planTodos.value.length > 0 || planDoc.value.length > 0)
 const isInitialThinking = computed(
   () =>
     !hasText.value &&
+    !hasPlan.value &&
     props.message.status === 'thinking' &&
-    props.message.steps.length === 1 &&
-    props.message.steps[0]?.type === 'thinking' &&
-    props.message.steps[0]?.status === 'active' &&
-    props.message.steps[0]?.label === '思考中'
+    visibleSteps.value.length === 1 &&
+    visibleSteps.value[0]?.type === 'thinking' &&
+    visibleSteps.value[0]?.status === 'active' &&
+    visibleSteps.value[0]?.label === '思考中'
 )
 const showRunPanel = computed(
-  () => props.message.steps.length > 0 && (!hasText.value || expanded.value)
+  () => visibleSteps.value.length > 0 && (expanded.value || (!hasText.value && !hasPlan.value))
+)
+// 有计划卡片时，运行过程默认折叠，仅保留可展开的切换按钮，让计划成为视觉焦点。
+const showRunToggle = computed(
+  () => visibleSteps.value.length > 0 && (hasText.value || hasPlan.value)
 )
 const terminalLabel = computed(() =>
   props.message.status === 'error' ? '运行失败' : '运行完成，未返回文本'
@@ -65,6 +81,15 @@ function stepOutput(step: AgentRunStep): string {
   if (step.type !== 'tool') return ''
   return formatPayload(step.output)
 }
+
+function todoStatusLabel(status: AgentTodoItem['status']): string {
+  const labels: Record<AgentTodoItem['status'], string> = {
+    pending: '待办',
+    in_progress: '进行中',
+    completed: '已完成'
+  }
+  return labels[status]
+}
 </script>
 
 <template>
@@ -77,10 +102,77 @@ function stepOutput(step: AgentRunStep): string {
       </div>
       <div
         class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md leading-[22px] whitespace-pre-wrap break-words"
-        :class="{ 'w-72 max-w-full': isInitialThinking }"
+        :class="{
+          'w-72 max-w-full': isInitialThinking,
+          'w-96 max-w-full': hasPlan && !isInitialThinking
+        }"
       >
+        <div
+          v-if="planDoc"
+          class="mb-3 overflow-hidden rounded-sm border border-surface-border bg-white/70"
+        >
+          <div
+            class="flex items-center space-x-1.5 border-b border-surface-border px-2.5 py-1.5 text-xs font-medium text-text-muted"
+          >
+            <span class="material-symbols-outlined text-lg">description</span>
+            <span>计划</span>
+          </div>
+          <div class="px-2.5 py-2 text-sm leading-[20px] whitespace-pre-wrap break-words text-text-main">
+            {{ planDoc }}
+          </div>
+        </div>
+
+        <div
+          v-if="planTodos.length"
+          class="mb-3 overflow-hidden rounded-sm border border-surface-border bg-white/70"
+        >
+          <div
+            class="flex items-center space-x-1.5 border-b border-surface-border px-2.5 py-1.5 text-xs font-medium text-text-muted"
+          >
+            <span class="material-symbols-outlined text-lg">checklist</span>
+            <span>{{ planStep?.label ?? '计划' }}</span>
+          </div>
+          <div
+            v-for="(todo, index) in planTodos"
+            :key="`${todo.text}-${index}`"
+            class="flex items-start space-x-2 border-b border-surface-border/70 px-2.5 py-2 text-sm last:border-b-0"
+          >
+            <span
+              v-if="todo.status === 'in_progress'"
+              class="mt-0.5 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border-[2px] border-primary bg-white"
+            >
+              <span class="h-[8px] w-[8px] rounded-full bg-primary"></span>
+            </span>
+            <span
+              v-else-if="todo.status === 'completed'"
+              class="mt-0.5 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-primary text-white"
+            >
+              <span class="material-symbols-outlined text-md">check</span>
+            </span>
+            <span
+              v-else
+              class="mt-0.5 h-[18px] w-[18px] flex-shrink-0 rounded-full border-[2px] border-surface-border bg-white"
+            ></span>
+            <div class="min-w-0 flex-1">
+              <div
+                class="break-words"
+                :class="
+                  todo.status === 'completed'
+                    ? 'text-text-muted line-through'
+                    : todo.status === 'in_progress'
+                      ? 'font-medium text-text-main'
+                      : 'text-text-main'
+                "
+              >
+                {{ todo.text }}
+              </div>
+              <div class="text-xs text-text-muted">{{ todoStatusLabel(todo.status) }}</div>
+            </div>
+          </div>
+        </div>
+
         <button
-          v-if="hasText && message.steps.length"
+          v-if="showRunToggle"
           type="button"
           class="mb-2 flex w-full items-center justify-between rounded-sm border border-surface-border bg-white/70 px-2.5 py-1.5 text-left text-sm text-text-muted transition-colors hover:bg-white hover:text-text-main"
           @click="expanded = !expanded"
@@ -96,7 +188,10 @@ function stepOutput(step: AgentRunStep): string {
           >
         </button>
 
-        <div v-if="!hasText && !message.steps.length" class="flex h-[22px] items-center">
+        <div
+          v-if="!hasText && !visibleSteps.length && !planTodos.length && !planDoc"
+          class="flex h-[22px] items-center"
+        >
           <div class="flex min-w-0 items-center space-x-1.5 text-text-muted">
             <span class="material-symbols-outlined text-lg">{{ terminalIcon }}</span>
             <span class="truncate">{{ terminalLabel }}</span>
@@ -116,7 +211,7 @@ function stepOutput(step: AgentRunStep): string {
               <span v-if="activeStep" class="truncate pl-3">{{ activeStep.label }}</span>
             </div>
             <div
-              v-for="step in message.steps"
+              v-for="step in visibleSteps"
               :key="step.id"
               class="border-b border-surface-border/70 px-2.5 py-2 text-sm last:border-b-0"
               :class="[

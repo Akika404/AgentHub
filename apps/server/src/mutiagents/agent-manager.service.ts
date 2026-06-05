@@ -642,9 +642,22 @@ export class AgentManager implements OnModuleInit, OnModuleDestroy {
                 })
                 return
             }
-            case 'todo':
-                drafts.push({ type: 'todo', todos: ev.items })
+            case 'todo': {
+                // todo 是全量快照、单例：每次 TaskCreate/TaskUpdate 都会发一条 todo 事件，
+                // 这里 upsert 到同一条草稿（只保留最新快照），避免落库 N 条历史快照导致
+                // 重载时前端取到的是最旧的那条（只含首个 pending 任务）。
+                const existing = drafts.find((d) => d.type === 'todo')
+                if (existing) existing.todos = ev.items
+                else drafts.push({ type: 'todo', todos: ev.items })
                 return
+            }
+            case 'plan': {
+                // plan 正文同理单例 upsert，保留最新一次 ExitPlanMode 的内容。
+                const existing = drafts.find((d) => d.type === 'plan')
+                if (existing) existing.text = ev.plan
+                else drafts.push({ type: 'plan', text: ev.plan })
+                return
+            }
             default:
                 return
         }

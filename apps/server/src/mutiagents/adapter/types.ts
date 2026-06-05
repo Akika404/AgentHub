@@ -66,6 +66,7 @@ export type AgentEvent =
           isError?: boolean
       }
     | { type: 'todo'; vendor: AgentVendor; items: AgentTodoItem[] }
+    | { type: 'plan'; vendor: AgentVendor; plan: string }
     | {
           type: 'turn_completed'
           vendor: AgentVendor

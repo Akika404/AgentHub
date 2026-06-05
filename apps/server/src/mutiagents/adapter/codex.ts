@@ -6,6 +6,7 @@ import type {
     AgentAdapterConfig,
     AgentCapabilities,
     AgentEvent,
+    AgentTodoItem,
     AgentUsage,
     SendOptions,
     ToolCallStatus
@@ -119,6 +120,7 @@ export class CodexAdapter implements AgentAdapter {
         let usageOut: AgentUsage | undefined
         let latestAgentText: string | undefined
         let latestAgentItemId: string | undefined
+        let latestTodoItems: AgentTodoItem[] | undefined
         let pendingTextEvent: Extract<AgentEvent, { type: 'text' }> | undefined
         let textCandidates = 0
         let textEmitted = false
@@ -174,6 +176,7 @@ export class CodexAdapter implements AgentAdapter {
                     latestAgentItemId = ev.item.id
                 }
                 for (let out of this.translate(ev)) {
+                    if (out.type === 'todo') latestTodoItems = out.items
                     if (out.type === 'text') {
                         // Codex may emit progress notes and the final answer as separate
                         // agent_message items. Keep the latest candidate for final text,
@@ -204,12 +207,32 @@ export class CodexAdapter implements AgentAdapter {
                         pendingTextEvent = undefined
                         if (finalText) out = { ...out, finalText }
                         usageOut = out.usage
+                        // Codex bug workaround: Codex 不会把 todo_list 的各项标记为
+                        // completed——即便任务全部做完，最终快照里仍是 pending（它只是
+                        // 把同一份 all-pending 列表在开头和结尾各发一次）。turn 成功结束
+                        // 时，把残留的 pending 项视觉上补成 completed，以反映真实进度。
+                        // 仅在成功路径执行（turn.failed 会先把 success 置 false）。
+                        if (success && latestTodoItems?.some((t) => t.status !== 'completed')) {
+                            const completed = latestTodoItems.map((t) => ({
+                                ...t,
+                                status: 'completed' as const
+                            }))
+                            latestTodoItems = completed
+                            this.logger.debug('[out] todo (codex pending->completed fixup)')
+                            yield { type: 'todo', vendor: this.vendor, items: completed }
+                        }
                     } else {
                         if (out.type === 'error' && out.fatal) success = false
-                        const progress = flushPendingProgress()
-                        if (progress) {
-                            this.logger.debug('[out] progress')
-                            yield progress
+                        // Codex 在最终 agent_message 之后还会补发一条 todo_list 终态快照。
+                        // 这类收尾事件不应把待定的最终文本冲刷进 progress 面板——否则最终
+                        // 答案会被错误地塞进“运行过程”，且 finalText 被清空导致消息为空。
+                        // 中间叙述后面跟的是真正的工具调用，仍由那些事件正常 flush。
+                        if (out.type !== 'todo') {
+                            const progress = flushPendingProgress()
+                            if (progress) {
+                                this.logger.debug('[out] progress')
+                                yield progress
+                            }
                         }
                     }
                     this.logger.debug(`[out] ${out.type}`)

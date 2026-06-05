@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 import type { AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 
 /** 运行步骤类型。tool 行把 tool_use 与 tool_result 按 toolUseId 合并为一条 */
-export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo'
+export type AgentMessageStepType = 'thinking' | 'progress' | 'tool' | 'todo' | 'plan'
 
 /**
  * AgentMessageStep — 一条 agent 消息产出过程中的有序运行步骤。

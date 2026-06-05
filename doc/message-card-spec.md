@@ -282,6 +282,7 @@ interface OptionsMessage extends BaseMessage {
 - 展示一个 agent 回合中的完整运行过程和最终回复。
 - 把 `思考 => 调用工具 => 思考 => 生成回复` 放在同一个 agent 消息气泡里。
 - 在正文生成前显示当前运行状态；正文生成后，把运行过程折叠在气泡顶部。
+- 若本回合包含任务清单或计划正文，会在气泡顶部内嵌计划卡片（见下文「计划卡片」）。
 
 运行中展示规则：
 
@@ -307,18 +308,24 @@ interface OptionsMessage extends BaseMessage {
 接受格式：
 
 ```ts
+interface AgentTodoItem {
+  text: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
 interface AgentRunStep {
   id: string
-  type: 'thinking' | 'tool'
+  type: 'thinking' | 'progress' | 'tool' | 'todo' | 'plan'
   label: string
   status: 'active' | 'completed' | 'failed'
   // 历史复原时带上的可选富字段（实时态可不填）
-  text?: string
+  text?: string // progress/thinking 文本；plan 步骤的计划正文也存这里
   toolName?: string
   toolUseId?: string
   input?: unknown
   output?: unknown
   isError?: boolean
+  todos?: AgentTodoItem[] // 仅 todo 步骤：任务清单的最新全量快照
 }
 
 interface AgentRunMessage {
@@ -373,6 +380,32 @@ interface AgentRunMessage {
 }
 ```
 
+## 计划卡片（Agent 运行回复卡片内嵌）
+
+计划卡片不是独立的 `kind`，而是 `agent-run` 卡片内部的两类特殊步骤块，渲染在 `AgentRunMessage.vue` 气泡顶部、独立于「运行过程」折叠面板：
+
+- **todo 清单卡片**：`type: 'todo'` 的步骤，展示 agent 维护的任务清单。`todos` 是每次任务变更后的最新全量快照。
+- **plan 正文卡片**：`type: 'plan'` 的步骤，展示 Claude plan 模式（`ExitPlanMode`）产出的计划正文，正文存在步骤的 `text` 字段。
+
+数据来源（由适配器归一为统一事件，详见 `agent-manager-spec.md`）：
+
+- todo：Claude 的 `TodoWrite` / `TaskCreate` / `TaskUpdate` 工具调用，或 Codex 的 `todo_list` item，统一翻译为 `todo` 事件。
+- plan：Claude 的 `ExitPlanMode` 工具调用，翻译为 `plan` 事件。
+
+展示规则：
+
+- todo 清单**始终可见**（不随运行过程折叠），三态样式：
+  - `pending`：空心圆 + 常规文字。
+  - `in_progress`：高亮描边圆点 + 加粗文字。
+  - `completed`：实心对勾 + 文字删除线。
+  - 标题显示完成进度，如 `计划 · 2/3`。
+- plan 正文以独立卡片块展示，正文按 `whitespace-pre-wrap` 保留换行（暂无 Markdown 渲染）。
+- **存在计划卡片时，下方「运行过程」默认折叠**，仅保留可展开的切换条，让计划成为视觉焦点。
+- 存在计划卡片时气泡使用更宽的固定宽度（`w-96`），避免被短任务文字压窄。
+- 单例语义：同一回合内 todo / plan 各只渲染一张卡片，取最新快照（前端用 `steps.filter(...).at(-1)` 取最后一条，兼容历史数据里存在的多条快照）。
+
+Codex 特例：Codex 的 `todo_list` 不会把各项标记为 `completed`（始终是 `pending`/`completed` 两态且常停留在 pending），适配器在 turn 成功结束时把残留 pending 视觉上补成 `completed`，详见 `agent-manager-spec.md`。
+
 ## 流式事件到 Agent 运行回复卡片的映射
 
 `AgentRunMessage` 由 `ChatView.vue` 根据 `AgentEvent` 动态维护：
@@ -385,12 +418,14 @@ interface AgentRunMessage {
 | `tool_use` 且 `status === 'started'` | 完成当前 active 步骤，追加 `正在调用 <name>` 工具步骤 |
 | `tool_use` completed/failed          | 当前工具步骤标记为 completed/failed                   |
 | `tool_result`                        | 当前工具步骤完成；非错误时追加 `继续思考`             |
+| `todo`                               | upsert 一条 `todo` 步骤（单例），用最新全量快照刷新计划清单卡片 |
+| `plan`                               | upsert 一条 `plan` 步骤（单例），刷新计划正文卡片     |
 | `text`                               | 完成当前步骤，把最终文本同步到同一个气泡的 `text`     |
 | `turn_completed`                     | 如果存在 `finalText`，同步到 `text`，并完成当前步骤   |
 | `done`                               | 标记气泡为 `done` 或 `error`                          |
 | stream error                         | 标记气泡为 `error`，并追加系统消息说明错误            |
 
-运行步骤会持久化到后端 `agent_message_step`（thinking/progress/tool/todo，tool 含完整 input/output）。重开/刷新会话时，`messageFromView` 把带 `steps` 的 agent 消息复原为 `agent-run` 卡片（`status: 'done'`）：thinking 标签按序复原为 `思考中`/`继续思考`，progress 标签复原为 `过程输出`，tool 标签复原为 `正在调用 <toolName>`。todo 步骤已入库但不重建为卡片步骤。
+运行步骤会持久化到后端 `agent_message_step`（thinking/progress/tool/todo/plan，tool 含完整 input/output，todo 含任务快照，plan 正文存 `text`）。其中 todo / plan 在落库时做单例 upsert（每回合各只保留最新一条快照，避免存入多条历史快照导致复原时取到最旧的那条）。重开/刷新会话时，`messageFromView` 把带 `steps` 的 agent 消息复原为 `agent-run` 卡片（`status: 'done'`）：thinking 标签按序复原为 `思考中`/`继续思考`，progress 标签复原为 `过程输出`，tool 标签复原为 `正在调用 <toolName>`，todo / plan 步骤复原为气泡顶部的计划清单 / 计划正文卡片。
 
 ## 扩展新卡片的约定
 

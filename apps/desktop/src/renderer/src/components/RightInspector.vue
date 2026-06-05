@@ -143,12 +143,35 @@ function todoLabel(status: AgentTodoItem['status']): string {
             >
               <span
                 class="material-symbols-outlined text-xl mt-0.5"
-                :class="todo.status === 'completed' ? 'text-success' : 'text-text-muted'"
+                :class="
+                  todo.status === 'completed'
+                    ? 'text-success'
+                    : todo.status === 'in_progress'
+                      ? 'text-primary'
+                      : 'text-text-muted'
+                "
               >
-                {{ todo.status === 'completed' ? 'check_circle' : 'radio_button_unchecked' }}
+                {{
+                  todo.status === 'completed'
+                    ? 'check_circle'
+                    : todo.status === 'in_progress'
+                      ? 'radio_button_checked'
+                      : 'radio_button_unchecked'
+                }}
               </span>
               <div class="min-w-0">
-                <div class="text-base text-text-main break-words">{{ todo.text }}</div>
+                <div
+                  class="text-base break-words"
+                  :class="
+                    todo.status === 'completed'
+                      ? 'text-text-muted line-through'
+                      : todo.status === 'in_progress'
+                        ? 'text-text-main font-medium'
+                        : 'text-text-main'
+                  "
+                >
+                  {{ todo.text }}
+                </div>
                 <div class="text-sm text-text-muted">{{ todoLabel(todo.status) }}</div>
               </div>
             </div>
