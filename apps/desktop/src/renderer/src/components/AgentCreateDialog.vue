@@ -58,6 +58,7 @@ const form = reactive({
 const error = ref<string | null>(null)
 const avatarError = ref<string | null>(null)
 const submitting = ref(false)
+const selectingSkillDirectory = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const suspendDependentWatchers = ref(false)
 
@@ -138,6 +139,12 @@ function parseList(value: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function appendListValue(value: string, item: string): string {
+  const items = parseList(value)
+  if (!items.includes(item)) items.push(item)
+  return items.join(', ')
 }
 
 function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
@@ -225,6 +232,21 @@ function onAvatarFileChange(event: Event): void {
     .catch(() => {
       avatarError.value = '头像图片过大或无法读取'
     })
+}
+
+async function chooseSkillDirectory(): Promise<void> {
+  if (!caps.value.supportsSkills || selectingSkillDirectory.value) return
+  selectingSkillDirectory.value = true
+  try {
+    const directory = await window.api.selectDirectory()
+    if (directory) {
+      form.skillSourceDirectories = appendListValue(form.skillSourceDirectories, directory)
+    }
+  } catch {
+    error.value = '选择 Skill 目录失败'
+  } finally {
+    selectingSkillDirectory.value = false
+  }
 }
 
 async function onSubmit(): Promise<void> {
@@ -427,13 +449,26 @@ async function onSubmit(): Promise<void> {
             >不支持</span
           >
         </label>
-        <BaseInput
-          v-model="form.skillSourceDirectories"
-          :disabled="!caps.supportsSkills"
-          mono
-          type="text"
-          :placeholder="`/path/to/skill 或 /path/to/${vendorConfigName}/skills，逗号分隔`"
-        />
+        <div class="flex gap-2">
+          <BaseInput
+            v-model="form.skillSourceDirectories"
+            class="min-w-0 flex-1"
+            :disabled="!caps.supportsSkills"
+            mono
+            type="text"
+            :placeholder="`/path/to/skill 或 /path/to/${vendorConfigName}/skills，逗号分隔`"
+          />
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            :disabled="!caps.supportsSkills || selectingSkillDirectory"
+            @click="chooseSkillDirectory"
+          >
+            <span class="material-symbols-outlined text-xl">folder_open</span>
+            {{ selectingSkillDirectory ? '选择中...' : '选择目录' }}
+          </BaseButton>
+        </div>
         <p class="mt-1 text-xs text-text-muted">
           {{
             isEdit

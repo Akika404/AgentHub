@@ -23,6 +23,7 @@ const api = {
   request: (req: ApiRequest) => ipcRenderer.invoke('api:request', req),
   streamStart: (req: ApiStreamRequest) => ipcRenderer.invoke('api:stream:start', req),
   streamCancel: (streamId: string) => ipcRenderer.invoke('api:stream:cancel', streamId),
+  selectDirectory: () => ipcRenderer.invoke('dialog:select-directory') as Promise<string | null>,
   onStream: (name: StreamEventName, callback: (payload: unknown) => void) => {
     const channel = `api:stream:${name}`
     const listener = (_event: IpcRendererEvent, payload: unknown): void => callback(payload)

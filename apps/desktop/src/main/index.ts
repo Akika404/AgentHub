@@ -1,8 +1,21 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerApiProxy } from './api-proxy'
+
+function registerDialogHandlers(): void {
+  ipcMain.handle('dialog:select-directory', async (event): Promise<string | null> => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -54,6 +67,7 @@ app.whenReady().then(() => {
 
   // Backend REST calls funnel through the main process (avoids renderer CORS).
   registerApiProxy()
+  registerDialogHandlers()
 
   createWindow()
 
