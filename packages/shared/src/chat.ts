@@ -108,6 +108,53 @@ export interface OptionsMessage extends BaseMessage {
 
 export type ChatMessage = SystemMessage | TextMessage | TaskListMessage | OptionsMessage
 
+/**
+ * Group chat presentation_log message (multi-speaker). This is the persisted,
+ * outward shape for `GET /group-chats/:id/messages`. It unifies the existing
+ * card kinds (text / task-list / options / system) and adds the sender's role +
+ * member agent id so the renderer can map each message to its own bubble.
+ */
+export type GroupSenderRole = 'user' | 'orchestrator' | 'agent' | 'system'
+
+interface GroupMessageBase {
+  id: string
+  groupChatId: string
+  senderRole: GroupSenderRole
+  /** member Agent id when senderRole === 'agent'; null for user/orchestrator/system */
+  senderAgentId: string | null
+  createdAt: string
+}
+
+export interface GroupTextMessageView extends GroupMessageBase {
+  kind: 'text'
+  text: string
+}
+
+export interface GroupSystemMessageView extends GroupMessageBase {
+  kind: 'system'
+  text: string
+}
+
+export interface GroupTaskListMessageView extends GroupMessageBase {
+  kind: 'task-list'
+  heading: string
+  tasks: TaskItem[]
+}
+
+export interface GroupOptionsMessageView extends GroupMessageBase {
+  kind: 'options'
+  text: string
+  options: OptionItem[]
+  answered?: boolean
+  answeredOptionId?: string
+}
+
+export type GroupMessageView =
+  | GroupTextMessageView
+  | GroupSystemMessageView
+  | GroupTaskListMessageView
+  | GroupOptionsMessageView
+
 export interface ChatDetail {
   id: string
   title: string

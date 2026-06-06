@@ -16,6 +16,9 @@ export interface AgentUsage {
     totalCostUSD?: number
 }
 
+/** JSON Schema passed to SDKs that support structured output. */
+export type AgentOutputSchema = Record<string, unknown>
+
 /** Agent 当前会话的工具调用状态 */
 export type ToolCallStatus = 'started' | 'completed' | 'failed'
 
@@ -71,6 +74,7 @@ export type AgentEvent =
           type: 'turn_completed'
           vendor: AgentVendor
           finalText?: string
+          structuredOutput?: unknown
           usage?: AgentUsage
       }
     | { type: 'error'; vendor: AgentVendor; message: string; fatal?: boolean }
@@ -79,6 +83,7 @@ export type AgentEvent =
           vendor: AgentVendor
           success: boolean
           finalText?: string
+          structuredOutput?: unknown
           usage?: AgentUsage
       }
 
@@ -151,6 +156,8 @@ export interface AgentCapabilities {
 export interface SendOptions {
     /** 取消信号 */
     signal?: AbortSignal
+    /** JSON Schema describing the expected structured response for this turn. */
+    outputSchema?: AgentOutputSchema
 }
 
 /**

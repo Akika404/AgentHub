@@ -4,10 +4,11 @@ import { authState, initAuth, isAuthenticated } from './stores/auth'
 import GlobalSidebar from './components/GlobalSidebar.vue'
 import AuthView from './views/AuthView.vue'
 import ChatView from './views/ChatView.vue'
+import GroupChatView from './views/GroupChatView.vue'
 import AgentsView from './views/AgentsView.vue'
 import SettingsView from './views/SettingsView.vue'
 
-type NavKey = 'chat' | 'agents' | 'settings'
+type NavKey = 'chat' | 'groups' | 'agents' | 'settings'
 
 const nav = ref<NavKey>('chat')
 
@@ -25,6 +26,7 @@ onMounted(initAuth)
     <template v-else>
       <GlobalSidebar :active="nav" :user="authState.user" @navigate="nav = $event" />
       <ChatView v-show="nav === 'chat'" />
+      <GroupChatView v-show="nav === 'groups'" />
       <AgentsView v-show="nav === 'agents'" />
       <SettingsView v-show="nav === 'settings'" />
     </template>

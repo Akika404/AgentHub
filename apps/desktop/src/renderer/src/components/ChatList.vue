@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { ChatSummary } from '../api'
+import type { ChatSummary, GroupMemberView } from '../api'
 import { avatarTextColor } from '../utils/avatar'
 import { formatTime } from '../utils/format'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
+import GroupAvatar from './GroupAvatar.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 type ChatListItem = ChatSummary & {
   pinned: boolean
   running?: boolean
   updatedAt?: string
+  groupMembers?: GroupMemberView[]
 }
 
 defineProps<{
@@ -22,6 +24,7 @@ const emit = defineEmits<{
   (e: 'select', id: string): void
   (e: 'search', value: string): void
   (e: 'create-chat'): void
+  (e: 'create-group-chat'): void
   (e: 'toggle-pin', chat: ChatListItem): void
   (e: 'delete-chat', chat: ChatListItem): void
 }>()
@@ -51,6 +54,11 @@ function toggleCreateMenu(): void {
 function onCreateChat(): void {
   createMenuOpen.value = false
   emit('create-chat')
+}
+
+function onCreateGroupChat(): void {
+  createMenuOpen.value = false
+  emit('create-group-chat')
 }
 
 function openChatMenu(event: MouseEvent, chat: ChatListItem): void {
@@ -141,10 +149,10 @@ onBeforeUnmount(() => {
             </button>
             <button
               type="button"
-              disabled
-              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-md font-medium text-gray-400 cursor-not-allowed"
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-left text-md font-medium text-text-main hover:bg-surface-hover transition-colors"
+              @click="onCreateGroupChat"
             >
-              <span class="material-symbols-outlined text-2xl text-gray-400">groups</span>
+              <span class="material-symbols-outlined text-2xl text-text-main">groups</span>
               <span>创建群聊</span>
             </button>
           </div>
@@ -169,32 +177,40 @@ onBeforeUnmount(() => {
         @click="emit('select', chat.id)"
         @contextmenu="openChatMenu($event, chat)"
       >
-        <div
-          class="relative w-10 h-10 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden"
-          :class="
-            chat.avatar.avatarDataUrl
-              ? ''
-              : chat.avatar.kind === 'initials'
-                ? 'bg-primary/10 text-primary font-semibold text-md'
-                : 'bg-surface-hover text-text-muted'
-          "
-          :style="
-            !chat.avatar.avatarDataUrl && chat.avatar.kind === 'initials' && chat.avatar.color
-              ? {
-                  backgroundColor: chat.avatar.color,
-                  color: avatarTextColor(chat.avatar.color)
-                }
-              : undefined
-          "
-        >
-          <img
-            v-if="chat.avatar.avatarDataUrl"
-            :src="chat.avatar.avatarDataUrl"
-            :alt="chat.title"
-            class="h-full w-full object-cover"
+        <div class="relative flex-shrink-0">
+          <GroupAvatar
+            v-if="chat.kind === 'group'"
+            :members="chat.groupMembers ?? []"
+            :title="chat.title"
           />
-          <span v-else-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
-          <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
+          <div
+            v-else
+            class="w-10 h-10 rounded-md flex items-center justify-center overflow-hidden"
+            :class="
+              chat.avatar.avatarDataUrl
+                ? ''
+                : chat.avatar.kind === 'initials'
+                  ? 'bg-primary/10 text-primary font-semibold text-md'
+                  : 'bg-surface-hover text-text-muted'
+            "
+            :style="
+              !chat.avatar.avatarDataUrl && chat.avatar.kind === 'initials' && chat.avatar.color
+                ? {
+                    backgroundColor: chat.avatar.color,
+                    color: avatarTextColor(chat.avatar.color)
+                  }
+                : undefined
+            "
+          >
+            <img
+              v-if="chat.avatar.avatarDataUrl"
+              :src="chat.avatar.avatarDataUrl"
+              :alt="chat.title"
+              class="h-full w-full object-cover"
+            />
+            <span v-else-if="chat.avatar.kind === 'initials'">{{ chat.avatar.text }}</span>
+            <span v-else class="material-symbols-outlined text-3xl">{{ chat.avatar.icon }}</span>
+          </div>
           <span
             v-if="chat.running"
             class="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-surface bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.18)]"
@@ -210,6 +226,12 @@ onBeforeUnmount(() => {
             <div class="flex-1 min-w-0 font-medium truncate text-md text-text-main">
               {{ chat.title }}
             </div>
+            <span
+              v-if="chat.kind === 'group'"
+              class="flex-shrink-0 rounded bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary"
+            >
+              群聊
+            </span>
             <span
               v-if="chat.pinned"
               class="material-symbols-outlined text-[18px] leading-none text-primary flex-shrink-0"

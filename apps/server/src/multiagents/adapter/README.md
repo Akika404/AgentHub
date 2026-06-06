@@ -187,6 +187,12 @@ export interface AgentAdapter {
     readonly sessionId: string | null // 首次 send 之后才有值
     send(prompt: string, options?: SendOptions): AsyncIterable<AgentEvent>
 }
+
+export interface SendOptions {
+    signal?: AbortSignal
+    /** 单轮结构化输出 JSON Schema；Claude/Codex 各自映射到 SDK 原生参数。 */
+    outputSchema?: Record<string, unknown>
+}
 ```
 
 行为契约（**所有实现都必须满足**）：
@@ -196,6 +202,7 @@ export interface AgentAdapter {
 3. **并发互斥**：在前一次 `send()` 的流没消费完之前调用第二次 `send()` 必须抛同步错误。这是为了避免上下文交错。如果上层确实需要并发，应该 spawn 两个 Adapter 实例。
 4. **`session_started` 唯一性**：在一个 Adapter 实例的生命周期内只会发一次。
 5. **`AbortSignal` 支持**：传入的 signal 触发时，流应当尽快终止并发一条 `done`。
+6. **结构化输出**：传入 `outputSchema` 时，Adapter 必须使用底层 SDK 的 schema 输出能力；可用时在 `done.structuredOutput` 返回解析后的对象。
 
 ---
 

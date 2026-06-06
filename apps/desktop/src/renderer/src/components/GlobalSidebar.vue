@@ -2,7 +2,7 @@
 import type { UserView } from '@agenthub/shared'
 import UserMenu from './UserMenu.vue'
 
-type NavKey = 'chat' | 'agents' | 'settings'
+type NavKey = 'chat' | 'groups' | 'agents' | 'settings'
 
 defineProps<{ active: NavKey; user: UserView | null }>()
 const emit = defineEmits<{
@@ -28,6 +28,17 @@ const emit = defineEmits<{
         @click="emit('navigate', 'chat')"
       >
         <span class="material-symbols-outlined text-4xl">chat_bubble</span>
+      </button>
+      <button
+        class="w-12 flex flex-col items-center justify-center rounded-md group transition-all h-10"
+        :class="
+          active === 'groups'
+            ? 'bg-surface-active text-primary'
+            : 'text-gray-600 hover:bg-surface-hover hover:text-text-main'
+        "
+        @click="emit('navigate', 'groups')"
+      >
+        <span class="material-symbols-outlined text-4xl">groups</span>
       </button>
       <button
         class="w-12 flex flex-col items-center justify-center rounded-md group transition-all h-10"

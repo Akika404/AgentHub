@@ -1,0 +1,100 @@
+import { Injectable } from '@nestjs/common'
+import type {
+    BlackboardEventView,
+    BlackboardView,
+    ConverseGroupPayload,
+    CreateGroupChatPayload,
+    GroupChatView,
+    GroupMessageView,
+    GroupRunEvent,
+    UpdateGroupChatPayload
+} from '@agenthub/shared'
+import { BlackboardService } from './blackboard/blackboard.service.js'
+import { GroupChatService } from './group-chat.service.js'
+import { GroupMessageService } from './group-message.service.js'
+import { GroupRunStream } from './run/group-run-stream.service.js'
+import { GroupRunExecutor } from './run/group-run.executor.js'
+import { BusinessException } from '../../common/index.js'
+
+/**
+ * GroupChatManager — 群聊领域的对外门面（控制器只依赖它，委派给聚焦服务）。
+ * 沿用单聊 AgentManager 的门面模式。所有方法以 userId 做归属校验。
+ */
+@Injectable()
+export class GroupChatManager {
+    constructor(
+        private readonly groupChat: GroupChatService,
+        private readonly groupMessages: GroupMessageService,
+        private readonly blackboard: BlackboardService,
+        private readonly runStream: GroupRunStream,
+        private readonly executor: GroupRunExecutor
+    ) {}
+
+    createGroupChat(userId: string, payload: CreateGroupChatPayload): Promise<GroupChatView> {
+        return this.groupChat.createGroupChat(userId, payload)
+    }
+
+    listGroupChats(userId: string): Promise<GroupChatView[]> {
+        return this.groupChat.listGroupChats(userId)
+    }
+
+    getGroupChat(userId: string, id: string): Promise<GroupChatView> {
+        return this.groupChat.getGroupChat(userId, id)
+    }
+
+    updateGroupChat(
+        userId: string,
+        id: string,
+        payload: UpdateGroupChatPayload
+    ): Promise<GroupChatView> {
+        return this.groupChat.updateGroupChat(userId, id, payload)
+    }
+
+    deleteGroupChat(userId: string, id: string): Promise<{ deleted: true }> {
+        return this.groupChat.deleteGroupChat(userId, id)
+    }
+
+    async listMessages(userId: string, groupId: string): Promise<GroupMessageView[]> {
+        await this.groupChat.loadGroup(userId, groupId)
+        return this.groupMessages.listMessages(groupId)
+    }
+
+    converse(
+        userId: string,
+        groupId: string,
+        payload: ConverseGroupPayload
+    ): Promise<{ runId: string }> {
+        return this.executor.startRun(userId, groupId, payload)
+    }
+
+    async subscribeRun(
+        userId: string,
+        groupId: string,
+        runId: string
+    ): Promise<AsyncIterable<GroupRunEvent>> {
+        await this.groupChat.loadGroup(userId, groupId)
+        if (!(await this.runStream.isRunInGroup(groupId, runId))) {
+            throw BusinessException.notFound(`Run ${runId} does not belong to group ${groupId}`)
+        }
+        return this.runStream.subscribe(groupId, runId)
+    }
+
+    abortRun(userId: string, groupId: string, runId: string): Promise<{ aborted: true }> {
+        return this.executor.abortRun(userId, groupId, runId)
+    }
+
+    async getBlackboard(userId: string, groupId: string): Promise<BlackboardView> {
+        await this.groupChat.loadGroup(userId, groupId)
+        return this.blackboard.getState(groupId)
+    }
+
+    async listBlackboardEvents(
+        userId: string,
+        groupId: string,
+        limit?: number,
+        offset?: number
+    ): Promise<BlackboardEventView[]> {
+        await this.groupChat.loadGroup(userId, groupId)
+        return this.blackboard.listEvents(groupId, limit, offset)
+    }
+}

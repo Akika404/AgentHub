@@ -192,11 +192,18 @@ export class ClaudeAdapter implements AgentAdapter {
         if (this.config.mcpServers) {
             opts.mcpServers = this.config.mcpServers as Record<string, McpServerConfig>
         }
+        if (options?.outputSchema) {
+            opts.outputFormat = {
+                type: 'json_schema',
+                schema: options.outputSchema
+            }
+        }
         const effort = mapEffort(this.config.reasoningEffort)
         if (effort) opts.effort = effort
         if (this._sessionId) opts.resume = this._sessionId
 
         let finalText: string | undefined
+        let structuredOutput: unknown
         let usage: AgentUsage | undefined
         let success = true
         let yieldedTurnStart = false
@@ -210,8 +217,10 @@ export class ClaudeAdapter implements AgentAdapter {
                 this.logger.debug(`[raw] ${JSON.stringify(msg)}`)
                 for (const ev of this.translate(msg)) {
                     this.logger.debug(`[out] ${ev.type}`)
+                    if (ev.type === 'error' && ev.fatal) success = false
                     if (ev.type === 'turn_completed') {
                         finalText = ev.finalText
+                        structuredOutput = ev.structuredOutput
                         usage = ev.usage
                     }
                     yield ev
@@ -241,6 +250,7 @@ export class ClaudeAdapter implements AgentAdapter {
                 vendor: this.vendor,
                 success,
                 finalText,
+                structuredOutput,
                 usage
             }
             this.busy = false
@@ -391,10 +401,19 @@ export class ClaudeAdapter implements AgentAdapter {
             }
             case 'result': {
                 if (msg.subtype === 'success') {
+                    if (msg.is_error) {
+                        yield {
+                            type: 'error',
+                            vendor: this.vendor,
+                            message: msg.result || 'Claude turn failed',
+                            fatal: true
+                        }
+                    }
                     yield {
                         type: 'turn_completed',
                         vendor: this.vendor,
                         finalText: msg.result,
+                        structuredOutput: msg.structured_output,
                         usage: {
                             inputTokens: msg.usage?.input_tokens,
                             outputTokens: msg.usage?.output_tokens,

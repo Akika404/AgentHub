@@ -64,6 +64,15 @@ function buildCodexConfig(config: AgentAdapterConfig): CodexOptions['config'] | 
     return Object.keys(codexConfig).length > 0 ? codexConfig : undefined
 }
 
+function parseStructuredOutput(text: string | undefined): unknown {
+    if (!text) return undefined
+    try {
+        return JSON.parse(text)
+    } catch {
+        return undefined
+    }
+}
+
 export class CodexAdapter implements AgentAdapter {
     readonly vendor = 'codex' as const
     readonly id: string
@@ -117,6 +126,7 @@ export class CodexAdapter implements AgentAdapter {
 
         let success = true
         let finalText: string | undefined
+        let structuredOutput: unknown
         let usageOut: AgentUsage | undefined
         let latestAgentText: string | undefined
         let latestAgentItemId: string | undefined
@@ -164,7 +174,8 @@ export class CodexAdapter implements AgentAdapter {
             }
 
             const { events } = await this.thread.runStreamed(prompt, {
-                signal: options?.signal
+                signal: options?.signal,
+                outputSchema: options?.outputSchema
             })
 
             for await (const ev of events) {
@@ -250,6 +261,7 @@ export class CodexAdapter implements AgentAdapter {
         } finally {
             // 兜底：即便没收到 turn.completed，也用最近一次 agent_message 补 finalText
             finalText = pendingTextEvent?.text ?? finalText ?? latestAgentText
+            structuredOutput = options?.outputSchema ? parseStructuredOutput(finalText) : undefined
             if (finalText && !textEmitted) {
                 this.logger.debug('[out] text')
                 yield {
@@ -274,6 +286,7 @@ export class CodexAdapter implements AgentAdapter {
                 vendor: this.vendor,
                 success,
                 finalText,
+                structuredOutput,
                 usage: usageOut
             }
             this.busy = false

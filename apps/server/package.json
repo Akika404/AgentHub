@@ -11,7 +11,8 @@
     "dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.spec.ts\""
   },
   "dependencies": {
     "@agenthub/shared": "workspace:*",
@@ -42,6 +43,7 @@
     "@types/node": "^22.19.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   }
 }

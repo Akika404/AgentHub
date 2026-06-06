@@ -7,8 +7,12 @@ import type {
   AgentRunStepView,
   AgentTodoItem,
   AgentView,
+  BlackboardView,
   ChatDetail,
   ChatSummary,
+  GroupChatView,
+  GroupMemberView,
+  GroupRunEvent,
   MessageReplyRef,
   OptionItem,
   OptionsMessage,
@@ -17,7 +21,9 @@ import type {
 } from '../api'
 import { ApiError, agentApi } from '../api'
 import { agentChatApi, type AgentConverseHandlers, type AgentConverseStream } from '../api/agents'
+import { groupChatApi, type GroupRunStream } from '../api/group-chats'
 import { authState } from '../stores/auth'
+import { groupMessageToDisplay, type GroupSenderMeta } from '../utils/groupMessage'
 import {
   isAgentRunMessage,
   type AgentRunMessage,
@@ -33,10 +39,18 @@ import MessageInput from '../components/MessageInput.vue'
 import RightInspector from '../components/RightInspector.vue'
 import PinnedBar from '../components/PinnedBar.vue'
 import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
+import GroupChatCreateDialog from '../components/GroupChatCreateDialog.vue'
+import GroupDetailPanel from '../components/GroupDetailPanel.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
-type ChatListItem = ChatSummary & { pinned: boolean; running?: boolean; updatedAt?: string }
+type SessionKind = 'agent' | 'group'
+type ChatListItem = ChatSummary & {
+  pinned: boolean
+  running?: boolean
+  updatedAt?: string
+  groupMembers?: GroupMemberView[]
+}
 
 const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
@@ -50,6 +64,19 @@ const INSPECTOR_MIN_WIDTH = 260
 const INSPECTOR_DEFAULT_WIDTH = 300
 const INSPECTOR_MAX_WIDTH = 520
 
+const agentSessionKey = (id: string): string => `agent:${id}`
+const groupSessionKey = (id: string): string => `group:${id}`
+
+function sessionKind(key: string): SessionKind | null {
+  if (key.startsWith('agent:')) return 'agent'
+  if (key.startsWith('group:')) return 'group'
+  return null
+}
+
+function sessionRawId(key: string): string {
+  return key.slice(key.indexOf(':') + 1)
+}
+
 interface AgentRuntimeState {
   phase: RuntimePhase
   label: string
@@ -59,16 +86,21 @@ interface AgentRuntimeState {
 }
 
 const agentChats = ref<AgentChatView[]>([])
+const groupChats = ref<GroupChatView[]>([])
 const agents = ref<AgentView[]>([])
-const activeChatId = ref<string | null>(null)
+const activeSessionKey = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
+const activeGroupBlackboard = ref<BlackboardView | null>(null)
+const groupBlackboards = new Map<string, BlackboardView | null>()
 const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST_DEFAULT_WIDTH))
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
 const resizingPane = ref<'chat-list' | 'inspector' | null>(null)
 const messageCache = new Map<string, ChatDisplayMessage[]>()
 const turnStreams = new Map<string, AgentConverseStream>()
+const groupStreams = new Map<string, GroupRunStream>()
 const runMessageIds = new Map<string, string>()
 const notifiedTurnIds = new Set<string>()
+const notifiedGroupRunIds = new Set<string>()
 let activeLoadId = 0
 let dragStartX = 0
 let dragStartWidth = 0
@@ -81,6 +113,7 @@ const agentsError = ref<string | null>(null)
 const messagesLoading = ref(false)
 const runningChatIds = ref<Set<string>>(new Set())
 const createChatOpen = ref(false)
+const createGroupOpen = ref(false)
 const pinnedChatIds = ref<Set<string>>(readPinnedChatIds())
 const deleteChatTarget = ref<ChatListItem | null>(null)
 const deleteChatConfirmOpen = ref(false)
@@ -91,43 +124,82 @@ const pendingReply = ref<MessageReplyRef | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const runtime = ref<AgentRuntimeState>(idleRuntime())
 
-const activeChat = computed(
-  () => agentChats.value.find((chat) => chat.id === activeChatId.value) ?? null
+const activeChat = computed(() =>
+  activeSessionKey.value
+    ? (agentChats.value.find((chat) => agentSessionKey(chat.id) === activeSessionKey.value) ?? null)
+    : null
+)
+const activeGroup = computed(() =>
+  activeSessionKey.value
+    ? (groupChats.value.find((group) => groupSessionKey(group.id) === activeSessionKey.value) ??
+      null)
+    : null
 )
 
 const streaming = computed(() =>
-  activeChatId.value ? runningChatIds.value.has(activeChatId.value) : false
+  activeSessionKey.value ? runningChatIds.value.has(activeSessionKey.value) : false
 )
 
-const chats = computed<ChatListItem[]>(() =>
-  agentChats.value
-    .map((chat, index) => ({
-      chat,
+const chats = computed<ChatListItem[]>(() => {
+  const agentItems = agentChats.value.map((chat, index) => {
+    const key = agentSessionKey(chat.id)
+    const updatedAt = chat.lastTurnAt ?? chat.updatedAt
+    return {
+      item: {
+        id: key,
+        title: titleForChat(chat),
+        preview: previewForChat(chat),
+        kind: 'agent' as const,
+        avatar: {
+          kind: 'initials' as const,
+          text: agentInitials(chat.agent.name),
+          color: chat.agent.color,
+          avatarDataUrl: chat.agent.avatar ?? undefined,
+          tone: chat.status === 'active' ? ('primary' as const) : ('neutral' as const)
+        },
+        active: key === activeSessionKey.value,
+        pinned: pinnedChatIds.value.has(key),
+        running: isChatRunning(key),
+        updatedAt
+      },
       index,
-      pinned: pinnedChatIds.value.has(chat.id)
-    }))
+      updatedAt
+    }
+  })
+
+  const groupItems = groupChats.value.map((group, index) => {
+    const key = groupSessionKey(group.id)
+    const updatedAt = group.updatedAt
+    return {
+      item: {
+        id: key,
+        title: group.title,
+        preview: previewForGroup(group),
+        kind: 'group' as const,
+        avatar: { kind: 'icon' as const, icon: 'groups', tone: 'primary' as const },
+        active: key === activeSessionKey.value,
+        pinned: pinnedChatIds.value.has(key),
+        running: isChatRunning(key),
+        updatedAt,
+        groupMembers: group.members
+      },
+      index: agentChats.value.length + index,
+      updatedAt
+    }
+  })
+
+  return [...agentItems, ...groupItems]
     .sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      if (a.item.pinned !== b.item.pinned) return a.item.pinned ? -1 : 1
+      const aTime = Date.parse(a.updatedAt)
+      const bTime = Date.parse(b.updatedAt)
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) {
+        return bTime - aTime
+      }
       return a.index - b.index
     })
-    .map(({ chat, pinned }) => ({
-      id: chat.id,
-      title: titleForChat(chat),
-      preview: previewForChat(chat),
-      kind: 'agent',
-      avatar: {
-        kind: 'initials',
-        text: agentInitials(chat.agent.name),
-        color: chat.agent.color,
-        avatarDataUrl: chat.agent.avatar ?? undefined,
-        tone: chat.status === 'active' ? 'primary' : 'neutral'
-      },
-      active: chat.id === activeChatId.value,
-      pinned,
-      running: isChatRunning(chat.id),
-      updatedAt: chat.lastTurnAt ?? chat.updatedAt
-    }))
-)
+    .map(({ item }) => item)
+})
 
 const deleteChatMessage = computed(() => {
   const chat = deleteChatTarget.value
@@ -138,12 +210,22 @@ const deleteChatMessage = computed(() => {
 
 const chatDetail = computed<ChatDetail | null>(() => {
   const chat = activeChat.value
-  if (!chat) return null
+  if (chat) {
+    return {
+      id: chat.id,
+      title: titleForChat(chat),
+      status: runtime.value.phase === 'error' ? 'Error' : statusLabel(chat.status),
+      agentCount: 1
+    }
+  }
+
+  const group = activeGroup.value
+  if (!group) return null
   return {
-    id: chat.id,
-    title: titleForChat(chat),
-    status: runtime.value.phase === 'error' ? 'Error' : statusLabel(chat.status),
-    agentCount: 1
+    id: group.id,
+    title: group.title,
+    status: runtime.value.phase === 'error' ? 'Error' : groupStatusLabel(group),
+    agentCount: group.members.length
   }
 })
 
@@ -160,6 +242,11 @@ function statusLabel(status: AgentChatView['status']): string {
   return labels[status]
 }
 
+function groupStatusLabel(group: GroupChatView): string {
+  if (isGroupRunning(group.id)) return 'Running'
+  return group.status === 'active' ? 'Active' : 'Archived'
+}
+
 function titleForChat(chat: AgentChatView): string {
   const custom = chat.title?.trim()
   if (custom) return custom
@@ -167,16 +254,32 @@ function titleForChat(chat: AgentChatView): string {
 }
 
 function previewForChat(chat: AgentChatView): string {
-  if (isChatRunning(chat.id)) {
-    if (chat.id === activeChatId.value) return runtime.value.label
+  const key = agentSessionKey(chat.id)
+  if (isChatRunning(key)) {
+    if (key === activeSessionKey.value) return runtime.value.label
     return '正在运行'
   }
   if (chat.lastTurnAt) return `最近 ${formatTime(chat.lastTurnAt)}`
   return `${chat.agent.vendor} / ${chat.agent.model}`
 }
 
+function previewForGroup(group: GroupChatView): string {
+  const key = groupSessionKey(group.id)
+  if (isChatRunning(key)) {
+    if (key === activeSessionKey.value) return runtime.value.label
+    return '群聊运行中'
+  }
+  const goal = group.projectMeta.goal?.trim()
+  if (goal) return goal
+  return `${group.members.length} 成员 · ${group.projectMeta.name}`
+}
+
 function isChatRunning(chatId: string): boolean {
   return runningChatIds.value.has(chatId)
+}
+
+function isGroupRunning(groupId: string): boolean {
+  return isChatRunning(groupSessionKey(groupId))
 }
 
 function setChatRunning(chatId: string, running: boolean): void {
@@ -193,9 +296,12 @@ function markChatActiveTurn(chatId: string, turnId: string | null): void {
 }
 
 function reconcileRunningIndicators(): void {
-  const next = new Set(turnStreams.keys())
+  const next = new Set<string>([...turnStreams.keys(), ...groupStreams.keys()])
   for (const chat of agentChats.value) {
-    if (chat.activeTurnId) next.add(chat.id)
+    if (chat.activeTurnId) next.add(agentSessionKey(chat.id))
+  }
+  for (const group of groupChats.value) {
+    if (group.activeRunId) next.add(groupSessionKey(group.id))
   }
   runningChatIds.value = next
 }
@@ -295,7 +401,10 @@ function stopPaneResize(): void {
 }
 
 function prunePinnedChatIds(): void {
-  const validIds = new Set(agentChats.value.map((chat) => chat.id))
+  const validIds = new Set([
+    ...agentChats.value.map((chat) => agentSessionKey(chat.id)),
+    ...groupChats.value.map((group) => groupSessionKey(group.id))
+  ])
   const next = new Set([...pinnedChatIds.value].filter((id) => validIds.has(id)))
   if (next.size === pinnedChatIds.value.size) return
   pinnedChatIds.value = next
@@ -311,8 +420,9 @@ function toggleChatPinned(chat: ChatListItem): void {
 }
 
 function clearChatWorkspace(): void {
-  activeChatId.value = null
+  activeSessionKey.value = null
   messages.value = []
+  activeGroupBlackboard.value = null
   messagesLoading.value = false
   pendingReply.value = null
   runtime.value = idleRuntime()
@@ -440,31 +550,31 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatD
   }
 }
 
-function appendMessage(chatId: string, message: ChatDisplayMessage): void {
-  const cached = messageCache.get(chatId) ?? []
+function appendMessage(sessionKey: string, message: ChatDisplayMessage): void {
+  const cached = messageCache.get(sessionKey) ?? []
   const next = [...cached, message]
-  messageCache.set(chatId, next)
-  if (activeChatId.value === chatId) messages.value = next
+  messageCache.set(sessionKey, next)
+  if (activeSessionKey.value === sessionKey) messages.value = next
 }
 
 function updateCachedMessages(
-  chatId: string,
+  sessionKey: string,
   updater: (messages: ChatDisplayMessage[]) => ChatDisplayMessage[]
 ): void {
-  const cached = messageCache.get(chatId) ?? []
+  const cached = messageCache.get(sessionKey) ?? []
   const next = updater(cached)
-  messageCache.set(chatId, next)
-  if (activeChatId.value === chatId) messages.value = next
+  messageCache.set(sessionKey, next)
+  if (activeSessionKey.value === sessionKey) messages.value = next
 }
 
-function removeMessage(chatId: string, messageId: string): void {
-  updateCachedMessages(chatId, (cached) => cached.filter((message) => message.id !== messageId))
+function removeMessage(sessionKey: string, messageId: string): void {
+  updateCachedMessages(sessionKey, (cached) => cached.filter((message) => message.id !== messageId))
 }
 
-function appendSystemMessage(chatId: string, text: string): void {
-  appendMessage(chatId, {
+function appendSystemMessage(sessionKey: string, text: string): void {
+  appendMessage(sessionKey, {
     id: `m-system-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    chatId,
+    chatId: sessionKey,
     kind: 'system',
     timestamp: new Date().toISOString(),
     text
@@ -485,9 +595,10 @@ function initialThinkingStep(): AgentRunStep {
 }
 
 function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
+  const key = agentSessionKey(chat.id)
   const message: AgentRunMessage = {
     id: `m-agent-run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    chatId: chat.id,
+    chatId: key,
     kind: 'agent-run',
     timestamp: new Date().toISOString(),
     sender: agentSender(chat),
@@ -495,26 +606,27 @@ function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
     steps: [initialThinkingStep()],
     text: ''
   }
-  runMessageIds.set(chat.id, message.id)
-  appendMessage(chat.id, message)
+  runMessageIds.set(key, message.id)
+  appendMessage(key, message)
   return message
 }
 
 function ensureAgentRunMessage(chat: AgentChatView): void {
-  const cached = messageCache.get(chat.id) ?? []
-  const existingId = runMessageIds.get(chat.id)
+  const key = agentSessionKey(chat.id)
+  const cached = messageCache.get(key) ?? []
+  const existingId = runMessageIds.get(key)
   if (existingId && cached.some((message) => message.id === existingId)) return
 
-  const reusableId = findReusableRunMessageId(chat.id)
+  const reusableId = findReusableRunMessageId(key)
   if (reusableId) {
-    runMessageIds.set(chat.id, reusableId)
+    runMessageIds.set(key, reusableId)
     return
   }
   createAgentRunMessage(chat)
 }
 
-function findReusableRunMessageId(chatId: string): string | null {
-  const cached = messageCache.get(chatId) ?? []
+function findReusableRunMessageId(sessionKey: string): string | null {
+  const cached = messageCache.get(sessionKey) ?? []
   const reusable = cached
     .filter(
       (message): message is AgentRunMessage =>
@@ -525,13 +637,14 @@ function findReusableRunMessageId(chatId: string): string | null {
 }
 
 function prepareRunMessageForReplay(chat: AgentChatView): string | null {
-  const messageId = findReusableRunMessageId(chat.id)
+  const key = agentSessionKey(chat.id)
+  const messageId = findReusableRunMessageId(key)
   if (!messageId) {
-    runMessageIds.delete(chat.id)
+    runMessageIds.delete(key)
     return null
   }
 
-  updateCachedMessages(chat.id, (cached) =>
+  updateCachedMessages(key, (cached) =>
     cached.map((message) =>
       message.id === messageId && isAgentRunMessage(message)
         ? {
@@ -543,17 +656,17 @@ function prepareRunMessageForReplay(chat: AgentChatView): string | null {
         : message
     )
   )
-  runMessageIds.set(chat.id, messageId)
+  runMessageIds.set(key, messageId)
   return messageId
 }
 
 function updateAgentRunMessage(
-  chatId: string,
+  sessionKey: string,
   updater: (message: AgentRunMessage) => AgentRunMessage
 ): void {
-  const runMessageId = runMessageIds.get(chatId)
+  const runMessageId = runMessageIds.get(sessionKey)
   if (!runMessageId) return
-  updateCachedMessages(chatId, (cached) =>
+  updateCachedMessages(sessionKey, (cached) =>
     cached.map((message) =>
       message.id === runMessageId && isAgentRunMessage(message) ? updater(message) : message
     )
@@ -639,11 +752,11 @@ function finishAgentRun(chatId: string, success: boolean): void {
   runMessageIds.delete(chatId)
 }
 
-function removeCurrentAgentRun(chatId: string): void {
-  const runMessageId = runMessageIds.get(chatId)
+function removeCurrentAgentRun(sessionKey: string): void {
+  const runMessageId = runMessageIds.get(sessionKey)
   if (!runMessageId) return
-  removeMessage(chatId, runMessageId)
-  runMessageIds.delete(chatId)
+  removeMessage(sessionKey, runMessageId)
+  runMessageIds.delete(sessionKey)
 }
 
 function planLabel(todos: AgentTodoItem[]): string {
@@ -685,9 +798,7 @@ function upsertPlanStep(chatId: string, plan: string): void {
     if (hasPlanStep) {
       return {
         ...message,
-        steps: message.steps.map((step) =>
-          step.type === 'plan' ? { ...step, text: plan } : step
-        )
+        steps: message.steps.map((step) => (step.type === 'plan' ? { ...step, text: plan } : step))
       }
     }
     return {
@@ -701,51 +812,52 @@ function upsertPlanStep(chatId: string, plan: string): void {
 }
 
 function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
+  const key = agentSessionKey(chat.id)
   switch (event.type) {
     case 'progress':
-      appendProgressStep(chat.id, event.text)
+      appendProgressStep(key, event.text)
       return
     case 'thinking':
-      startRunStep(chat.id, 'thinking', '思考中', 'thinking')
+      startRunStep(key, 'thinking', '思考中', 'thinking')
       return
     case 'tool_use':
       if (event.status === 'started') {
-        startRunStep(chat.id, 'tool', `正在调用 ${event.name}`, 'tool', {
+        startRunStep(key, 'tool', `正在调用 ${event.name}`, 'tool', {
           toolName: event.name,
           toolUseId: event.id,
           input: event.input
         })
       } else {
-        completeActiveRunStep(chat.id, event.status === 'failed', { toolUseId: event.id })
+        completeActiveRunStep(key, event.status === 'failed', { toolUseId: event.id })
       }
       return
     case 'tool_result':
-      completeActiveRunStep(chat.id, Boolean(event.isError), {
+      completeActiveRunStep(key, Boolean(event.isError), {
         toolUseId: event.toolUseId,
         output: event.output,
         isError: Boolean(event.isError)
       })
-      if (!event.isError) startRunStep(chat.id, 'thinking', '继续思考', 'thinking')
+      if (!event.isError) startRunStep(key, 'thinking', '继续思考', 'thinking')
       return
     case 'text':
       return
     case 'todo':
-      upsertTodoStep(chat.id, event.items)
+      upsertTodoStep(key, event.items)
       return
     case 'plan':
-      upsertPlanStep(chat.id, event.plan)
+      upsertPlanStep(key, event.plan)
       return
     case 'turn_completed':
-      if (event.finalText) updateAgentRunText(chat.id, event.finalText)
-      completeActiveRunStep(chat.id)
+      if (event.finalText) updateAgentRunText(key, event.finalText)
+      completeActiveRunStep(key)
       return
     case 'error':
-      completeActiveRunStep(chat.id, true)
-      updateAgentRunMessage(chat.id, (message) => ({ ...message, status: 'error' }))
+      completeActiveRunStep(key, true)
+      updateAgentRunMessage(key, (message) => ({ ...message, status: 'error' }))
       return
     case 'done':
-      if (event.finalText) updateAgentRunText(chat.id, event.finalText)
-      finishAgentRun(chat.id, event.success)
+      if (event.finalText) updateAgentRunText(key, event.finalText)
+      finishAgentRun(key, event.success)
       return
   }
 }
@@ -753,26 +865,37 @@ function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
 async function loadWorkspace(): Promise<void> {
   chatsLoading.value = true
   try {
-    const [chatList, agentList] = await Promise.all([agentChatApi.list(), agentApi.list()])
+    const [chatList, groupList, agentList] = await Promise.all([
+      agentChatApi.list(),
+      groupChatApi.list(),
+      agentApi.list()
+    ])
     agentChats.value = chatList
+    groupChats.value = groupList
     agents.value = agentList
     reconcileRunningIndicators()
-    const currentStillExists = agentChats.value.some((chat) => chat.id === activeChatId.value)
-    const initial = currentStillExists ? activeChatId.value : agentChats.value[0]?.id
     prunePinnedChatIds()
+    const currentStillExists = activeSessionKey.value
+      ? sessionExists(activeSessionKey.value)
+      : false
+    const initial = currentStillExists ? activeSessionKey.value : chats.value[0]?.id
     if (initial) await selectChat(initial)
     else clearChatWorkspace()
     void syncTurnWatchers()
+    void syncGroupRunWatchers()
   } finally {
     chatsLoading.value = false
   }
 }
 
 async function refreshChats(): Promise<void> {
-  agentChats.value = await agentChatApi.list()
+  const [chatList, groupList] = await Promise.all([agentChatApi.list(), groupChatApi.list()])
+  agentChats.value = chatList
+  groupChats.value = groupList
   prunePinnedChatIds()
   reconcileRunningIndicators()
   void syncTurnWatchers()
+  void syncGroupRunWatchers()
 }
 
 async function refreshAgents(): Promise<void> {
@@ -792,11 +915,48 @@ async function openCreateChatDialog(): Promise<void> {
   await refreshAgents()
 }
 
-async function loadMessages(chatId: string, silent = false): Promise<void> {
+function openCreateGroupDialog(): void {
+  createGroupOpen.value = true
+}
+
+function sessionExists(key: string): boolean {
+  const kind = sessionKind(key)
+  const id = sessionRawId(key)
+  if (kind === 'agent') return agentChats.value.some((chat) => chat.id === id)
+  if (kind === 'group') return groupChats.value.some((group) => group.id === id)
+  return false
+}
+
+function groupMemberMeta(group: GroupChatView): Map<string, GroupSenderMeta> {
+  const map = new Map<string, GroupSenderMeta>()
+  for (const member of group.members) {
+    map.set(member.agentId, {
+      name: member.name,
+      color: member.color,
+      avatar: member.avatar
+    })
+  }
+  return map
+}
+
+async function loadMessages(sessionKey: string, silent = false): Promise<void> {
+  const kind = sessionKind(sessionKey)
+  if (kind === 'agent') {
+    await loadAgentMessages(sessionRawId(sessionKey), sessionKey, silent)
+  } else if (kind === 'group') {
+    await loadGroupMessages(sessionRawId(sessionKey), sessionKey, silent)
+  }
+}
+
+async function loadAgentMessages(
+  chatId: string,
+  sessionKey: string,
+  silent = false
+): Promise<void> {
   const chat = agentChats.value.find((item) => item.id === chatId)
   if (!chat) return
 
-  const updatesActiveChat = activeChatId.value === chatId
+  const updatesActiveChat = activeSessionKey.value === sessionKey
   const loadId = updatesActiveChat ? ++activeLoadId : activeLoadId
   if (!silent && updatesActiveChat) {
     messagesLoading.value = true
@@ -806,8 +966,8 @@ async function loadMessages(chatId: string, silent = false): Promise<void> {
   try {
     const history = await agentChatApi.listMessages(chatId)
     const next = history.map((message) => messageFromView(message, chat))
-    messageCache.set(chatId, next)
-    if (updatesActiveChat && loadId === activeLoadId && activeChatId.value === chatId) {
+    messageCache.set(sessionKey, next)
+    if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
       messages.value = next
     }
   } finally {
@@ -815,49 +975,115 @@ async function loadMessages(chatId: string, silent = false): Promise<void> {
   }
 }
 
+async function loadGroupMessages(
+  groupId: string,
+  sessionKey: string,
+  silent = false
+): Promise<void> {
+  const group = groupChats.value.find((item) => item.id === groupId)
+  if (!group) return
+
+  const updatesActiveChat = activeSessionKey.value === sessionKey
+  const loadId = updatesActiveChat ? ++activeLoadId : activeLoadId
+  if (!silent && updatesActiveChat) {
+    messagesLoading.value = true
+    messages.value = []
+  }
+
+  try {
+    const history = await groupChatApi.listMessages(groupId)
+    const members = groupMemberMeta(group)
+    const next = history.map((message) =>
+      groupMessageToDisplay(message, members, currentUserSender().name)
+    )
+    messageCache.set(sessionKey, next)
+    if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
+      messages.value = next
+    }
+  } finally {
+    if (updatesActiveChat && loadId === activeLoadId) messagesLoading.value = false
+  }
+}
+
+async function loadGroupBlackboard(groupId: string): Promise<void> {
+  const key = groupSessionKey(groupId)
+  try {
+    const next = await groupChatApi.getBlackboard(groupId)
+    groupBlackboards.set(key, next)
+    if (activeSessionKey.value === key) activeGroupBlackboard.value = next
+  } catch {
+    groupBlackboards.set(key, null)
+    if (activeSessionKey.value === key) activeGroupBlackboard.value = null
+  }
+}
+
 async function detachTurn(chatId: string): Promise<void> {
-  const stream = turnStreams.get(chatId)
+  const key = agentSessionKey(chatId)
+  const stream = turnStreams.get(key)
   if (!stream) return
-  turnStreams.delete(chatId)
-  setChatRunning(chatId, false)
+  turnStreams.delete(key)
+  setChatRunning(key, false)
   // Only stop receiving; the turn keeps running server-side so other devices —
   // and this one on re-open — can still watch it.
   await stream.cancel()
 }
 
 async function detachAllTurns(): Promise<void> {
-  const streams = [...turnStreams.entries()]
+  const streams = [...turnStreams.values()]
+  const groupRunStreams = [...groupStreams.values()]
   turnStreams.clear()
+  groupStreams.clear()
   runningChatIds.value = new Set()
-  await Promise.all(streams.map(([, stream]) => stream.cancel()))
+  await Promise.all([...streams, ...groupRunStreams].map((stream) => stream.cancel()))
 }
 
-async function selectChat(id: string): Promise<void> {
-  activeChatId.value = id
+async function selectChat(key: string): Promise<void> {
+  activeSessionKey.value = key
   pendingReply.value = null
   runtime.value = idleRuntime()
+  activeGroupBlackboard.value =
+    sessionKind(key) === 'group' ? (groupBlackboards.get(key) ?? null) : null
 
-  const cached = messageCache.get(id)
+  const cached = messageCache.get(key)
   if (cached) {
     messages.value = cached
     messagesLoading.value = false
   } else {
-    await loadMessages(id)
+    await loadMessages(key)
   }
 
-  // 若该聊天有进行中的轮（可能由本端早前发起、或其它设备发起），订阅其进度实现围观
-  const chat = agentChats.value.find((item) => item.id === id)
-  if (chat?.activeTurnId && activeChatId.value === id) {
-    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
-    void watchTurn(chat, chat.activeTurnId)
-  } else if (turnStreams.has(id)) {
-    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+  const kind = sessionKind(key)
+  const id = sessionRawId(key)
+  if (kind === 'agent') {
+    const chat = agentChats.value.find((item) => item.id === id)
+    if (chat?.activeTurnId && activeSessionKey.value === key) {
+      runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+      void watchTurn(chat, chat.activeTurnId)
+    } else if (turnStreams.has(key)) {
+      runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
+    }
+  } else if (kind === 'group') {
+    if (!groupBlackboards.has(key)) void loadGroupBlackboard(id)
+    const group = groupChats.value.find((item) => item.id === id)
+    if (group?.activeRunId && activeSessionKey.value === key) {
+      runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching group' }
+      void watchGroupRun(group, group.activeRunId)
+    } else if (groupStreams.has(key)) {
+      runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching group' }
+    }
   }
 }
 
 async function onChatCreated(chat: AgentChatView): Promise<void> {
   agentChats.value = [chat, ...agentChats.value.filter((item) => item.id !== chat.id)]
-  await selectChat(chat.id)
+  await selectChat(agentSessionKey(chat.id))
+  void refreshChats()
+}
+
+async function onGroupCreated(group: GroupChatView): Promise<void> {
+  groupChats.value = [group, ...groupChats.value.filter((item) => item.id !== group.id)]
+  createGroupOpen.value = false
+  await selectChat(groupSessionKey(group.id))
   void refreshChats()
 }
 
@@ -878,20 +1104,34 @@ async function confirmDeleteChat(): Promise<void> {
   const chat = deleteChatTarget.value
   if (!chat) return
 
+  const kind = sessionKind(chat.id)
+  const id = sessionRawId(chat.id)
   deletingChat.value = true
   deleteChatError.value = null
   try {
-    const deletingActiveChat = chat.id === activeChatId.value
-    if (isChatRunning(chat.id) || turnStreams.has(chat.id)) {
-      // 删除前先停止进行中的轮（服务端 removeChat 对运行中会话会拒绝），再断开本端订阅
-      await stopTurn(chat.id)
-      await detachTurn(chat.id)
+    const deletingActiveChat = chat.id === activeSessionKey.value
+    if (kind === 'agent') {
+      if (isChatRunning(chat.id) || turnStreams.has(chat.id)) {
+        // 删除前先停止进行中的轮（服务端 removeChat 对运行中会话会拒绝），再断开本端订阅
+        await stopTurn(id)
+        await detachTurn(id)
+      }
+      await agentChatApi.delete(id)
+      agentChats.value = agentChats.value.filter((item) => item.id !== id)
+      runMessageIds.delete(chat.id)
+    } else if (kind === 'group') {
+      if (isChatRunning(chat.id) || groupStreams.has(chat.id)) {
+        await stopGroupRun(id)
+        await detachGroupRun(id)
+      }
+      await groupChatApi.delete(id)
+      groupChats.value = groupChats.value.filter((item) => item.id !== id)
+      groupBlackboards.delete(chat.id)
+    } else {
+      throw new Error('未知会话类型')
     }
-    await agentChatApi.delete(chat.id)
 
     messageCache.delete(chat.id)
-    runMessageIds.delete(chat.id)
-    agentChats.value = agentChats.value.filter((item) => item.id !== chat.id)
     reconcileRunningIndicators()
     prunePinnedChatIds()
 
@@ -975,49 +1215,50 @@ function handleRuntimeEvent(event: AgentEvent): void {
  */
 function buildConverseHandlers(chat: AgentChatView, turnId: string): AgentConverseHandlers {
   const chatId = chat.id
+  const key = agentSessionKey(chatId)
   let assistantText = ''
   let agentFinished = false
   let success = false
 
   return {
     onEvent(event) {
-      const activeStream = turnStreams.get(chatId)
+      const activeStream = turnStreams.get(key)
       if (activeStream && activeStream.turnId !== turnId) return
       ensureAgentRunMessage(chat)
       if (event.type === 'done') {
         agentFinished = true
         success = event.success
       }
-      if (activeChatId.value === chatId) handleRuntimeEvent(event)
+      if (activeSessionKey.value === key) handleRuntimeEvent(event)
       syncAgentRunMessage(chat, event)
       if (event.type === 'text') {
         assistantText = assistantText ? `${assistantText}\n\n${event.text}` : event.text
-        updateAgentRunText(chatId, assistantText)
+        updateAgentRunText(key, assistantText)
       } else if (event.type === 'error' && event.fatal && !assistantText) {
-        appendSystemMessage(chatId, event.message)
+        appendSystemMessage(key, event.message)
       }
     },
     onError(message) {
-      const activeStream = turnStreams.get(chatId)
+      const activeStream = turnStreams.get(key)
       if (activeStream && activeStream.turnId !== turnId) return
-      finishAgentRun(chatId, false)
-      if (activeChatId.value === chatId) {
+      finishAgentRun(key, false)
+      if (activeSessionKey.value === key) {
         runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
       }
-      appendSystemMessage(chatId, message)
+      appendSystemMessage(key, message)
     },
     onDone() {
-      const activeStream = turnStreams.get(chatId)
+      const activeStream = turnStreams.get(key)
       if (activeStream && activeStream.turnId !== turnId) return
-      turnStreams.delete(chatId)
-      setChatRunning(chatId, false)
+      turnStreams.delete(key)
+      setChatRunning(key, false)
       markChatActiveTurn(chatId, null)
       if (!agentFinished) {
         // 流结束但没收到 Agent done：多半只是本端订阅断开了，turn 可能仍在服务端运行。
         // 刷新 activeTurnId 后若仍活跃，立刻重连到 Redis Stream 的 backlog + live tail。
         void reloadAfterStreamDrop(chatId)
       } else {
-        runMessageIds.delete(chatId)
+        runMessageIds.delete(key)
         notifyTurnCompleted(chat, turnId, success)
         void reloadAfterTurn(chatId)
       }
@@ -1028,7 +1269,7 @@ function buildConverseHandlers(chat: AgentChatView, turnId: string): AgentConver
 /** turn 结束后用 DB 权威历史覆盖本地乐观态，确保多端最终一致 */
 async function reloadAfterTurn(chatId: string): Promise<void> {
   await refreshChats()
-  await loadMessages(chatId, true)
+  await loadMessages(agentSessionKey(chatId), true)
 }
 
 /** 订阅意外断开时恢复围观；若后端已结束，则回落为一次普通历史刷新 */
@@ -1041,51 +1282,53 @@ async function reloadAfterStreamDrop(chatId: string): Promise<void> {
     return
   }
 
-  runMessageIds.delete(chatId)
-  await loadMessages(chatId, true)
+  runMessageIds.delete(agentSessionKey(chatId))
+  await loadMessages(agentSessionKey(chatId), true)
 }
 
 /** 订阅一个进行中的 turn 的事件流（回放 + 实时追尾），用于围观 */
 async function watchTurn(chat: AgentChatView, turnId: string): Promise<void> {
-  const existing = turnStreams.get(chat.id)
+  const key = agentSessionKey(chat.id)
+  const existing = turnStreams.get(key)
   if (existing?.turnId === turnId) {
-    setChatRunning(chat.id, true)
+    setChatRunning(key, true)
     return
   }
   if (existing) await detachTurn(chat.id)
 
-  setChatRunning(chat.id, true)
+  setChatRunning(key, true)
   markChatActiveTurn(chat.id, turnId)
-  if (!messageCache.has(chat.id)) {
+  if (!messageCache.has(key)) {
     try {
-      await loadMessages(chat.id, true)
+      await loadMessages(key, true)
     } catch {
       /* Live replay can still render; history reload is retried after the turn settles. */
     }
   }
   prepareRunMessageForReplay(chat)
-  if (activeChatId.value === chat.id) {
+  if (activeSessionKey.value === key) {
     runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching' }
   }
 
   const stream = agentChatApi.subscribeTurn(chat.id, turnId, buildConverseHandlers(chat, turnId))
-  turnStreams.set(chat.id, stream)
+  turnStreams.set(key, stream)
   stream.started.catch(() => {
-    if (turnStreams.get(chat.id)?.turnId !== turnId) return
-    turnStreams.delete(chat.id)
-    setChatRunning(chat.id, false)
-    runMessageIds.delete(chat.id)
+    if (turnStreams.get(key)?.turnId !== turnId) return
+    turnStreams.delete(key)
+    setChatRunning(key, false)
+    runMessageIds.delete(key)
     void reloadAfterTurn(chat.id)
   })
 }
 
 function syncTurnWatchers(): void {
-  for (const [chatId, stream] of turnStreams) {
+  for (const [key, stream] of turnStreams) {
+    const chatId = sessionRawId(key)
     const chat = agentChats.value.find((item) => item.id === chatId)
     if (!chat) {
       void stream.cancel()
-      turnStreams.delete(chatId)
-      setChatRunning(chatId, false)
+      turnStreams.delete(key)
+      setChatRunning(key, false)
       continue
     }
     if (chat.activeTurnId && chat.activeTurnId !== stream.turnId) {
@@ -1097,7 +1340,7 @@ function syncTurnWatchers(): void {
 
   for (const chat of agentChats.value) {
     if (!chat.activeTurnId) continue
-    if (turnStreams.get(chat.id)?.turnId === chat.activeTurnId) continue
+    if (turnStreams.get(agentSessionKey(chat.id))?.turnId === chat.activeTurnId) continue
     void watchTurn(chat, chat.activeTurnId)
   }
 }
@@ -1130,9 +1373,228 @@ function notifyTurnCompleted(chat: AgentChatView, turnId: string, success: boole
   }
 }
 
+function markGroupActiveRun(groupId: string, runId: string | null): void {
+  groupChats.value = groupChats.value.map((group) =>
+    group.id === groupId ? { ...group, activeRunId: runId } : group
+  )
+}
+
+function handleGroupRuntimeEvent(event: GroupRunEvent): void {
+  switch (event.type) {
+    case 'orchestrator_plan':
+      runtime.value = { ...runtime.value, phase: 'thinking', label: '已生成任务计划' }
+      return
+    case 'task_status':
+      runtime.value = {
+        ...runtime.value,
+        phase: event.status === 'failed' ? 'error' : 'thinking',
+        label: `任务进度：${event.status}`
+      }
+      return
+    case 'member_turn_event': {
+      const inner = event.event
+      if (inner.type === 'progress') {
+        runtime.value = {
+          ...runtime.value,
+          phase: 'thinking',
+          label: '成员执行中',
+          detail: inner.text
+        }
+      } else if (inner.type === 'tool_use') {
+        runtime.value = {
+          ...runtime.value,
+          phase: 'tool',
+          label: '成员调用工具',
+          toolName: inner.name
+        }
+      } else if (inner.type === 'thinking') {
+        runtime.value = { ...runtime.value, phase: 'thinking', label: '成员思考中' }
+      } else if (inner.type === 'text') {
+        runtime.value = { ...runtime.value, phase: 'streaming', label: '成员输出中' }
+      }
+      return
+    }
+    case 'blackboard_update':
+      runtime.value = { ...runtime.value, phase: 'thinking', label: event.update.summary }
+      return
+    case 'orchestrator_report':
+      runtime.value = { ...runtime.value, phase: 'streaming', label: '汇总中', detail: event.text }
+      return
+    case 'done':
+      runtime.value = {
+        ...runtime.value,
+        phase: event.success ? 'done' : 'error',
+        label: event.success ? 'Done' : 'Error'
+      }
+      return
+  }
+}
+
+function buildGroupRunHandlers(
+  group: GroupChatView,
+  runId: string
+): {
+  onEvent(event: GroupRunEvent): void
+  onError?(message: string): void
+  onDone?(): void
+} {
+  const groupId = group.id
+  const key = groupSessionKey(groupId)
+  let groupFinished = false
+  let success = false
+
+  return {
+    onEvent(event) {
+      const activeStream = groupStreams.get(key)
+      if (activeStream && activeStream.runId !== runId) return
+      if (event.type === 'done') {
+        groupFinished = true
+        success = event.success
+      }
+      if (activeSessionKey.value === key) handleGroupRuntimeEvent(event)
+
+      if (event.type === 'orchestrator_plan' || event.type === 'orchestrator_report') {
+        void loadMessages(key, true)
+      }
+      if (
+        event.type === 'orchestrator_plan' ||
+        event.type === 'task_status' ||
+        event.type === 'blackboard_update'
+      ) {
+        void loadGroupBlackboard(groupId)
+      }
+    },
+    onError(message) {
+      const activeStream = groupStreams.get(key)
+      if (activeStream && activeStream.runId !== runId) return
+      if (activeSessionKey.value === key) {
+        runtime.value = { ...runtime.value, phase: 'error', label: 'Stream error', detail: message }
+      }
+      appendSystemMessage(key, message)
+    },
+    onDone() {
+      const activeStream = groupStreams.get(key)
+      if (activeStream && activeStream.runId !== runId) return
+      groupStreams.delete(key)
+      setChatRunning(key, false)
+      markGroupActiveRun(groupId, null)
+      if (!groupFinished) {
+        void reloadAfterGroupStreamDrop(groupId)
+      } else {
+        notifyGroupRunCompleted(group, runId, success)
+        void reloadAfterGroupRun(groupId)
+      }
+    }
+  }
+}
+
+async function reloadAfterGroupRun(groupId: string): Promise<void> {
+  const key = groupSessionKey(groupId)
+  await refreshChats()
+  await Promise.all([loadMessages(key, true), loadGroupBlackboard(groupId)])
+}
+
+async function reloadAfterGroupStreamDrop(groupId: string): Promise<void> {
+  await refreshChats()
+
+  const group = groupChats.value.find((item) => item.id === groupId)
+  if (group?.activeRunId) {
+    void watchGroupRun(group, group.activeRunId)
+    return
+  }
+
+  const key = groupSessionKey(groupId)
+  await Promise.all([loadMessages(key, true), loadGroupBlackboard(groupId)])
+}
+
+async function watchGroupRun(group: GroupChatView, runId: string): Promise<void> {
+  const key = groupSessionKey(group.id)
+  const existing = groupStreams.get(key)
+  if (existing?.runId === runId) {
+    setChatRunning(key, true)
+    return
+  }
+  if (existing) await detachGroupRun(group.id)
+
+  setChatRunning(key, true)
+  markGroupActiveRun(group.id, runId)
+  if (!messageCache.has(key)) {
+    try {
+      await loadMessages(key, true)
+    } catch {
+      /* Live replay can still render; history reload is retried after the run settles. */
+    }
+  }
+  if (activeSessionKey.value === key) {
+    runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching group' }
+  }
+
+  const stream = groupChatApi.subscribeRun(group.id, runId, buildGroupRunHandlers(group, runId))
+  groupStreams.set(key, stream)
+  stream.started.catch(() => {
+    if (groupStreams.get(key)?.runId !== runId) return
+    groupStreams.delete(key)
+    setChatRunning(key, false)
+    void reloadAfterGroupRun(group.id)
+  })
+}
+
+function syncGroupRunWatchers(): void {
+  for (const [key, stream] of groupStreams) {
+    const groupId = sessionRawId(key)
+    const group = groupChats.value.find((item) => item.id === groupId)
+    if (!group) {
+      void stream.cancel()
+      groupStreams.delete(key)
+      setChatRunning(key, false)
+      continue
+    }
+    if (group.activeRunId && group.activeRunId !== stream.runId) {
+      void detachGroupRun(groupId).then(() => {
+        if (group.activeRunId) void watchGroupRun(group, group.activeRunId)
+      })
+    }
+  }
+
+  for (const group of groupChats.value) {
+    if (!group.activeRunId) continue
+    if (groupStreams.get(groupSessionKey(group.id))?.runId === group.activeRunId) continue
+    void watchGroupRun(group, group.activeRunId)
+  }
+}
+
+function notifyGroupRunCompleted(group: GroupChatView, runId: string, success: boolean): void {
+  if (notifiedGroupRunIds.has(runId)) return
+  notifiedGroupRunIds.add(runId)
+
+  const BrowserNotification = window.Notification
+  if (!BrowserNotification) return
+
+  const title = success ? '群聊任务已完成' : '群聊任务未完成'
+  const body = group.title
+  const show = (): void => {
+    try {
+      new BrowserNotification(title, { body })
+    } catch {
+      /* Notifications are best-effort; the chat history remains the source of truth. */
+    }
+  }
+
+  if (BrowserNotification.permission === 'granted') {
+    show()
+    return
+  }
+  if (BrowserNotification.permission === 'default') {
+    void BrowserNotification.requestPermission().then((permission) => {
+      if (permission === 'granted') show()
+    })
+  }
+}
+
 /** 主动停止当前 turn（服务端中止，影响所有观看端） */
 async function stopTurn(chatId: string): Promise<void> {
-  const stream = turnStreams.get(chatId)
+  const key = agentSessionKey(chatId)
+  const stream = turnStreams.get(key)
   const turnId = stream?.turnId ?? agentChats.value.find((chat) => chat.id === chatId)?.activeTurnId
   if (!turnId) return
   try {
@@ -1142,21 +1604,59 @@ async function stopTurn(chatId: string): Promise<void> {
   }
 }
 
+async function stopGroupRun(groupId: string): Promise<void> {
+  const key = groupSessionKey(groupId)
+  const stream = groupStreams.get(key)
+  const runId = stream?.runId ?? groupChats.value.find((group) => group.id === groupId)?.activeRunId
+  if (!runId) return
+  try {
+    await groupChatApi.abortRun(groupId, runId)
+  } catch {
+    /* 已结束或不可达：忽略，done 事件会收尾 */
+  }
+}
+
+async function detachGroupRun(groupId: string): Promise<void> {
+  const key = groupSessionKey(groupId)
+  const stream = groupStreams.get(key)
+  if (!stream) return
+  groupStreams.delete(key)
+  setChatRunning(key, false)
+  await stream.cancel()
+}
+
 async function stopCurrentTurn(): Promise<void> {
-  const chatId = activeChatId.value
-  if (!chatId) return
-  await stopTurn(chatId)
+  const key = activeSessionKey.value
+  if (!key) return
+  const kind = sessionKind(key)
+  const id = sessionRawId(key)
+  if (kind === 'agent') await stopTurn(id)
+  else if (kind === 'group') await stopGroupRun(id)
 }
 
 async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef }): Promise<void> {
+  if (activeChat.value) {
+    await sendAgentMessage(payload)
+    return
+  }
+  if (activeGroup.value) {
+    await sendGroupMessage(payload)
+  }
+}
+
+async function sendAgentMessage(payload: {
+  text: string
+  replyTo?: MessageReplyRef
+}): Promise<void> {
   const chat = activeChat.value
   if (!chat || streaming.value) return
 
   const chatId = chat.id
+  const key = agentSessionKey(chatId)
   const prompt = payload.text
   const userMessage: TextMessage = {
     id: `m-user-${Date.now()}`,
-    chatId,
+    chatId: key,
     kind: 'text',
     timestamp: new Date().toISOString(),
     sender: currentUserSender(),
@@ -1164,9 +1664,9 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
     ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
   }
 
-  appendMessage(chatId, userMessage)
+  appendMessage(key, userMessage)
   pendingReply.value = null
-  setChatRunning(chatId, true)
+  setChatRunning(key, true)
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
 
   let stream: AgentConverseStream | null = null
@@ -1192,7 +1692,7 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
   try {
     stream = await agentChatApi.converse(chatId, prompt, proxyHandlers)
     handlers = buildConverseHandlers(chat, stream.turnId)
-    turnStreams.set(chatId, stream)
+    turnStreams.set(key, stream)
     markChatActiveTurn(chatId, stream.turnId)
     for (const event of earlyEvents) handlers.onEvent(event)
     for (const message of earlyErrors) handlers.onError?.(message)
@@ -1200,18 +1700,89 @@ async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef })
     await stream.started
   } catch (err) {
     if (stream) {
-      turnStreams.delete(chatId)
-      setChatRunning(chatId, false)
+      turnStreams.delete(key)
+      setChatRunning(key, false)
       void reloadAfterStreamDrop(chatId)
       return
     }
-    removeMessage(chatId, userMessage.id)
-    if (activeChatId.value !== chatId) return
-    setChatRunning(chatId, false)
-    removeCurrentAgentRun(chatId)
+    removeMessage(key, userMessage.id)
+    if (activeSessionKey.value !== key) return
+    setChatRunning(key, false)
+    removeCurrentAgentRun(key)
     const message = err instanceof Error ? err.message : String(err)
     runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
-    appendSystemMessage(chatId, message)
+    appendSystemMessage(key, message)
+  }
+}
+
+async function sendGroupMessage(payload: {
+  text: string
+  replyTo?: MessageReplyRef
+}): Promise<void> {
+  const group = activeGroup.value
+  if (!group || streaming.value) return
+
+  const groupId = group.id
+  const key = groupSessionKey(groupId)
+  const prompt = payload.text
+  const userMessage: TextMessage = {
+    id: `m-user-${Date.now()}`,
+    chatId: key,
+    kind: 'text',
+    timestamp: new Date().toISOString(),
+    sender: currentUserSender(),
+    text: prompt,
+    ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
+  }
+
+  appendMessage(key, userMessage)
+  pendingReply.value = null
+  setChatRunning(key, true)
+  runtime.value = { ...idleRuntime(), phase: 'streaming', label: '启动群聊任务' }
+
+  let stream: GroupRunStream | null = null
+  let handlers: ReturnType<typeof buildGroupRunHandlers> | null = null
+  const earlyEvents: GroupRunEvent[] = []
+  const earlyErrors: string[] = []
+  let earlyDone = false
+  const proxyHandlers = {
+    onEvent(event: GroupRunEvent): void {
+      if (handlers) handlers.onEvent(event)
+      else earlyEvents.push(event)
+    },
+    onError(message: string): void {
+      if (handlers) handlers.onError?.(message)
+      else earlyErrors.push(message)
+    },
+    onDone(): void {
+      if (handlers) handlers.onDone?.()
+      else earlyDone = true
+    }
+  }
+
+  try {
+    stream = await groupChatApi.converse(groupId, { text: prompt }, proxyHandlers)
+    handlers = buildGroupRunHandlers(group, stream.runId)
+    groupStreams.set(key, stream)
+    markGroupActiveRun(groupId, stream.runId)
+    for (const event of earlyEvents) handlers.onEvent(event)
+    for (const message of earlyErrors) handlers.onError?.(message)
+    if (earlyDone) handlers.onDone?.()
+    await stream.started
+    await Promise.all([loadMessages(key, true), loadGroupBlackboard(groupId)])
+  } catch (err) {
+    if (stream) {
+      groupStreams.delete(key)
+      setChatRunning(key, false)
+      void reloadAfterGroupStreamDrop(groupId)
+      return
+    }
+    removeMessage(key, userMessage.id)
+    if (activeSessionKey.value !== key) return
+    setChatRunning(key, false)
+    const message = err instanceof Error ? err.message : String(err)
+    runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
+    appendSystemMessage(key, message)
   }
 }
 
@@ -1258,20 +1829,20 @@ function messageSenderName(msg: ChatDisplayMessage): string {
 }
 
 function onPinMessage(msg: ChatDisplayMessage): void {
-  const chatId = activeChatId.value
-  if (!chatId) return
+  const key = activeSessionKey.value
+  if (!key) return
   const next = messages.value.map((message) =>
     message.id === msg.id ? { ...message, pinned: !message.pinned } : message
   )
-  messageCache.set(chatId, next)
+  messageCache.set(key, next)
   messages.value = next
 }
 
 function onUnpinFromBar(msg: ChatDisplayMessage): void {
-  const chatId = activeChatId.value
-  if (!chatId) return
+  const key = activeSessionKey.value
+  if (!key) return
   const next = messages.value.map((m) => (m.id === msg.id ? { ...m, pinned: false } : m))
-  messageCache.set(chatId, next)
+  messageCache.set(key, next)
   messages.value = next
 }
 
@@ -1317,10 +1888,11 @@ onUnmounted(() => {
     <ChatList
       :style="{ width: `${chatListWidth}px` }"
       :chats="chats"
-      :active-chat-id="activeChatId"
+      :active-chat-id="activeSessionKey"
       :loading="chatsLoading"
       @select="selectChat"
       @create-chat="openCreateChatDialog"
+      @create-group-chat="openCreateGroupDialog"
       @toggle-pin="toggleChatPinned"
       @delete-chat="requestDeleteChat"
     />
@@ -1355,7 +1927,7 @@ onUnmounted(() => {
       />
       <MessageInput
         :reply-to="pendingReply"
-        :disabled="streaming || !activeChatId"
+        :disabled="streaming || !activeSessionKey"
         :streaming="streaming"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
@@ -1372,7 +1944,15 @@ onUnmounted(() => {
         @dragstart.prevent
       ></div>
     </div>
+    <GroupDetailPanel
+      v-if="activeGroup"
+      :style="{ width: `${inspectorWidth}px` }"
+      :group="activeGroup"
+      :blackboard="activeGroupBlackboard"
+      mode="inspector"
+    />
     <RightInspector
+      v-else
       :style="{ width: `${inspectorWidth}px` }"
       :network="[]"
       :chat="activeChat"
@@ -1385,6 +1965,11 @@ onUnmounted(() => {
       :load-error="agentsError"
       @close="createChatOpen = false"
       @created="onChatCreated"
+    />
+    <GroupChatCreateDialog
+      :open="createGroupOpen"
+      @close="createGroupOpen = false"
+      @created="onGroupCreated"
     />
     <ConfirmDialog
       :open="deleteChatConfirmOpen"

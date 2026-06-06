@@ -13,7 +13,7 @@ const isSelf = (): boolean =>
   <div v-if="isSelf()" class="flex justify-end space-x-3">
     <div class="flex flex-col items-end max-w-[70%]">
       <div
-        class="bg-primary text-white p-3 rounded-md rounded-tr-sm text-md leading-[22px] whitespace-pre-wrap break-words"
+        class="bg-primary text-white p-3 rounded-md rounded-tr-sm text-md font-medium whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"
@@ -36,7 +36,7 @@ const isSelf = (): boolean =>
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md leading-[22px] whitespace-pre-wrap break-words"
+        class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md font-medium whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"

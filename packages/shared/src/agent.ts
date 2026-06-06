@@ -135,7 +135,7 @@ export const VENDOR_CAPABILITIES: Record<AgentVendor, AgentCapabilities> = {
 /** vendor <-> provider type compatibility: claude<->anthropic; codex<->openai-*. */
 export function isVendorProviderCompatible(
   vendor: AgentVendor,
-  type: import('./provider').ProviderType
+  type: import('./provider.js').ProviderType
 ): boolean {
   return vendor === 'claude'
     ? type === 'anthropic'

@@ -5,6 +5,7 @@ import { RedisModule } from './redis/redis.module.js'
 import { HealthController } from './health/health.controller.js'
 import { HealthService } from './health/health.service.js'
 import { AgentsModule } from './multiagents/agents.module.js'
+import { GroupChatModule } from './multiagents/group/group-chat.module.js'
 import { UserModule } from './user/user.module.js'
 import { PlatformProviderModule } from './platform-provider/platform-provider.module.js'
 
@@ -25,13 +26,14 @@ import { PlatformProviderModule } from './platform-provider/platform-provider.mo
                 database: config.get<string>('MYSQL_DATABASE', 'agent_hub'),
                 autoLoadEntities: true,
                 synchronize: config.get<string>('NODE_ENV') !== 'production',
-                timezone: 'Z',
+                timezone: config.get<string>('MYSQL_TIMEZONE', '+08:00'),
                 charset: 'utf8mb4'
             })
         }),
         // Redis：用户模块的 token 黑名单依赖它（@Global，导出 REDIS_CLIENT）
         RedisModule,
         AgentsModule,
+        GroupChatModule,
         UserModule,
         PlatformProviderModule
     ],
