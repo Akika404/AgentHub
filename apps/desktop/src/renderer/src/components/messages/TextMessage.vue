@@ -13,7 +13,7 @@ const isSelf = (): boolean =>
   <div v-if="isSelf()" class="flex justify-end space-x-3">
     <div class="flex flex-col items-end max-w-[70%]">
       <div
-        class="bg-primary text-white p-3 rounded-xl rounded-tr-sm text-md font-medium whitespace-pre-wrap break-words"
+        class="bg-primary border border-white/20 text-white p-3 rounded-xl rounded-tr-sm text-md font-medium whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"
