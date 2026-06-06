@@ -155,14 +155,14 @@ export class CodexAdapter implements AgentAdapter {
         try {
             // 首次调用：开新 thread 或按 resumeId 续接；之后复用以维持对话上下文。
             // 放在 try 内，确保动态加载 / 建 thread 失败也能走到 done + 释放 busy。
-            // sandboxMode/approvalPolicy 本期固定为自动化全开（auto-approve），
-            // 交互审批留待 phase-2（届时映射 config.permissionMode → approvalPolicy）。
+            // 默认自动化全开；轻量/计划模式用只读沙箱，避免无意文件改动。
             if (!this.thread) {
                 const codex = this.ensureCodex()
                 const effort = mapEffort(this.config.reasoningEffort)
+                const readOnly = this.config.permissionMode === 'plan'
                 const threadOptions = {
                     model: this.config.model,
-                    sandboxMode: 'danger-full-access' as const,
+                    sandboxMode: readOnly ? ('read-only' as const) : ('danger-full-access' as const),
                     approvalPolicy: 'never' as const,
                     skipGitRepoCheck: true,
                     workingDirectory: this.config.workingDirectory,

@@ -168,6 +168,7 @@ export class ClaudeAdapter implements AgentAdapter {
             cwd: this.config.workingDirectory,
             model: this.config.model,
             allowedTools: this.config.allowedTools ?? DEFAULT_CLAUDE_TOOLS,
+            tools: this.config.allowedTools ?? { type: 'preset', preset: 'claude_code' },
             permissionMode,
             allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
             settingSources: ['user', 'project'],
