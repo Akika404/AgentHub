@@ -19,6 +19,7 @@ import BaseButton from './ui/BaseButton.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
+import { vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
@@ -214,7 +215,7 @@ async function onSubmit(): Promise<void> {
             <span class="min-w-0 flex-1">
               <span class="block truncate text-base font-medium">{{ agent.name }}</span>
               <span class="block truncate text-xs text-text-muted">
-                {{ agent.vendor }} / {{ agent.model }}
+                {{ vendorLabel(agent.vendor) }} / {{ agent.model }}
               </span>
             </span>
           </button>
@@ -230,7 +231,7 @@ async function onSubmit(): Promise<void> {
           <div>
             <label class="mb-1 block text-xs text-text-muted">Vendor</label>
             <BaseSelect v-model="form.orchestratorVendor">
-              <option v-for="v in VENDORS" :key="v" :value="v">{{ v }}</option>
+              <option v-for="v in VENDORS" :key="v" :value="v">{{ vendorLabel(v) }}</option>
             </BaseSelect>
           </div>
           <div>

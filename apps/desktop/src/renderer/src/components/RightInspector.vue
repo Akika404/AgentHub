@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { AgentChatView, AgentTodoItem, NetworkNode, NetworkNodeStatus } from '../api'
 import AgentAvatar from './AgentAvatar.vue'
+import { vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{
   network: NetworkNode[]
@@ -109,7 +110,7 @@ function todoLabel(status: AgentTodoItem['status']): string {
             <div class="min-w-0">
               <div class="text-md font-semibold text-text-main truncate">{{ chat.agent.name }}</div>
               <div class="text-sm text-text-muted truncate">
-                {{ chat.agent.vendor }} / {{ chat.agent.model }}
+                {{ vendorLabel(chat.agent.vendor) }} / {{ chat.agent.model }}
               </div>
             </div>
           </div>

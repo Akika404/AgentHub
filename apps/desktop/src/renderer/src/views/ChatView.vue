@@ -24,6 +24,7 @@ import { agentChatApi, type AgentConverseHandlers, type AgentConverseStream } fr
 import { groupChatApi, type GroupRunStream } from '../api/group-chats'
 import { authState } from '../stores/auth'
 import { groupMessageToDisplay, type GroupSenderMeta } from '../utils/groupMessage'
+import { vendorLabel } from '../utils/vendor'
 import {
   isAgentRunMessage,
   type AgentRunMessage,
@@ -260,7 +261,7 @@ function previewForChat(chat: AgentChatView): string {
     return '正在运行'
   }
   if (chat.lastTurnAt) return `最近 ${formatTime(chat.lastTurnAt)}`
-  return `${chat.agent.vendor} / ${chat.agent.model}`
+  return `${vendorLabel(chat.agent.vendor)} / ${chat.agent.model}`
 }
 
 function previewForGroup(group: GroupChatView): string {

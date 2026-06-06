@@ -11,6 +11,7 @@ import {
 } from '@agenthub/shared'
 import { ApiError, agentApi } from '../api'
 import { DEFAULT_AGENT_COLOR, createAvatarDataUrl, isHexColor } from '../utils/avatar'
+import { vendorLabel } from '../utils/vendor'
 import AgentAvatar from './AgentAvatar.vue'
 import Modal from './Modal.vue'
 import BaseInput from './ui/BaseInput.vue'
@@ -398,7 +399,7 @@ async function onSubmit(): Promise<void> {
         <div>
           <label class="block text-sm font-medium text-text-main mb-1.5">Vendor</label>
           <BaseSelect v-model="form.vendor">
-            <option v-for="v in VENDORS" :key="v" :value="v">{{ v }}</option>
+            <option v-for="v in VENDORS" :key="v" :value="v">{{ vendorLabel(v) }}</option>
           </BaseSelect>
         </div>
         <div>
@@ -410,7 +411,7 @@ async function onSubmit(): Promise<void> {
             </option>
           </BaseSelect>
           <p v-if="compatibleProviders.length === 0" class="text-xs text-text-muted mt-1">
-            没有与 {{ form.vendor }} 兼容的 Provider，请先在「设置」中添加。
+            没有与 {{ vendorLabel(form.vendor) }} 兼容的 Provider，请先在「设置」中添加。
           </p>
         </div>
       </div>
@@ -461,7 +462,7 @@ async function onSubmit(): Promise<void> {
         <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
           <span>System Prompt</span>
           <span v-if="!caps.supportsSystemPrompt" class="text-xs font-normal text-text-muted"
-            >{{ form.vendor }} 不支持</span
+            >{{ vendorLabel(form.vendor) }} 不支持</span
           >
         </label>
         <BaseTextarea
@@ -537,7 +538,7 @@ async function onSubmit(): Promise<void> {
         <label class="flex items-center justify-between text-sm font-medium text-text-main mb-1.5">
           <span>MCP Servers (JSON)</span>
           <span v-if="!caps.supportsMcp" class="text-xs font-normal text-text-muted"
-            >{{ form.vendor }} 不支持</span
+            >{{ vendorLabel(form.vendor) }} 不支持</span
           >
         </label>
         <BaseTextarea

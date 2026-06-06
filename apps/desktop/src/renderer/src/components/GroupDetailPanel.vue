@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { BlackboardTaskStatus, BlackboardView, GroupChatView, GroupMemberView } from '../api'
+import { vendorLabel } from '../utils/vendor'
 import AgentAvatar from './AgentAvatar.vue'
 import GroupAvatar from './GroupAvatar.vue'
 
@@ -26,7 +27,7 @@ const taskTone: Record<BlackboardTaskStatus, string> = {
 }
 
 function memberRole(member: GroupMemberView): string {
-  return member.roleInGroup?.trim() || `${member.vendor}`
+  return member.roleInGroup?.trim() || vendorLabel(member.vendor)
 }
 
 const isInspector = computed(() => props.mode === 'inspector')
@@ -191,7 +192,7 @@ const titleClass = computed(() => (isInspector.value ? 'text-lg' : 'text-xl'))
                 <div>
                   <div class="font-medium text-text-muted">Orchestrator</div>
                   <div class="mt-0.5 break-words text-text-main">
-                    {{ group.orchestrator.vendor }} / {{ group.orchestrator.model }}
+                    {{ vendorLabel(group.orchestrator.vendor) }} / {{ group.orchestrator.model }}
                   </div>
                 </div>
                 <div>

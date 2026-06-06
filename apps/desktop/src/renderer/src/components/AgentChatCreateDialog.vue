@@ -9,6 +9,7 @@ import BaseButton from './ui/BaseButton.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
+import { vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{
   open: boolean
@@ -95,12 +96,12 @@ function buildPayload(): CreateAgentChatPayload | string {
 
   const folders = parseList(form.skillSourceDirectories)
   if (folders.length) {
-    if (!agent.capabilities.supportsSkills) return `${agent.vendor} 不支持 skills`
+    if (!agent.capabilities.supportsSkills) return `${vendorLabel(agent.vendor)} 不支持 skills`
     payload.skillSourceDirectories = folders
   }
 
   if (form.mcpServers.trim()) {
-    if (!agent.capabilities.supportsMcp) return `${agent.vendor} 不支持 MCP`
+    if (!agent.capabilities.supportsMcp) return `${vendorLabel(agent.vendor)} 不支持 MCP`
     try {
       payload.mcpServers = JSON.parse(form.mcpServers) as Record<string, unknown>
     } catch {
@@ -145,7 +146,7 @@ async function onSubmit(): Promise<void> {
         <BaseSelect v-model="form.agentId" :disabled="loading || agents.length === 0">
           <option value="" disabled>请选择</option>
           <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-            {{ agent.name }} · {{ agent.vendor }} / {{ agent.model }}
+            {{ agent.name }} · {{ vendorLabel(agent.vendor) }} / {{ agent.model }}
           </option>
         </BaseSelect>
         <div
@@ -163,7 +164,7 @@ async function onSubmit(): Promise<void> {
               {{ selectedAgent.name }}
             </div>
             <div class="text-xs text-text-muted truncate">
-              {{ selectedAgent.vendor }} / {{ selectedAgent.model }}
+              {{ vendorLabel(selectedAgent.vendor) }} / {{ selectedAgent.model }}
             </div>
           </div>
         </div>
@@ -203,7 +204,7 @@ async function onSubmit(): Promise<void> {
             v-if="selectedAgent && !selectedAgent.capabilities.supportsSkills"
             class="text-xs font-normal text-text-muted"
           >
-            {{ selectedAgent.vendor }} 不支持
+            {{ vendorLabel(selectedAgent.vendor) }} 不支持
           </span>
         </label>
         <BaseInput
@@ -228,7 +229,7 @@ async function onSubmit(): Promise<void> {
             v-if="selectedAgent && !selectedAgent.capabilities.supportsMcp"
             class="text-xs font-normal text-text-muted"
           >
-            {{ selectedAgent.vendor }} 不支持
+            {{ vendorLabel(selectedAgent.vendor) }} 不支持
           </span>
         </label>
         <BaseTextarea
