@@ -68,7 +68,7 @@ describe('LlmOrchestratorPlanner', () => {
                 parsePlanObject(obj: unknown, req: unknown): {
                     tasks: unknown[]
                     note?: string
-                    memberMessages?: unknown[]
+                    memberTurns?: unknown[]
                 } | null
             }
         ).parsePlanObject({ tasks: [], note: '你好，欢迎来到计算器项目群。' }, req)
@@ -79,14 +79,13 @@ describe('LlmOrchestratorPlanner', () => {
         })
     })
 
-    test('accepts memberMessages for chat-only member replies', () => {
+    test('rejects orchestrator-drafted memberMessages', () => {
         const planner = makePlanner()
         const parsed = (
             planner as unknown as {
                 parsePlanObject(obj: unknown, req: unknown): {
                     tasks: unknown[]
                     note?: string
-                    memberMessages?: unknown[]
                 } | null
             }
         ).parsePlanObject(
@@ -101,34 +100,27 @@ describe('LlmOrchestratorPlanner', () => {
             req
         )
 
-        assert.deepEqual(parsed, {
-            tasks: [],
-            note: '欢迎，大家先简单认识一下。',
-            memberMessages: [
-                { agentId: 'a1', text: '你好，我是前端工程师，负责界面和交互实现。' },
-                { agentId: 'a2', text: '你好，我是产品经理，负责梳理需求和优先级。' }
-            ]
-        })
+        assert.equal(parsed, null)
     })
 
-    test('accepts memberMessages for lightweight product feedback without tasks', () => {
+    test('accepts memberTurns for lightweight member replies', () => {
         const planner = makePlanner()
         const parsed = (
             planner as unknown as {
                 parsePlanObject(obj: unknown, req: unknown): {
                     tasks: unknown[]
                     note?: string
-                    memberMessages?: unknown[]
+                    memberTurns?: unknown[]
                 } | null
             }
         ).parsePlanObject(
             {
                 tasks: [],
-                note: '这个问题更适合先让产品经理给一个判断。',
-                memberMessages: [
+                note: '我会让产品经理本人给一个判断。',
+                memberTurns: [
                     {
                         agentId: 'a2',
-                        text: '我觉得这里需要先确认目标用户和使用场景；如果只是基础计算器，当前设计可能偏复杂。'
+                        instruction: '从产品经理视角判断当前设计是否合理，并给出一句简短建议。'
                     }
                 ]
             },
@@ -144,13 +136,53 @@ describe('LlmOrchestratorPlanner', () => {
 
         assert.deepEqual(parsed, {
             tasks: [],
-            note: '这个问题更适合先让产品经理给一个判断。',
-            memberMessages: [
+            note: '我会让产品经理本人给一个判断。',
+            memberTurns: [
                 {
                     agentId: 'a2',
-                    text: '我觉得这里需要先确认目标用户和使用场景；如果只是基础计算器，当前设计可能偏复杂。'
+                    instruction: '从产品经理视角判断当前设计是否合理，并给出一句简短建议。'
                 }
             ]
+        })
+    })
+
+    test('accepts a real task for deliverable work', () => {
+        const planner = makePlanner()
+        const parsed = (
+            planner as unknown as {
+                parsePlanObject(obj: unknown, req: unknown): {
+                    tasks: unknown[]
+                    note?: string
+                    memberTurns?: unknown[]
+                } | null
+            }
+        ).parsePlanObject(
+            {
+                tasks: [
+                    {
+                        key: 't1',
+                        name: '编写需求说明',
+                        agentId: 'a2',
+                        deps: [],
+                        objective: '编写一份计算器需求说明文档。'
+                    }
+                ],
+                note: '我会让产品经理产出需求说明。'
+            },
+            req
+        )
+
+        assert.deepEqual(parsed, {
+            tasks: [
+                {
+                    key: 't1',
+                    name: '编写需求说明',
+                    agentId: 'a2',
+                    deps: [],
+                    objective: '编写一份计算器需求说明文档。'
+                }
+            ],
+            note: '我会让产品经理产出需求说明。'
         })
     })
 
@@ -190,21 +222,71 @@ describe('LlmOrchestratorPlanner', () => {
         assert.equal(parsed, null)
     })
 
-    test('rejects memberMessages that target an invalid member', () => {
+    test('rejects plans that mix tasks and memberTurns', () => {
         const planner = makePlanner()
         const parsed = (
             planner as unknown as {
                 parsePlanObject(obj: unknown, req: unknown): {
                     tasks: unknown[]
                     note?: string
-                    memberMessages?: unknown[]
+                    memberTurns?: unknown[]
+                } | null
+            }
+        ).parsePlanObject(
+            {
+                tasks: [
+                    {
+                        key: 't1',
+                        name: '编写需求说明',
+                        agentId: 'a2',
+                        deps: [],
+                        objective: '编写一份计算器需求说明文档。'
+                    }
+                ],
+                memberTurns: [{ agentId: 'a1', instruction: '打个招呼。' }]
+            },
+            req
+        )
+
+        assert.equal(parsed, null)
+    })
+
+    test('rejects memberTurns that target an invalid member', () => {
+        const planner = makePlanner()
+        const parsed = (
+            planner as unknown as {
+                parsePlanObject(obj: unknown, req: unknown): {
+                    tasks: unknown[]
+                    note?: string
+                    memberTurns?: unknown[]
+                } | null
+            }
+        ).parsePlanObject(
+            {
+                tasks: [],
+                note: '请大家说一句。',
+                memberTurns: [{ agentId: 'ghost', instruction: '打个招呼。' }]
+            },
+            req
+        )
+
+        assert.equal(parsed, null)
+    })
+
+    test('rejects memberMessages even if they target a valid member', () => {
+        const planner = makePlanner()
+        const parsed = (
+            planner as unknown as {
+                parsePlanObject(obj: unknown, req: unknown): {
+                    tasks: unknown[]
+                    note?: string
                 } | null
             }
         ).parsePlanObject(
             {
                 tasks: [],
                 note: '欢迎，大家先简单认识一下。',
-                memberMessages: [{ agentId: 'ghost', text: '你好。' }]
+                memberMessages: [{ agentId: 'a1', text: '你好。' }]
             },
             req
         )
