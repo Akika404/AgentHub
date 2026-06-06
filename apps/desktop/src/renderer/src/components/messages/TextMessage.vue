@@ -22,7 +22,7 @@ const isSelf = (): boolean =>
           <div class="font-semibold opacity-90">回复 {{ message.replyTo.senderName }}</div>
           <div class="opacity-80 line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
         </div>
-        {{ message.text }}
+        <span v-text="message.text"></span>
       </div>
       <span class="text-sm text-text-muted mt-1">{{ formatTime(message.timestamp) }}</span>
     </div>
@@ -45,7 +45,7 @@ const isSelf = (): boolean =>
           <div class="font-semibold text-text-main">回复 {{ message.replyTo.senderName }}</div>
           <div class="line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
         </div>
-        {{ message.text }}
+        <span v-text="message.text"></span>
       </div>
     </div>
   </div>

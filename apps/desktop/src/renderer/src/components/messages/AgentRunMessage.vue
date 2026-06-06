@@ -117,9 +117,10 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
             <span class="material-symbols-outlined text-lg">description</span>
             <span>计划</span>
           </div>
-          <div class="px-2.5 py-2 text-sm leading-[20px] whitespace-pre-wrap break-words text-text-main">
-            {{ planDoc }}
-          </div>
+          <div
+            class="px-2.5 py-2 text-sm leading-[20px] whitespace-pre-wrap break-words text-text-main"
+            v-text="planDoc"
+          ></div>
         </div>
 
         <div
@@ -239,9 +240,11 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
                 </span>
               </div>
 
-              <div v-if="step.text" class="mt-1.5 whitespace-pre-wrap break-words text-text-main">
-                {{ step.text }}
-              </div>
+              <div
+                v-if="step.text"
+                class="mt-1.5 whitespace-pre-wrap break-words text-text-main"
+                v-text="step.text"
+              ></div>
 
               <pre
                 v-if="stepInput(step)"
