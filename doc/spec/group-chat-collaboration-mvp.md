@@ -3,6 +3,8 @@
 > 本文是群聊功能的第一份落地 Spec，对应 [`doc/context/群聊上下文管理设计方案.md`](../context/群聊上下文管理设计方案.md) P0 的**最小可演示闭环**子集。
 > 后端模块位于 `apps/server/src/multiagents/`（与单聊同域，新增 group 子域）；桌面端入口为 `apps/desktop/src/renderer/src/views/`（群聊视图，复用现有 ChatView 体系）。
 > 设计前置：本 spec 复用单聊已有机制（`AgentSession` + turn 游离后台任务 + Redis Stream 多端围观），详见 [`agent-single-chat-spec.md`](../agent-single-chat-spec.md)。
+>
+> ⚠️ **后续增量**：本 spec 标注"留待第二份 spec"的 **DAG 并行调度 / 失败降级（重试 + `blocked` 连锁阻断）/ 冲突结构化上报 / Orchestrator 工具隔离** 已在 [`group-chat-orchestration-hardening.md`](./group-chat-orchestration-hardening.md) 实现。下文涉及"串行执行 / 失败即停 / 上报仅展示"的描述以该加固 spec 为准。
 
 ---
 
@@ -23,9 +25,11 @@
 
 ### 明确不在本 spec（留待第二份 spec）
 
-- DAG **并行**调度（本 spec 串行执行）。
-- 代码冲突的**检测 / 仲裁**（串行执行天然无并发冲突；worktree 合并机制本 spec 建立，冲突解决留后）。
-- **失败降级**的完整重试 / 挂起 / 连锁阻断策略（本 spec 仅做"失败即如实汇报并停在该任务"）。
+> ✅ 标记项已在 [`group-chat-orchestration-hardening.md`](./group-chat-orchestration-hardening.md) 实现。
+
+- ✅ DAG **并行**调度（本 spec 串行执行）。
+- ✅ 代码冲突的**检测 / 仲裁**（本 spec 仅建立 worktree 合并机制）——加固 spec 已做合并冲突结构化上报；语义冲突检测仍推迟。
+- ✅ **失败降级**的重试 / `blocked` 连锁阻断策略（本 spec 仅"失败即停在该任务"）。
 - Contract Watcher / Preflight 主动预检、MemoryManager、`open_issues` / `risks`、`context_trace` 可观测性、正式 ACL / 审批流 / Prompt Injection 系统化防护。
 
 ---
@@ -153,7 +157,7 @@ interface BlackboardTaskNode {
   name: string
   agentId: string | null               // 派给谁；拆解后由 Orchestrator 指定
   deps: string[]                        // 依赖任务 id
-  status: 'pending' | 'ready' | 'doing' | 'done' | 'failed'
+  status: 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked'  // 'blocked' 见加固 spec
   objective: string
 }
 
@@ -249,9 +253,9 @@ POST /group-chats/:id/converse { text, mentions }
 | 输入 | routeKind | 行为 |
 | --- | --- | --- |
 | `@SingleAgent <msg>` | `direct_single` | 走 ContinuityResolver 判 A/B/C → 直接派发该成员单任务（不强制全量拆解） |
-| `@A @B <msg>` | `multi` | 交 Orchestrator 轻量协调 → 顺序为 A、B 各派一个任务 |
-| `@Orchestrator <msg>` | `orchestrate` | 强制 Orchestrator 介入；任务消息生成计划，非任务消息直接回复；适合成员角色轻量回应时展示成员聊天气泡 |
-| `<msg>`（无 @） | `orchestrate` | 默认交 Orchestrator 判复杂度；任务消息分发，非任务消息直接回复；适合成员角色轻量回应时展示成员聊天气泡 |
+| `@A @B <msg>` | `multi` | 交 Orchestrator 轻量协调；需要交付时派任务，需要轻量聊天时走成员真实轻量 turn |
+| `@Orchestrator <msg>` | `orchestrate` | 强制 Orchestrator 介入；任务消息生成计划，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns` |
+| `<msg>`（无 @） | `orchestrate` | 默认交 Orchestrator 判复杂度；任务消息分发，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns` |
 
 `runGroup` 执行：
 
@@ -351,10 +355,10 @@ dispatch(groupId, task, mode):
 
 ## Known Limits
 
-- **串行执行**：本 spec 即便 task_graph 有可并行分支也按拓扑序逐个执行；DAG 并行调度留待第二份 spec。
-- **冲突仅"天然规避"**：依赖串行 + worktree 合并保证无并发冲突；真正的冲突**检测/仲裁**（含语义冲突）不在本轮。
-- **失败处理弱**：任务失败仅"如实汇报并停止后续派发"，无自动重试、无 blocked 连锁阻断、无降级到备选 Agent；留待第二份 spec。
-- **契约升级最小化**：触碰他人 `approvalRequired` 契约仅"拒绝写入 + 上报"，无 Preflight 主动预检、无 Contract Watcher 自动通知 consumers。
+- ~~**串行执行**~~ → **已升级 DAG 并行**：见 [`group-chat-orchestration-hardening.md`](./group-chat-orchestration-hardening.md)（并发上限 `GROUP_MAX_PARALLEL_TASKS`，同一 Agent 不并发双开）。
+- **冲突**：worktree 合并冲突 / 产出物版本冲突已升级为**结构化上报 + 停下问用户**（加固 spec）；语义冲突检测仍不在范围。
+- ~~**失败处理弱**~~ → **已升级**：任务失败重试 1 次，仍失败则其下游标 `blocked`、互不依赖任务继续（加固 spec）；降级到备选 Agent 仍未做。
+- **契约升级最小化**：触碰他人 `approvalRequired` 契约仅"拒绝写入 + 结构化上报"，无 Preflight 主动预检、无 Contract Watcher 自动通知 consumers，无 Orchestrator 自动派生配合任务。
 - **记忆治理弱**：仅轻量去重写入；无 confidence 排序、无随契约变更自动置 stale 的 MemoryManager。
 - **黑板对象裁剪**：本轮不含 `open_issues` / `risks`；artifacts 不含 hash/tags/dependencies。
 - **无可观测性**：不产出 `context_trace`（每次注入了哪些黑板 key/memory/artifact）；留待 P1。
@@ -367,7 +371,7 @@ dispatch(groupId, task, mode):
 
 > 本节在编码完成后补记（spec-kit 阶段 4 回顾），记录实现层面对 spec 的细化与有意偏差。
 
-- **Orchestrator Planner 默认调用大模型**：`OrchestratorPlanner` 接口 + `ORCHESTRATOR_PLANNER` 注入令牌已就位；默认绑定 `LlmOrchestratorPlanner`，使用群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划。问候/闲聊/状态询问/轻量评审/合理性咨询等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员；当适合由某个成员角色给出观点或问候时，可额外返回 `memberMessages`，以成员聊天气泡形式展示但仍不触发成员 turn。LLM 调用失败、输出 JSON 解析失败或指派给非群成员时，直接按上游错误处理，不静默降级成规则分派。自动化测试可覆盖注入令牌替换为假 Planner，以避免真实 LLM e2e 依赖。
+- **Orchestrator Planner 默认调用大模型**：`OrchestratorPlanner` 接口 + `ORCHESTRATOR_PLANNER` 注入令牌已就位；默认绑定 `LlmOrchestratorPlanner`，使用群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。LLM 调用失败、输出 JSON 解析失败或指派给非群成员时，直接按上游错误处理，不静默降级成规则分派。自动化测试可覆盖注入令牌替换为假 Planner，以避免真实 LLM e2e 依赖。
 - **成员能力摘要**：Agent 新增 `capabilitySummary` 配置字段，群聊成员视图和 Orchestrator prompt 会携带 `agentId/name/roleInGroup/capabilitySummary`，帮助 Orchestrator 在不读取完整 Agent system prompt 的情况下判断该把任务或轻量回复交给谁。
 - **成员 turn 复用方式**：成员 dispatch 未复用单聊 `AgentRuntimeService.startTurn`（其活跃锁/事件流按 session 粒度、且自带独立 turn-stream），而是**复用更底层的适配层**（`createAgent` + `agentToConfig` + `AgentMessageHistoryService.collectStep/saveSteps`）直接驱动成员 turn，事件经 `member_turn_event` 透传到群运行 Stream（`GroupRunStream`，按 `TurnStream` 范式新建、类型为 `GroupRunEvent`、锁粒度为「群」）。成员私有 L1 仍落 `agent_message` / `agent_message_step`。
 - **`report_completion` 落地**：成员不直接写库；turn 末尾输出 ```report``` JSON 块，dispatch 解析后**基于 git diff 代写黑板产出物**，并据 report 处理 decisions / contracts（owner 校验）/ memory_candidate（去重）。无 report 时回退为「以最终文本为摘要」。
