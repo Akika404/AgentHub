@@ -32,6 +32,7 @@ import { ContinuityResolver } from './routing/continuity-resolver.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { OrchestratorService } from './run/orchestrator.service.js'
 import { DispatchService } from './run/dispatch.service.js'
+import { MemberChatService } from './run/member-chat.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
 import { LlmOrchestratorPlanner, ORCHESTRATOR_PLANNER } from './run/orchestrator-planner.js'
 import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
@@ -81,6 +82,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         GroupRunStream,
         OrchestratorService,
         DispatchService,
+        MemberChatService,
         GroupRunExecutor,
         LlmOrchestratorPlanner,
         GroupDebugLogger,

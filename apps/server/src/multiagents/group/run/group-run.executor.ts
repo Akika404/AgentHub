@@ -3,7 +3,12 @@ import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
-import type { ConverseGroupPayload, GroupRouteKind } from '@agenthub/shared'
+import type {
+    BlackboardTaskNode,
+    BlackboardTaskStatus,
+    ConverseGroupPayload,
+    GroupRouteKind
+} from '@agenthub/shared'
 import { BusinessException } from '../../../common/index.js'
 import type { Agent } from '../../entities/agent.entity.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
@@ -14,9 +19,11 @@ import { MessageRouter } from '../routing/message-router.service.js'
 import { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupChatMember } from '../entities/group-chat-member.entity.js'
 import { GroupRun } from '../entities/group-run.entity.js'
-import { DispatchService } from './dispatch.service.js'
+import { DispatchService, type DispatchResult } from './dispatch.service.js'
+import { MemberChatService } from './member-chat.service.js'
 import { GroupRunStream } from './group-run-stream.service.js'
 import { OrchestratorService, type TaskOutcome } from './orchestrator.service.js'
+import { computeReady, markDownstreamBlocked } from './task-scheduler.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 interface MemberPair {
@@ -46,6 +53,7 @@ export class GroupRunExecutor implements OnModuleInit {
         private readonly continuity: ContinuityResolver,
         private readonly orchestrator: OrchestratorService,
         private readonly dispatch: DispatchService,
+        private readonly memberChat: MemberChatService,
         private readonly blackboard: BlackboardService,
         private readonly groupMessages: GroupMessageService,
         private readonly runStream: GroupRunStream,
@@ -340,7 +348,7 @@ export class GroupRunExecutor implements OnModuleInit {
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal
     ): Promise<boolean> {
-        const { nodes } = await this.orchestrator.plan({
+        const { nodes, memberTurns } = await this.orchestrator.plan({
             group,
             userId,
             runId,
@@ -355,17 +363,103 @@ export class GroupRunExecutor implements OnModuleInit {
             routeKind,
             mentionedAgentIds,
             userText,
-            nodes
+            nodes,
+            memberTurns
         })
+        if (memberTurns.length > 0) {
+            return this.runMemberTurns(group, userId, runId, memberTurns, byAgent, signal)
+        }
         if (nodes.length === 0) return true
 
-        const outcomes: TaskOutcome[] = []
-        let success = true
-        for (const node of nodes) {
-            if (signal.aborted) {
-                success = false
-                break
+        if (memberTurns.length > 0) {
+            return this.runMemberTurns(group, userId, runId, memberTurns, byAgent, signal)
+        }
+        if (nodes.length === 0) return true
+
+        return this.scheduleTaskGraph(group, userId, runId, nodes, byAgent, signal)
+    }
+
+    /**
+     * DAG 并行调度：按 deps 计算就绪集并发派发（上限 GROUP_MAX_PARALLEL_TASKS，默认 3），
+     * 同一 Agent 不并发双开（共享 AgentSession.workingDirectory）。单任务失败重试 1 次；
+     * 仍失败 → 标 failed 并把其传递下游标 blocked，互不依赖任务继续；遇冲突（escalation）
+     * 同样计 failed + 阻塞下游，最终由 orchestrator.report 在汇报里列出"需你决策"。
+     */
+    private async scheduleTaskGraph(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        nodes: BlackboardTaskNode[],
+        byAgent: Map<string, MemberPair>,
+        signal: AbortSignal
+    ): Promise<boolean> {
+        const maxParallel = this.maxParallelTasks()
+        const statusById = new Map<string, BlackboardTaskStatus>(nodes.map((n) => [n.id, n.status]))
+        const nodeById = new Map(nodes.map((n) => [n.id, n]))
+        const outcomesById = new Map<string, TaskOutcome>()
+        const busyAgents = new Set<string>()
+        const inFlight = new Map<string, Promise<void>>()
+
+        const setStatus = async (
+            taskId: string,
+            status: BlackboardTaskStatus,
+            agentId: string | null
+        ): Promise<void> => {
+            statusById.set(taskId, status)
+            await this.blackboard.setTaskStatus(group.id, taskId, status)
+            await this.runStream.publish(runId, {
+                type: 'task_status',
+                runId,
+                taskId,
+                status,
+                agentId
+            })
+        }
+
+        const failNode = async (
+            node: BlackboardTaskNode,
+            summary: string,
+            escalation: DispatchResult['escalation'],
+            agentId: string | null
+        ): Promise<void> => {
+            await setStatus(node.id, 'failed', agentId)
+            outcomesById.set(node.id, {
+                name: node.name,
+                summary,
+                success: false,
+                status: 'failed',
+                ...(escalation ? { escalation } : {})
+            })
+            const blockedIds = markDownstreamBlocked([...nodeById.values()], node.id, statusById)
+            for (const id of blockedIds) {
+                const child = nodeById.get(id)
+                if (!child) continue
+                await this.blackboard.setTaskStatus(group.id, id, 'blocked')
+                await this.runStream.publish(runId, {
+                    type: 'task_status',
+                    runId,
+                    taskId: id,
+                    status: 'blocked',
+                    agentId: child.agentId ?? null
+                })
+                outcomesById.set(id, {
+                    name: child.name,
+                    summary: '上游任务失败，未执行',
+                    success: false,
+                    status: 'blocked'
+                })
             }
+            this.debug.log('group.run.orchestrated.task_failed', {
+                groupId: group.id,
+                runId,
+                taskId: node.id,
+                summary,
+                escalation,
+                blockedDownstream: blockedIds
+            })
+        }
+
+        const runOne = async (node: BlackboardTaskNode): Promise<void> => {
             const pair = node.agentId ? byAgent.get(node.agentId) : undefined
             if (!pair) {
                 this.debug.log('group.run.orchestrated.missing_member', {
@@ -373,20 +467,149 @@ export class GroupRunExecutor implements OnModuleInit {
                     runId,
                     task: node
                 })
-                await this.blackboard.setTaskStatus(group.id, node.id, 'failed')
-                outcomes.push({ name: node.name, summary: '无可用成员', success: false })
+                await failNode(node, '无可用成员', undefined, node.agentId ?? null)
+                return
+            }
+            await setStatus(node.id, 'doing', pair.agent.id)
+            const result = await this.dispatchWithRetry(group, userId, runId, node, pair, signal)
+            if (result.success) {
+                await setStatus(node.id, 'done', pair.agent.id)
+                outcomesById.set(node.id, {
+                    name: node.name,
+                    summary: result.summary,
+                    success: true,
+                    status: 'done'
+                })
+            } else {
+                await failNode(node, result.summary, result.escalation, pair.agent.id)
+            }
+        }
+
+        while (!signal.aborted) {
+            for (const node of computeReady(nodes, statusById)) {
+                if (inFlight.size >= maxParallel) break
+                if (node.agentId && busyAgents.has(node.agentId)) continue
+                if (node.agentId) busyAgents.add(node.agentId)
+                statusById.set(node.id, 'doing') // 同步占位，防同一轮重复挑选
+                const p = (async () => {
+                    try {
+                        await runOne(node)
+                    } finally {
+                        if (node.agentId) busyAgents.delete(node.agentId)
+                        inFlight.delete(node.id)
+                    }
+                })()
+                inFlight.set(node.id, p)
+            }
+            if (inFlight.size === 0) break
+            await Promise.race(inFlight.values())
+        }
+        await Promise.allSettled([...inFlight.values()])
+
+        const outcomes = nodes
+            .map((n) => outcomesById.get(n.id))
+            .filter((o): o is TaskOutcome => o !== undefined)
+        await this.orchestrator.report(group, userId, runId, outcomes)
+        this.debug.log('group.run.orchestrated.scheduled', {
+            groupId: group.id,
+            runId,
+            maxParallel,
+            aborted: signal.aborted,
+            outcomes
+        })
+        return !signal.aborted && outcomes.length > 0 && outcomes.every((o) => o.status === 'done')
+    }
+
+    /** 派发单任务，失败（非冲突、非中止）时重试 1 次。 */
+    private async dispatchWithRetry(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        node: BlackboardTaskNode,
+        pair: MemberPair,
+        signal: AbortSignal
+    ): Promise<DispatchResult> {
+        const first = await this.dispatchTask(group, userId, runId, node, pair, signal)
+        if (first.success || first.escalation || signal.aborted) return first
+        this.debug.log('group.run.orchestrated.retry', {
+            groupId: group.id,
+            runId,
+            taskId: node.id,
+            agentId: pair.agent.id,
+            firstSummary: first.summary
+        })
+        return this.dispatchTask(group, userId, runId, node, pair, signal)
+    }
+
+    private async dispatchTask(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        node: BlackboardTaskNode,
+        pair: MemberPair,
+        signal: AbortSignal
+    ): Promise<DispatchResult> {
+        const continuity = await this.continuity.resolve(group.id, pair.agent.id, node.objective)
+        this.debug.log('group.run.orchestrated.dispatch_decision', {
+            groupId: group.id,
+            runId,
+            task: node,
+            agent: {
+                agentId: pair.agent.id,
+                name: pair.agent.name,
+                vendor: pair.agent.vendor,
+                model: pair.agent.model,
+                roleInGroup: pair.member.roleInGroup
+            },
+            continuity
+        })
+        return this.dispatch.dispatch({
+            group,
+            userId,
+            runId,
+            taskId: node.id,
+            taskName: node.name,
+            objective: node.objective,
+            agent: pair.agent,
+            member: pair.member,
+            continuity,
+            signal
+        })
+    }
+
+    private maxParallelTasks(): number {
+        const raw = Number(this.config.get<string>('GROUP_MAX_PARALLEL_TASKS', '3'))
+        return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 3
+    }
+
+    private async runMemberTurns(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        memberTurns: Array<{ agentId: string; instruction: string }>,
+        byAgent: Map<string, MemberPair>,
+        signal: AbortSignal
+    ): Promise<boolean> {
+        let success = true
+        for (const turn of memberTurns) {
+            if (signal.aborted) {
                 success = false
                 break
             }
-            const continuity = await this.continuity.resolve(
-                group.id,
-                pair.agent.id,
-                node.objective
-            )
-            this.debug.log('group.run.orchestrated.dispatch_decision', {
+            const pair = byAgent.get(turn.agentId)
+            if (!pair) {
+                this.debug.log('group.run.member_turn.missing_member', {
+                    groupId: group.id,
+                    runId,
+                    turn
+                })
+                await this.groupMessages.appendSystem(group.id, userId, `成员 ${turn.agentId} 不在本群。`)
+                success = false
+                break
+            }
+            this.debug.log('group.run.member_turn.dispatch', {
                 groupId: group.id,
                 runId,
-                task: node,
                 agent: {
                     agentId: pair.agent.id,
                     name: pair.agent.name,
@@ -394,45 +617,27 @@ export class GroupRunExecutor implements OnModuleInit {
                     model: pair.agent.model,
                     roleInGroup: pair.member.roleInGroup
                 },
-                continuity
+                instruction: turn.instruction
             })
-            await this.blackboard.setTaskStatus(group.id, node.id, 'doing')
-            await this.runStream.publish(runId, {
-                type: 'task_status',
-                runId,
-                taskId: node.id,
-                status: 'doing',
-                agentId: pair.agent.id
-            })
-            const result = await this.dispatch.dispatch({
+            const result = await this.memberChat.chat({
                 group,
                 userId,
                 runId,
-                taskId: node.id,
-                taskName: node.name,
-                objective: node.objective,
+                instruction: turn.instruction,
                 agent: pair.agent,
                 member: pair.member,
-                continuity,
                 signal
             })
-            const status = result.success ? 'done' : 'failed'
-            await this.blackboard.setTaskStatus(group.id, node.id, status)
-            await this.runStream.publish(runId, {
-                type: 'task_status',
-                runId,
-                taskId: node.id,
-                status,
-                agentId: pair.agent.id
-            })
-            outcomes.push({ name: node.name, summary: result.summary, success: result.success })
             if (!result.success) {
                 success = false
-                break // 失败即停止后续派发（最小降级）
+                break
             }
         }
-
-        await this.orchestrator.report(group, userId, runId, outcomes)
+        this.debug.log('group.run.member_turns.finished', {
+            groupId: group.id,
+            runId,
+            success
+        })
         return success
     }
 

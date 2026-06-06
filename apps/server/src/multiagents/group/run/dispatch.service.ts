@@ -62,9 +62,17 @@ export interface DispatchParams {
     signal: AbortSignal
 }
 
+/** 派发收尾时需要 Orchestrator/用户裁决的冲突（受保护契约 / 工作区合并 / 产出物版本）。 */
+export interface DispatchEscalation {
+    kind: 'contract' | 'merge'
+    detail: string
+}
+
 export interface DispatchResult {
     success: boolean
     summary: string
+    /** 存在时表示遇冲突需停下问用户；executor 据此把任务计 failed 并阻塞下游。 */
+    escalation?: DispatchEscalation
 }
 
 const REPORT_INSTRUCTION = `
@@ -147,6 +155,12 @@ export class DispatchService {
             promptChars: assembled.debug.promptChars
         })
 
+        // #5 乐观锁基线：派发前快照各产出物版本，writeback 时带 based_on_version，
+        // 以检测并行任务对同一产出物的 clobber（版本不符 → 冲突上报，不静默覆盖）。
+        const versionsBefore = new Map<string, number>()
+        const stateBefore = await this.blackboard.getState(group.id)
+        for (const a of stateBefore.artifacts) versionsBefore.set(a.path, a.version)
+
         // 2. worktree + 成员会话
         const worktree = await this.workspace.createTaskWorktree(
             group.id,
@@ -203,6 +217,7 @@ export class DispatchService {
 
         // 4. 收口：git → 黑板；成功才提交/合并，失败仅清理 worktree
         const updates: BlackboardUpdate[] = []
+        const escalations: DispatchEscalation[] = []
         if (!fatal) {
             try {
                 const changed = await this.workspace.diffArtifacts(group.id, taskId)
@@ -215,20 +230,45 @@ export class DispatchService {
                 })
                 for (const file of changed) {
                     if (file.status === 'D') continue
-                    const artifact = await this.blackboard.upsertArtifact(group.id, {
-                        path: file.path,
-                        type: this.artifactType(file.path),
-                        summary: summary,
-                        ownerAgentId: agent.id,
-                        updatedByAgentId: agent.id,
-                        status: 'draft'
-                    })
-                    updates.push({
-                        kind: 'artifact',
-                        targetId: artifact.id,
-                        op: artifact.version === 1 ? 'created' : 'updated',
-                        summary: `${file.path} -> v${artifact.version}`
-                    })
+                    try {
+                        const artifact = await this.blackboard.upsertArtifact(
+                            group.id,
+                            {
+                                path: file.path,
+                                type: this.artifactType(file.path),
+                                summary: summary,
+                                ownerAgentId: agent.id,
+                                updatedByAgentId: agent.id,
+                                status: 'draft'
+                            },
+                            versionsBefore.get(file.path)
+                        )
+                        updates.push({
+                            kind: 'artifact',
+                            targetId: artifact.id,
+                            op: artifact.version === 1 ? 'created' : 'updated',
+                            summary: `${file.path} -> v${artifact.version}`
+                        })
+                    } catch (err) {
+                        if (this.isBlackboardConflict(err)) {
+                            const detail = `产出物 ${file.path} 版本冲突（已被其它任务更新），需重读后重写`
+                            escalations.push({ kind: 'merge', detail })
+                            await this.blackboard
+                                .appendEvent(group.id, {
+                                    kind: 'artifact',
+                                    targetId: file.path,
+                                    op: 'rejected',
+                                    summary: detail,
+                                    actorAgentId: agent.id
+                                })
+                                .catch(() => undefined)
+                            this.logger.warn(`Artifact version conflict on ${file.path}`)
+                        } else {
+                            this.logger.error(
+                                `Artifact writeback failed for ${file.path}: ${this.errMsg(err)}`
+                            )
+                        }
+                    }
                 }
             } catch (err) {
                 this.logger.error(`Artifact writeback failed: ${this.errMsg(err)}`)
@@ -237,12 +277,23 @@ export class DispatchService {
         try {
             await this.workspace.mergeTaskWorktree(group.id, taskId, group.workspaceDir)
         } catch (err) {
+            const detail = `任务「${params.taskName}」工作区合并冲突：${this.errMsg(err)}`
             this.logger.error(`Merge/cleanup failed for task ${taskId}: ${this.errMsg(err)}`)
+            escalations.push({ kind: 'merge', detail })
+            await this.blackboard
+                .appendEvent(group.id, {
+                    kind: 'task',
+                    targetId: taskId,
+                    op: 'rejected',
+                    summary: detail,
+                    actorAgentId: agent.id
+                })
+                .catch(() => undefined)
         }
 
         // 5. 处理成员报告（仅成功时）
         if (!fatal) {
-            await this.applyReport(params, report, updates)
+            await this.applyReport(params, report, updates, escalations)
         }
 
         for (const update of updates) {
@@ -260,7 +311,16 @@ export class DispatchService {
         await this.groupMessages.appendText(group.id, userId, 'agent', summary, agent.id)
         await this.writeHotBuffer(params, summary, updates)
 
-        const result = { success: !fatal, summary: fatal ? `失败：${fatal}` : summary }
+        const escalation = this.foldEscalations(escalations)
+        const result: DispatchResult = {
+            success: !fatal && !escalation,
+            summary: fatal
+                ? `失败：${fatal}`
+                : escalation
+                  ? `需决策：${escalation.detail}`
+                  : summary,
+            ...(escalation ? { escalation } : {})
+        }
         this.debug.log('group.dispatch.finished', {
             groupId: group.id,
             runId,
@@ -397,7 +457,8 @@ export class DispatchService {
     private async applyReport(
         params: DispatchParams,
         report: MemberReport,
-        updates: BlackboardUpdate[]
+        updates: BlackboardUpdate[],
+        escalations: DispatchEscalation[]
     ): Promise<void> {
         const { group, userId, agent } = params
         this.debug.log('group.dispatch.apply_report', {
@@ -416,10 +477,12 @@ export class DispatchService {
                 agent.id
             )
             if (!check.allowed) {
+                const detail = `成员 ${agent.name} 试图修改受保护契约 ${contract.contractKey}（owner=${check.ownerAgentId}），已拒绝`
+                escalations.push({ kind: 'contract', detail })
                 await this.groupMessages.appendSystem(
                     group.id,
                     userId,
-                    `成员 ${agent.name} 试图修改受保护契约 ${contract.contractKey}（owner=${check.ownerAgentId}），已拒绝并上报 Orchestrator。`
+                    `${detail}并上报 Orchestrator。`
                 )
                 await this.blackboard.appendEvent(group.id, {
                     kind: 'contract',
@@ -627,6 +690,19 @@ export class DispatchService {
         if (/test|spec/.test(lower)) return 'test_report'
         if (/\.(png|svg|fig|sketch)$/.test(lower)) return 'design'
         return 'code'
+    }
+
+    private isBlackboardConflict(err: unknown): boolean {
+        return this.errMsg(err).includes('BLACKBOARD_CONFLICT')
+    }
+
+    /** 多个冲突合并为一条上报：有合并/版本冲突优先按 merge，否则 contract；明细拼接。 */
+    private foldEscalations(escalations: DispatchEscalation[]): DispatchEscalation | undefined {
+        if (escalations.length === 0) return undefined
+        const kind: DispatchEscalation['kind'] = escalations.some((e) => e.kind === 'merge')
+            ? 'merge'
+            : 'contract'
+        return { kind, detail: escalations.map((e) => e.detail).join('；') }
     }
 
     private errMsg(err: unknown): string {

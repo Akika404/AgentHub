@@ -9,8 +9,10 @@ import { GroupRunStream } from './group-run-stream.service.js'
 import {
     ORCHESTRATOR_PLANNER,
     type OrchestratorPlanner,
-    type OrchestratorContext
+    type OrchestratorContext,
+    type PlanMemberTurn
 } from './orchestrator-planner.js'
+import type { DispatchEscalation } from './dispatch.service.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 export interface OrchestratorPlanParams {
@@ -26,18 +28,23 @@ export interface OrchestratorPlanParams {
 export interface OrchestratorPlanResult {
     nodes: BlackboardTaskNode[]
     note?: string
+    memberTurns: PlanMemberTurn[]
 }
 
 export interface TaskOutcome {
     name: string
     summary: string
     success: boolean
+    status: 'done' | 'failed' | 'blocked'
+    /** 存在时表示该任务遇冲突需用户裁决，汇报里单列"需你决策"。 */
+    escalation?: DispatchEscalation
 }
 
 /**
  * OrchestratorService — 独立内置编排角色：用群配置 vendor/model + 内置 prompt 产计划
  *（经可注入 OrchestratorPlanner）。任务消息写黑板 task_graph + 发 task-list；
- * 非任务消息只发 Orchestrator/成员文本回复。
+ * 非任务消息只发 Orchestrator 文本回复；成员消息必须来自真实成员 turn。
+ * 轻量成员聊天返回 memberTurns，不写黑板 task_graph。
  */
 @Injectable()
 export class OrchestratorService {
@@ -97,18 +104,6 @@ export class OrchestratorService {
         if (plan.tasks.length === 0) {
             const note = plan.note?.trim() || '收到。'
             await this.groupMessages.appendText(group.id, userId, 'orchestrator', note)
-            const validMemberIds = new Set(members.map(({ agent }) => agent.id))
-            for (const message of plan.memberMessages ?? []) {
-                const text = message.text.trim()
-                if (!validMemberIds.has(message.agentId) || !text) continue
-                await this.groupMessages.appendText(
-                    group.id,
-                    userId,
-                    'agent',
-                    text,
-                    message.agentId
-                )
-            }
             await this.runStream.publish(runId, {
                 type: 'orchestrator_report',
                 runId,
@@ -120,9 +115,9 @@ export class OrchestratorService {
                 routeKind,
                 mentionedAgentIds,
                 note,
-                memberMessages: plan.memberMessages ?? []
+                memberTurns: plan.memberTurns ?? []
             })
-            return { nodes: [], note: plan.note }
+            return { nodes: [], note: plan.note, memberTurns: plan.memberTurns ?? [] }
         }
 
         const nodes = await this.blackboard.upsertTaskGraph(
@@ -134,7 +129,8 @@ export class OrchestratorService {
                 agentId: t.agentId,
                 deps: t.deps,
                 objective: t.objective,
-                status: 'ready'
+                // 无依赖即就绪可派发；有依赖先 pending，待 DAG 调度器解锁
+                status: t.deps.length === 0 ? 'ready' : 'pending'
             }))
         )
 
@@ -171,7 +167,7 @@ export class OrchestratorService {
             note: plan.note
         })
 
-        return { nodes, note: plan.note }
+        return { nodes, note: plan.note, memberTurns: [] }
     }
 
     /** 聚合各成员产出，生成 text 汇报消息发到 presentation_log + 推 orchestrator_report。 */
@@ -181,15 +177,27 @@ export class OrchestratorService {
         runId: string,
         outcomes: TaskOutcome[]
     ): Promise<string> {
-        const allOk = outcomes.every((o) => o.success)
+        const done = outcomes.filter((o) => o.status === 'done').length
+        const failed = outcomes.filter((o) => o.status === 'failed')
+        const blocked = outcomes.filter((o) => o.status === 'blocked')
+        const escalated = outcomes.filter((o) => o.escalation)
         const head =
             outcomes.length === 0
                 ? '本轮没有产生任务。'
-                : allOk
+                : failed.length === 0 && blocked.length === 0
                   ? '本轮任务已全部完成：'
-                  : '本轮任务部分完成（遇失败已停止后续派发）：'
-        const lines = outcomes.map((o) => `- ${o.success ? '✅' : '❌'} ${o.name}：${o.summary}`)
-        const text = [head, ...lines].join('\n')
+                  : `本轮任务部分完成（${done} 成功 / ${failed.length} 失败 / ${blocked.length} 阻塞）：`
+        const icon = (o: TaskOutcome): string =>
+            o.status === 'done' ? '✅' : o.status === 'blocked' ? '⏸️' : '❌'
+        const lines = outcomes.map((o) => `- ${icon(o)} ${o.name}：${o.summary}`)
+        const parts = [head, ...lines]
+        if (escalated.length > 0) {
+            parts.push('', '⚠️ 需你决策（已停止相关派发，请裁决后重新发起）：')
+            for (const o of escalated) {
+                parts.push(`- ${o.name}：${o.escalation?.detail ?? o.summary}`)
+            }
+        }
+        const text = parts.join('\n')
         await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
         await this.runStream.publish(runId, { type: 'orchestrator_report', runId, text })
         this.debug.log('group.orchestrator.report', {

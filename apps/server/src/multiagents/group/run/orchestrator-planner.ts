@@ -39,10 +39,11 @@ export interface PlanTask {
     objective: string
 }
 
-export interface PlanMemberMessage {
-    /** 以该成员身份展示的纯聊天消息，不代表实际执行成员 turn。 */
+export interface PlanMemberTurn {
+    /** 要真实调用的成员 Agent id。 */
     agentId: string
-    text: string
+    /** 给该成员的轻量聊天指令；不会创建黑板任务或工作区产出。 */
+    instruction: string
 }
 
 export interface OrchestratorPlan {
@@ -50,8 +51,8 @@ export interface OrchestratorPlan {
     tasks: PlanTask[]
     /** 给用户的开场说明（可空） */
     note?: string
-    /** 非任务成员回复，可让成员以聊天气泡形式出现；不写黑板、不派发成员。 */
-    memberMessages?: PlanMemberMessage[]
+    /** 真实成员轻量聊天 turn；不写黑板 task，不走 worktree/report/diff。 */
+    memberTurns?: PlanMemberTurn[]
 }
 
 export interface PlanRequest {
@@ -81,16 +82,18 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrato
 你的职责：理解用户意图，判断复杂度；需要实际产出或行动时，把任务拆解并指派给最合适的成员 Agent。
 铁律：
 - 你不亲自写代码/产出物。
-- 问候、感谢、闲聊、状态询问、设计/产品/技术合理性咨询、轻量评审、澄清讨论等无需成员执行工具或产出文件的消息，只返回空 tasks，并用 note / memberMessages 回复；不要为这类消息创建任务。
-- 如果用户明确要求"大家/你们/群成员打招呼、介绍一下、出来认识一下"，或用户在咨询某个成员角色适合回答的问题（例如产品经理评估设计是否合理、前端工程师说明交互实现取舍），返回空 tasks、note，以及相关 memberMessages；每个 memberMessages 项代表一个成员的简短聊天气泡，不是任务。
+- 问候、感谢、闲聊、状态询问、澄清讨论等无需成员执行工具或产出文件的消息，只返回空 tasks，并用 note 以 Orchestrator 身份回复；不要为这类消息创建任务。
+- 不允许代替成员 Agent 发言；只有真实派发给成员并完成成员 turn 后，才能出现成员身份的消息。
 - 只有当用户要求创建/修改文件、实现功能、产出文档、执行命令、检查工作区或完成可交付事项时，才创建 tasks。
+- 如果用户咨询某个成员角色适合回答的问题，或明确要求成员本人打招呼/介绍/表达观点，但无需工具或产出文件，应返回 tasks: [] 并创建 memberTurns，让成员真实轻量回复；不要创建黑板任务。
 - 面向黑板协作，不臆造未提供的事实。
 - 只能指派给给定的成员 Agent（用其 agentId）。
 - 输出必须是一个 JSON 对象，且只输出该 JSON（不要额外解释），形如：
 {"tasks":[{"key":"t1","name":"任务名","agentId":"<成员agentId>","deps":[],"objective":"该成员要达成的具体目标"}],"note":"给用户的一句话说明"}
 - 非任务消息形如：{"tasks":[],"note":"给用户的直接回复"}。
-- 成员纯聊天消息形如：{"tasks":[],"note":"我请相关成员先给一个判断。","memberMessages":[{"agentId":"<成员agentId>","text":"一句简短观点、建议或问候"}]}。
-- 简单任务用单个 task；复杂任务拆成多个 task（本期串行执行，deps 仅表达顺序）。`
+- 成员轻量聊天形如：{"tasks":[],"note":"我请大家分别说一句。","memberTurns":[{"agentId":"<成员agentId>","instruction":"请以你的角色向大家打个招呼，用一句话介绍自己。"}]}。
+- tasks 和 memberTurns 不要同时出现；需要实际产出时用 tasks，需要真实成员轻量发言时用 memberTurns。
+- 简单任务用单个 task；复杂任务拆成多个 task：deps 表达**真实依赖**——无依赖的任务会并行执行，有依赖的任务等其依赖完成后才执行。请按真实先后关系填 deps，互不依赖的任务 deps 留空以便并行。`
 
 /**
  * LlmOrchestratorPlanner — 用群配置的 vendor/model + 内置编排 prompt 跑一轮 LLM 产计划。
@@ -154,15 +157,19 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         const home = this.workspace.memberHomeDir(req.group.id, 'orchestrator')
         await this.agentWorkspace.ensureAgentHomeDirectory(req.group.orchestratorVendor, home)
 
+        // Orchestrator 只产 JSON 计划，不该读写真实仓库：禁用全部工具、plan 权限模式、
+        // cwd 指向 worktree 外的 home scratch（隔离掉直写共享仓库的风险）。
         const config: AgentAdapterConfig = {
             id: `orch-${req.group.id}`,
             model: req.group.orchestratorModel,
             agentHomeDirectory: home,
-            workingDirectory: this.workspace.repoDir(req.group.id, req.group.workspaceDir),
+            workingDirectory: home,
             apiKey: provider.apiKey,
             baseUrl: provider.baseUrl,
+            reasoningEffort: "minimal",
             systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
-            permissionMode: 'bypassPermissions'
+            allowedTools: [],
+            permissionMode: 'plan'
         }
         const adapter = createAgent(req.group.orchestratorVendor, config)
         const prompt = this.buildPrompt(req)
@@ -255,7 +262,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                         additionalProperties: false
                     }
                 },
-                memberMessages: {
+                memberTurns: {
                     type: 'array',
                     items: {
                         type: 'object',
@@ -264,9 +271,9 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                                 type: 'string',
                                 ...(memberIds.length > 0 ? { enum: memberIds } : {})
                             },
-                            text: { type: 'string' }
+                            instruction: { type: 'string' }
                         },
-                        required: ['agentId', 'text'],
+                        required: ['agentId', 'instruction'],
                         additionalProperties: false
                     }
                 },
@@ -292,7 +299,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             `路由来源：${req.routeKind}`,
             `用户显式提及的成员 agentId：${mentioned}`,
             `用户消息：${req.userText}`,
-            '请按结构化输出 schema 返回计划；如果用户只是问候、闲聊、询问状态、征求设计/产品/技术观点或做轻量评审，请返回空 tasks，并用 note / memberMessages 直接回复；只有需要实际产出或修改时才创建 tasks。'
+            '请按结构化输出 schema 返回计划；如果用户只是问候、闲聊、询问状态或澄清讨论，请返回空 tasks，并用 note 以 Orchestrator 身份直接回复。不要代替成员发言；如果需要真实成员轻量回答但无需工具/文件产出，请返回 memberTurns；只有需要实际产出/修改时才创建 tasks。'
         ].join('\n\n')
     }
 
@@ -310,6 +317,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
 
     private parsePlanObject(obj: unknown, req: PlanRequest): OrchestratorPlan | null {
         if (typeof obj !== 'object' || obj === null) return null
+        if ('memberMessages' in obj) return null
         const rawTasks = (obj as { tasks?: unknown }).tasks
         if (!Array.isArray(rawTasks)) return null
         const memberIds = new Set(req.context.memberStatus.map((m) => m.agentId))
@@ -327,45 +335,43 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                 objective: typeof rec.objective === 'string' ? rec.objective : req.userText
             })
         })
-        const rawMemberMessages = (obj as { memberMessages?: unknown }).memberMessages
-        const parsedMemberMessages = this.parseMemberMessages(rawMemberMessages, memberIds)
-        if (rawMemberMessages !== undefined && !parsedMemberMessages) {
-            return null
-        }
-        const memberMessages = parsedMemberMessages ?? []
         const note =
             typeof (obj as { note?: unknown }).note === 'string'
                 ? (obj as { note: string }).note
                 : undefined
+        const rawMemberTurns = (obj as { memberTurns?: unknown }).memberTurns
+        const parsedMemberTurns = this.parseMemberTurns(rawMemberTurns, memberIds)
+        if (rawMemberTurns !== undefined && !parsedMemberTurns) {
+            return null
+        }
+        const memberTurns = parsedMemberTurns ?? []
+        if (tasks.length > 0 && memberTurns.length > 0) return null
         if (tasks.length === 0) {
             if (rawTasks.length > 0) return null
-            if (!note?.trim() && (!memberMessages || memberMessages.length === 0)) return null
+            if (!note?.trim() && memberTurns.length === 0) return null
         }
         return {
             tasks,
             note,
-            ...(memberMessages.length > 0 ? { memberMessages } : {})
+            ...(memberTurns.length > 0 ? { memberTurns } : {})
         }
     }
 
-    private parseMemberMessages(
-        raw: unknown,
-        memberIds: Set<string>
-    ): PlanMemberMessage[] | null {
+    private parseMemberTurns(raw: unknown, memberIds: Set<string>): PlanMemberTurn[] | null {
         if (raw === undefined) return []
         if (!Array.isArray(raw)) return null
         const seen = new Set<string>()
-        const messages: PlanMemberMessage[] = []
+        const turns: PlanMemberTurn[] = []
         for (const item of raw) {
             if (typeof item !== 'object' || item === null) return null
             const rec = item as Record<string, unknown>
             const agentId = typeof rec.agentId === 'string' ? rec.agentId : ''
-            const text = typeof rec.text === 'string' ? rec.text.trim() : ''
-            if (!memberIds.has(agentId) || !text || seen.has(agentId)) return null
+            const instruction = typeof rec.instruction === 'string' ? rec.instruction.trim() : ''
+            if (!memberIds.has(agentId) || !instruction || seen.has(agentId)) return null
             seen.add(agentId)
-            messages.push({ agentId, text })
+            turns.push({ agentId, instruction })
         }
-        return messages
+        return turns
     }
 
     private extractJson(text: string): string | null {
