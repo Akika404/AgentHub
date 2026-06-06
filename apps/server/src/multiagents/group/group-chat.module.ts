@@ -33,10 +33,8 @@ import { GroupRunStream } from './run/group-run-stream.service.js'
 import { OrchestratorService } from './run/orchestrator.service.js'
 import { DispatchService } from './run/dispatch.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
-import {
-    LlmOrchestratorPlanner,
-    ORCHESTRATOR_PLANNER
-} from './run/orchestrator-planner.js'
+import { LlmOrchestratorPlanner, ORCHESTRATOR_PLANNER } from './run/orchestrator-planner.js'
+import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
 
 /**
  * GroupChatModule — 群聊协作（黑板 / Orchestrator / dispatch）。
@@ -85,6 +83,7 @@ import {
         DispatchService,
         GroupRunExecutor,
         LlmOrchestratorPlanner,
+        GroupDebugLogger,
         { provide: ORCHESTRATOR_PLANNER, useExisting: LlmOrchestratorPlanner },
         // 复用单聊的无状态服务（按本模块的 repo 作用域重新提供）
         AgentPolicyService,

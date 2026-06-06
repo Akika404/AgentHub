@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { ContinuityResolver } from '../routing/continuity-resolver.service.js'
-import { makeFakeRedis } from './test-helpers.js'
+import { makeDebugLogger, makeFakeRedis } from './test-helpers.js'
 
 function makeResolver(artifacts: Array<{ path: string }>) {
     const redis = makeFakeRedis()
@@ -9,7 +9,7 @@ function makeResolver(artifacts: Array<{ path: string }>) {
         getState: async () => ({ artifacts, decisions: [], contracts: [], taskGraph: [] })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cr = new ContinuityResolver(redis as any, blackboard as any)
+    const cr = new ContinuityResolver(redis as any, blackboard as any, makeDebugLogger() as any)
     return cr
 }
 

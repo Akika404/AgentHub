@@ -3,28 +3,31 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import type {
-    AgentMemoryType,
-    BlackboardArtifactType,
-    BlackboardUpdate
-} from '@agenthub/shared'
+import type { AgentMemoryType, BlackboardArtifactType, BlackboardUpdate } from '@agenthub/shared'
 import { createAgent, type AgentEvent } from '../../adapter/index.js'
 import { Agent } from '../../entities/agent.entity.js'
 import { AgentSession } from '../../entities/agent-session.entity.js'
 import { agentToConfig } from '../../mappers/agent.mapper.js'
-import { AgentMessageHistoryService, type StepDraft } from '../../messages/agent-message-history.service.js'
+import {
+    AgentMessageHistoryService,
+    type StepDraft
+} from '../../messages/agent-message-history.service.js'
 import { AgentWorkspaceService } from '../../workspace/agent-workspace.service.js'
 import { PlatformProviderService } from '../../../platform-provider/platform-provider.service.js'
 import { BusinessException } from '../../../common/index.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import { AgentMemoryService } from '../memory/agent-memory.service.js'
 import { ContextAssembler, type TaskContext } from '../context/context-assembler.service.js'
-import { ContinuityResolver, type ContinuityResult } from '../routing/continuity-resolver.service.js'
+import {
+    ContinuityResolver,
+    type ContinuityResult
+} from '../routing/continuity-resolver.service.js'
 import { GroupMessageService } from '../group-message.service.js'
 import { GroupWorkspaceService } from '../group-workspace.service.js'
 import { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupChatMember } from '../entities/group-chat-member.entity.js'
 import { GroupRunStream } from './group-run-stream.service.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 /** 成员收尾结构化报告（成员不直接写库，服务端据此 + git diff 代写黑板） */
 interface MemberReport {
@@ -100,7 +103,8 @@ export class DispatchService {
         private readonly messages: AgentMessageHistoryService,
         private readonly groupMessages: GroupMessageService,
         private readonly continuity: ContinuityResolver,
-        private readonly runStream: GroupRunStream
+        private readonly runStream: GroupRunStream,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     async dispatch(params: DispatchParams): Promise<DispatchResult> {
@@ -111,7 +115,9 @@ export class DispatchService {
         const taskContext: TaskContext = {
             objective: params.objective,
             mode,
-            constraints: ['仅 owner 可改共享契约；非 owner 触碰 approvalRequired 契约将被拒绝并上报'],
+            constraints: [
+                '仅 owner 可改共享契约；非 owner 触碰 approvalRequired 契约将被拒绝并上报'
+            ],
             outputSpec: '交付改动 + 简短说明，并按要求输出 report'
         }
         const assembled = await this.assembler.assemble({
@@ -122,13 +128,56 @@ export class DispatchService {
             targetArtifacts: params.continuity.targetArtifactPaths,
             hotContext: params.continuity.hotContext
         })
+        this.debug.log('group.dispatch.context_ready', {
+            groupId: group.id,
+            runId,
+            taskId,
+            taskName: params.taskName,
+            agentId: agent.id,
+            agentName: agent.name,
+            objective: params.objective,
+            continuity: params.continuity,
+            assemblerTrace: assembled.trace,
+            blackboard: assembled.debug.blackboard,
+            memory: {
+                raw: assembled.debug.rawMemory,
+                kept: assembled.debug.keptMemory,
+                dropped: assembled.debug.droppedMemory
+            },
+            promptChars: assembled.debug.promptChars
+        })
 
         // 2. worktree + 成员会话
-        const worktree = await this.workspace.createTaskWorktree(group.id, taskId, group.workspaceDir)
+        const worktree = await this.workspace.createTaskWorktree(
+            group.id,
+            taskId,
+            group.workspaceDir
+        )
         const session = await this.prepareMemberSession(group, member, agent, worktree)
 
         // 3. 跑成员 turn（复用适配层 + 消息历史）
         const prompt = `${assembled.prompt}${REPORT_INSTRUCTION}`
+        this.debug.log('group.dispatch.agent_instruction', {
+            groupId: group.id,
+            runId,
+            taskId,
+            taskName: params.taskName,
+            agent: {
+                agentId: agent.id,
+                name: agent.name,
+                vendor: agent.vendor,
+                model: agent.model,
+                roleInGroup: member.roleInGroup
+            },
+            session: {
+                id: session.id,
+                workingDirectory: session.workingDirectory,
+                sessionHomeDirectory: session.sessionHomeDirectory,
+                sdkSessionId: session.sdkSessionId
+            },
+            worktree,
+            prompt
+        })
         let finalText = ''
         let fatal: string | null = null
         try {
@@ -141,12 +190,29 @@ export class DispatchService {
 
         const report = this.parseReport(finalText)
         const summary = report.summary || finalText.slice(0, 200) || '(无输出)'
+        this.debug.log('group.dispatch.agent_output', {
+            groupId: group.id,
+            runId,
+            taskId,
+            agentId: agent.id,
+            fatal,
+            finalText,
+            report,
+            summary
+        })
 
         // 4. 收口：git → 黑板；成功才提交/合并，失败仅清理 worktree
         const updates: BlackboardUpdate[] = []
         if (!fatal) {
             try {
                 const changed = await this.workspace.diffArtifacts(group.id, taskId)
+                this.debug.log('group.dispatch.git_diff', {
+                    groupId: group.id,
+                    runId,
+                    taskId,
+                    agentId: agent.id,
+                    changed
+                })
                 for (const file of changed) {
                     if (file.status === 'D') continue
                     const artifact = await this.blackboard.upsertArtifact(group.id, {
@@ -182,12 +248,27 @@ export class DispatchService {
         for (const update of updates) {
             await this.runStream.publish(runId, { type: 'blackboard_update', runId, update })
         }
+        this.debug.log('group.dispatch.blackboard_updates', {
+            groupId: group.id,
+            runId,
+            taskId,
+            agentId: agent.id,
+            updates
+        })
 
         // 6. 展示层成员发言 + 写热缓冲
         await this.groupMessages.appendText(group.id, userId, 'agent', summary, agent.id)
         await this.writeHotBuffer(params, summary, updates)
 
-        return { success: !fatal, summary: fatal ? `失败：${fatal}` : summary }
+        const result = { success: !fatal, summary: fatal ? `失败：${fatal}` : summary }
+        this.debug.log('group.dispatch.finished', {
+            groupId: group.id,
+            runId,
+            taskId,
+            agentId: agent.id,
+            result
+        })
+        return result
     }
 
     private async runMemberTurn(
@@ -203,6 +284,18 @@ export class DispatchService {
         if (params.continuity.case === 'A' && session.sdkSessionId) {
             adapter.resumeWith(session.sdkSessionId)
         }
+        this.debug.log('group.dispatch.turn_started', {
+            groupId: params.group.id,
+            runId: params.runId,
+            taskId: params.taskId,
+            agentId: agent.id,
+            vendor: agent.vendor,
+            model: agent.model,
+            continuityCase: params.continuity.case,
+            resumedSdkSessionId: params.continuity.case === 'A' ? session.sdkSessionId : null,
+            workingDirectory: session.workingDirectory,
+            prompt
+        })
 
         const stepDrafts: StepDraft[] = []
         const toolIndex = new Map<string, number>()
@@ -212,11 +305,20 @@ export class DispatchService {
 
         let timeout: NodeJS.Timeout | null = null
         const timeoutPromise = new Promise<never>((_, reject) => {
-            timeout = setTimeout(() => reject(new Error('member turn timed out')), DEFAULT_TURN_TIMEOUT_MS)
+            timeout = setTimeout(
+                () => reject(new Error('member turn timed out')),
+                DEFAULT_TURN_TIMEOUT_MS
+            )
             timeout.unref?.()
         })
 
-        await this.messages.saveMessage(params.userId, agent.id, session.id, 'user', params.objective)
+        await this.messages.saveMessage(
+            params.userId,
+            agent.id,
+            session.id,
+            'user',
+            params.objective
+        )
         try {
             const iterator = adapter.send(prompt, { signal: params.signal })[Symbol.asyncIterator]()
             while (true) {
@@ -230,6 +332,13 @@ export class DispatchService {
                 if (ev.type === 'text') textParts.push(ev.text)
                 else if (ev.type === 'error' && ev.fatal) fatal = ev.message
                 else this.messages.collectStep(ev, stepDrafts, toolIndex)
+                this.debug.log('group.dispatch.turn_event', {
+                    groupId: params.group.id,
+                    runId: params.runId,
+                    taskId: params.taskId,
+                    agentId: agent.id,
+                    event: ev
+                })
                 await this.publishMemberEvent(params, ev)
             }
         } catch (err) {
@@ -239,6 +348,15 @@ export class DispatchService {
         }
 
         const finalText = (finalFromDone ?? textParts.join('')).trim()
+        this.debug.log('group.dispatch.turn_finished', {
+            groupId: params.group.id,
+            runId: params.runId,
+            taskId: params.taskId,
+            agentId: agent.id,
+            fatal,
+            finalText,
+            stepCount: stepDrafts.length
+        })
 
         // 落成员私有 L1（agent_message + agent_message_step）+ 持久化 sdk 句柄
         try {
@@ -282,6 +400,13 @@ export class DispatchService {
         updates: BlackboardUpdate[]
     ): Promise<void> {
         const { group, userId, agent } = params
+        this.debug.log('group.dispatch.apply_report', {
+            groupId: group.id,
+            runId: params.runId,
+            taskId: params.taskId,
+            agentId: agent.id,
+            report
+        })
 
         for (const contract of report.contracts ?? []) {
             if (!contract.contractKey) continue
@@ -354,11 +479,19 @@ export class DispatchService {
 
         const candidate = report.memory_candidate
         if (candidate?.content) {
-            await this.memory.writeCandidate(agent.id, userId, {
+            const memory = await this.memory.writeCandidate(agent.id, userId, {
                 content: candidate.content,
                 type: candidate.type ?? 'lesson',
                 scope: { project: group.id, module: candidate.module ?? params.member.roleInGroup },
                 source: { type: 'self_summary', ref: params.taskId }
+            })
+            this.debug.log('group.dispatch.memory_candidate', {
+                groupId: group.id,
+                runId: params.runId,
+                taskId: params.taskId,
+                agentId: agent.id,
+                candidate,
+                savedMemory: memory
             })
         }
     }
@@ -382,6 +515,15 @@ export class DispatchService {
                 (a): a is { path: string; version: number } => a !== null
             ),
             mentionIndex: {}
+        })
+        this.debug.log('group.dispatch.hot_buffer_written', {
+            groupId: params.group.id,
+            runId: params.runId,
+            taskId: params.taskId,
+            agentId: params.agent.id,
+            summary,
+            updates,
+            recentArtifacts
         })
     }
 
@@ -414,6 +556,13 @@ export class DispatchService {
             session = await this.sessionRepo.save(session)
             member.agentSessionId = session.id
             await this.memberRepo.save(member)
+            this.debug.log('group.dispatch.session_created', {
+                groupId: group.id,
+                agentId: agent.id,
+                sessionId: session.id,
+                worktree,
+                home
+            })
         }
         session.workingDirectory = worktree
         await this.sessionRepo.save(session)
@@ -425,6 +574,14 @@ export class DispatchService {
             agent.agentHomeDirectory,
             worktree
         )
+        this.debug.log('group.dispatch.session_prepared', {
+            groupId: group.id,
+            agentId: agent.id,
+            sessionId: session.id,
+            worktree,
+            home,
+            sdkSessionId: session.sdkSessionId
+        })
         return session
     }
 
@@ -456,7 +613,12 @@ export class DispatchService {
                 // fall through
             }
         }
-        return { summary: text.replace(/```report[\s\S]*?```/g, '').trim().slice(0, 200) }
+        return {
+            summary: text
+                .replace(/```report[\s\S]*?```/g, '')
+                .trim()
+                .slice(0, 200)
+        }
     }
 
     private artifactType(path: string): BlackboardArtifactType {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { ContextAssembler } from '../context/context-assembler.service.js'
+import { makeDebugLogger } from './test-helpers.js'
 
 function makeBlackboard() {
     return {
@@ -93,7 +94,11 @@ describe('ContextAssembler', () => {
     test('drops memory that conflicts with a superseded blackboard decision', async () => {
         const stale: string[] = []
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ca = new ContextAssembler(makeBlackboard() as any, makeMemory(stale) as any)
+        const ca = new ContextAssembler(
+            makeBlackboard() as any,
+            makeMemory(stale) as any,
+            makeDebugLogger() as any
+        )
         const out = await ca.assemble(baseInput)
         assert.ok(out.trace.droppedMemoryIds.includes('m2'))
         assert.ok(stale.includes('m2'))
@@ -103,7 +108,11 @@ describe('ContextAssembler', () => {
     test('budget trim drops memory before target artifacts / contracts', async () => {
         const stale: string[] = []
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ca = new ContextAssembler(makeBlackboard() as any, makeMemory(stale) as any)
+        const ca = new ContextAssembler(
+            makeBlackboard() as any,
+            makeMemory(stale) as any,
+            makeDebugLogger() as any
+        )
         const out = await ca.assemble({ ...baseInput, budget: { maxChars: 60 } })
         assert.ok(out.trace.omitted.includes('memory'))
         // target artifact + contracts are guaranteed sections
@@ -114,7 +123,11 @@ describe('ContextAssembler', () => {
     test('case A hot context is attached when provided', async () => {
         const stale: string[] = []
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ca = new ContextAssembler(makeBlackboard() as any, makeMemory(stale) as any)
+        const ca = new ContextAssembler(
+            makeBlackboard() as any,
+            makeMemory(stale) as any,
+            makeDebugLogger() as any
+        )
         const out = await ca.assemble({
             ...baseInput,
             hotContext: { recentUserIntents: ['上次的需求'] }

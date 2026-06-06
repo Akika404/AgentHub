@@ -17,6 +17,7 @@ import { GroupRun } from '../entities/group-run.entity.js'
 import { DispatchService } from './dispatch.service.js'
 import { GroupRunStream } from './group-run-stream.service.js'
 import { OrchestratorService, type TaskOutcome } from './orchestrator.service.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 interface MemberPair {
     member: GroupChatMember
@@ -48,7 +49,8 @@ export class GroupRunExecutor implements OnModuleInit {
         private readonly blackboard: BlackboardService,
         private readonly groupMessages: GroupMessageService,
         private readonly runStream: GroupRunStream,
-        private readonly config: ConfigService
+        private readonly config: ConfigService,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     onModuleInit(): void {
@@ -92,6 +94,22 @@ export class GroupRunExecutor implements OnModuleInit {
             payload.mentions,
             membersWithAgents.map(({ agent }) => ({ agentId: agent.id, name: agent.name }))
         )
+        this.debug.log('group.run.user_input', {
+            groupId: group.id,
+            runId,
+            userId,
+            text,
+            mentions: payload.mentions ?? [],
+            members: membersWithAgents.map(({ member, agent }) => ({
+                agentId: agent.id,
+                name: agent.name,
+                vendor: agent.vendor,
+                model: agent.model,
+                roleInGroup: member.roleInGroup,
+                agentSessionId: member.agentSessionId
+            })),
+            route
+        })
 
         try {
             await this.groupMessages.appendText(group.id, userId, 'user', text)
@@ -146,6 +164,19 @@ export class GroupRunExecutor implements OnModuleInit {
         this.runningRuns.set(runId, abort)
         const byAgent = new Map(members.map((p) => [p.agent.id, p]))
         let success = true
+        this.debug.log('group.run.started', {
+            groupId: group.id,
+            runId,
+            userId,
+            routeKind,
+            mentionedAgentIds,
+            userText,
+            members: members.map(({ member, agent }) => ({
+                agentId: agent.id,
+                name: agent.name,
+                roleInGroup: member.roleInGroup
+            }))
+        })
 
         try {
             if (routeKind === 'direct_single') {
@@ -183,7 +214,10 @@ export class GroupRunExecutor implements OnModuleInit {
             await this.runRepo
                 .update(
                     { id: runId },
-                    { status: aborted ? 'aborted' : success ? 'done' : 'failed', endedAt: new Date() }
+                    {
+                        status: aborted ? 'aborted' : success ? 'done' : 'failed',
+                        endedAt: new Date()
+                    }
                 )
                 .catch(() => undefined)
             await this.runStream.releaseActiveRun(group.id, runId).catch(() => undefined)
@@ -191,6 +225,14 @@ export class GroupRunExecutor implements OnModuleInit {
                 .publish(runId, { type: 'done', runId, success: success && !aborted })
                 .catch(() => undefined)
             await this.runStream.finalize(runId).catch(() => undefined)
+            this.debug.log('group.run.finished', {
+                groupId: group.id,
+                runId,
+                userId,
+                success,
+                aborted,
+                finalSuccess: success && !aborted
+            })
         }
     }
 
@@ -205,10 +247,23 @@ export class GroupRunExecutor implements OnModuleInit {
     ): Promise<boolean> {
         const pair = byAgent.get(agentId)
         if (!pair) {
+            this.debug.log('group.run.direct_single.missing_member', {
+                groupId: group.id,
+                runId,
+                agentId,
+                userText
+            })
             await this.groupMessages.appendSystem(group.id, userId, `成员 ${agentId} 不在本群。`)
             return false
         }
         const continuity = await this.continuity.resolve(group.id, agentId, userText)
+        this.debug.log('group.run.direct_single.decision', {
+            groupId: group.id,
+            runId,
+            agentId,
+            userText,
+            continuity
+        })
         if (continuity.needsOrchestratorJudgement) {
             await this.groupMessages.appendSystem(
                 group.id,
@@ -238,6 +293,11 @@ export class GroupRunExecutor implements OnModuleInit {
                 status: 'doing'
             }
         ])
+        this.debug.log('group.run.direct_single.task_created', {
+            groupId: group.id,
+            runId,
+            task: node
+        })
         await this.runStream.publish(runId, {
             type: 'task_status',
             runId,
@@ -289,6 +349,14 @@ export class GroupRunExecutor implements OnModuleInit {
             mentionedAgentIds,
             members
         })
+        this.debug.log('group.run.orchestrated.nodes', {
+            groupId: group.id,
+            runId,
+            routeKind,
+            mentionedAgentIds,
+            userText,
+            nodes
+        })
 
         const outcomes: TaskOutcome[] = []
         let success = true
@@ -299,12 +367,34 @@ export class GroupRunExecutor implements OnModuleInit {
             }
             const pair = node.agentId ? byAgent.get(node.agentId) : undefined
             if (!pair) {
+                this.debug.log('group.run.orchestrated.missing_member', {
+                    groupId: group.id,
+                    runId,
+                    task: node
+                })
                 await this.blackboard.setTaskStatus(group.id, node.id, 'failed')
                 outcomes.push({ name: node.name, summary: '无可用成员', success: false })
                 success = false
                 break
             }
-            const continuity = await this.continuity.resolve(group.id, pair.agent.id, node.objective)
+            const continuity = await this.continuity.resolve(
+                group.id,
+                pair.agent.id,
+                node.objective
+            )
+            this.debug.log('group.run.orchestrated.dispatch_decision', {
+                groupId: group.id,
+                runId,
+                task: node,
+                agent: {
+                    agentId: pair.agent.id,
+                    name: pair.agent.name,
+                    vendor: pair.agent.vendor,
+                    model: pair.agent.model,
+                    roleInGroup: pair.member.roleInGroup
+                },
+                continuity
+            })
             await this.blackboard.setTaskStatus(group.id, node.id, 'doing')
             await this.runStream.publish(runId, {
                 type: 'task_status',

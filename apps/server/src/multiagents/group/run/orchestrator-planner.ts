@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import type { BlackboardTaskNode, GroupRouteKind } from '@agenthub/shared'
-import { createAgent, type AgentAdapterConfig, type AgentOutputSchema } from '../../adapter/index.js'
+import {
+    createAgent,
+    type AgentAdapterConfig,
+    type AgentOutputSchema
+} from '../../adapter/index.js'
 import { AgentWorkspaceService } from '../../workspace/agent-workspace.service.js'
 import { PlatformProviderService } from '../../../platform-provider/platform-provider.service.js'
 import { BusinessException } from '../../../common/index.js'
 import { GroupWorkspaceService } from '../group-workspace.service.js'
 import type { GroupChat } from '../entities/group-chat.entity.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 /** DI token：可注入的编排计划生成器（测试可注入假实现） */
 export const ORCHESTRATOR_PLANNER = Symbol('ORCHESTRATOR_PLANNER')
@@ -79,7 +84,8 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
     constructor(
         private readonly providers: PlatformProviderService,
         private readonly workspace: GroupWorkspaceService,
-        private readonly agentWorkspace: AgentWorkspaceService
+        private readonly agentWorkspace: AgentWorkspaceService,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     async plan(req: PlanRequest): Promise<OrchestratorPlan> {
@@ -99,11 +105,25 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             this.parsePlanObject(result.structuredOutput, req) ??
             this.parsePlanText(result.text, req)
         if (!parsed || parsed.tasks.length === 0) {
+            this.debug.log('group.orchestrator_planner.parse_failed', {
+                groupId: req.group.id,
+                userId: req.userId,
+                routeKind: req.routeKind,
+                mentionedAgentIds: req.mentionedAgentIds,
+                result
+            })
             throw BusinessException.upstream('Orchestrator returned an invalid task plan', {
                 groupId: req.group.id,
                 outputPreview: result.text.slice(0, 1000)
             })
         }
+        this.debug.log('group.orchestrator_planner.parsed', {
+            groupId: req.group.id,
+            userId: req.userId,
+            routeKind: req.routeKind,
+            mentionedAgentIds: req.mentionedAgentIds,
+            parsed
+        })
         return parsed
     }
 
@@ -127,13 +147,35 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         }
         const adapter = createAgent(req.group.orchestratorVendor, config)
         const prompt = this.buildPrompt(req)
+        this.debug.log('group.orchestrator_planner.prompt', {
+            groupId: req.group.id,
+            userId: req.userId,
+            vendor: req.group.orchestratorVendor,
+            model: req.group.orchestratorModel,
+            providerId: req.group.orchestratorProviderId,
+            workingDirectory: config.workingDirectory,
+            systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
+            prompt
+        })
         const first = await this.sendPlanRequest(adapter, prompt, this.buildPlanOutputSchema(req))
+        this.debug.log('group.orchestrator_planner.output', {
+            groupId: req.group.id,
+            userId: req.userId,
+            attempt: 'schema',
+            result: first
+        })
         if (first.success) return first
 
         const fallback = await this.sendPlanRequest(
             createAgent(req.group.orchestratorVendor, config),
             prompt
         )
+        this.debug.log('group.orchestrator_planner.output', {
+            groupId: req.group.id,
+            userId: req.userId,
+            attempt: 'fallback_text',
+            result: fallback
+        })
         if (fallback.success) return fallback
         throw new Error(fallback.error ?? first.error ?? 'Orchestrator turn failed')
     }
@@ -249,9 +291,10 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             })
         })
         if (tasks.length === 0) return null
-        const note = typeof (obj as { note?: unknown }).note === 'string'
-            ? (obj as { note: string }).note
-            : undefined
+        const note =
+            typeof (obj as { note?: unknown }).note === 'string'
+                ? (obj as { note: string }).note
+                : undefined
         return { tasks, note }
     }
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { AgentMemoryItem, BlackboardArtifact, BlackboardContract } from '@agenthub/shared'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import { AgentMemoryService, type MemoryScope } from '../memory/agent-memory.service.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 export type DispatchMode = 'new_task' | 'modify_existing'
 
@@ -49,6 +50,14 @@ export interface ContextAssemblerOutput {
         droppedMemoryIds: string[]
         omitted: string[]
     }
+    /** 服务端 debug 用快照，不进入 shared/API 契约。 */
+    debug: {
+        blackboard: Record<string, unknown>
+        rawMemory: AgentMemoryItem[]
+        keptMemory: AgentMemoryItem[]
+        droppedMemory: AgentMemoryItem[]
+        promptChars: number
+    }
 }
 
 const DEFAULT_MAX_CHARS = 16_000
@@ -65,12 +74,14 @@ const DEFAULT_MAX_CHARS = 16_000
 export class ContextAssembler {
     constructor(
         private readonly blackboard: BlackboardService,
-        private readonly memory: AgentMemoryService
+        private readonly memory: AgentMemoryService,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     async assemble(input: ContextAssemblerInput): Promise<ContextAssemblerOutput> {
         const maxChars = input.budget?.maxChars ?? DEFAULT_MAX_CHARS
         const state = await this.blackboard.getState(input.groupId)
+        const blackboard = this.debug.blackboardSnapshot(state)
 
         const targetPaths = new Set(input.targetArtifacts ?? [])
         const targetArtifacts = state.artifacts.filter((a) => targetPaths.has(a.path))
@@ -100,7 +111,10 @@ export class ContextAssembler {
         const droppable: Array<{ id: string; text: string }> = []
         if (kept.length) droppable.push({ id: 'memory', text: this.renderMemory(kept) })
         if (nonTargetArtifacts.length) {
-            droppable.push({ id: 'other-artifacts', text: this.renderOtherArtifacts(nonTargetArtifacts) })
+            droppable.push({
+                id: 'other-artifacts',
+                text: this.renderOtherArtifacts(nonTargetArtifacts)
+            })
         }
         if (state.decisions.some((d) => d.status !== 'superseded')) {
             droppable.push({ id: 'decisions', text: this.renderDecisions(state.decisions) })
@@ -125,20 +139,40 @@ export class ContextAssembler {
         }
 
         const prompt = [keptText, ...includedDroppable].filter(Boolean).join('\n\n')
+        const trace = {
+            targetArtifacts: targetArtifacts.map((a) => ({
+                path: a.path,
+                version: a.version,
+                loadPolicy: 'read_before_edit' as const
+            })),
+            contracts: contracts.map((c) => c.id),
+            memoryIds: kept.filter((m) => !omitted.includes('memory')).map((m) => m.id),
+            droppedMemoryIds: dropped.map((m) => m.id),
+            omitted
+        }
+        const debug = {
+            blackboard,
+            rawMemory,
+            keptMemory: kept,
+            droppedMemory: dropped,
+            promptChars: prompt.length
+        }
+        this.debug.log('group.context.assembled', {
+            groupId: input.groupId,
+            agentId: input.agentId,
+            task: input.task,
+            scope: input.scope,
+            targetArtifacts: input.targetArtifacts ?? [],
+            hotContext: input.hotContext,
+            trace,
+            debug,
+            prompt: this.debug.compactText(prompt)
+        })
 
         return {
             prompt,
-            trace: {
-                targetArtifacts: targetArtifacts.map((a) => ({
-                    path: a.path,
-                    version: a.version,
-                    loadPolicy: 'read_before_edit'
-                })),
-                contracts: contracts.map((c) => c.id),
-                memoryIds: kept.filter((m) => !omitted.includes('memory')).map((m) => m.id),
-                droppedMemoryIds: dropped.map((m) => m.id),
-                omitted
-            }
+            trace,
+            debug
         }
     }
 
@@ -174,7 +208,8 @@ export class ContextAssembler {
 
     private renderTaskContext(task: TaskContext): string {
         const lines = ['# Task', `objective: ${task.objective}`, `mode: ${task.mode}`]
-        if (task.inputs?.length) lines.push(`inputs:\n${task.inputs.map((i) => `- ${i}`).join('\n')}`)
+        if (task.inputs?.length)
+            lines.push(`inputs:\n${task.inputs.map((i) => `- ${i}`).join('\n')}`)
         if (task.constraints?.length) {
             lines.push(`constraints:\n${task.constraints.map((c) => `- ${c}`).join('\n')}`)
         }

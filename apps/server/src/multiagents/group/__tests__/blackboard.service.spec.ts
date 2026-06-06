@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
-import { makeRepo } from './test-helpers.js'
+import { makeDebugLogger, makeRepo } from './test-helpers.js'
 
 function makeService() {
     const artifact = makeRepo()
@@ -15,7 +15,8 @@ function makeService() {
         decision as any,
         contract as any,
         task as any,
-        event as any
+        event as any,
+        makeDebugLogger() as any
     )
     return { bb, event }
 }
@@ -42,7 +43,10 @@ describe('BlackboardService — optimistic lock', () => {
 describe('BlackboardService — decision supersede', () => {
     test('writing a decision supersedes referenced old ones', async () => {
         const { bb } = makeService()
-        const d1 = await bb.writeDecision('g', { content: 'use local time', createdByAgentId: 'a1' })
+        const d1 = await bb.writeDecision('g', {
+            content: 'use local time',
+            createdByAgentId: 'a1'
+        })
         await bb.writeDecision('g', {
             content: 'use UTC',
             createdByAgentId: 'a1',

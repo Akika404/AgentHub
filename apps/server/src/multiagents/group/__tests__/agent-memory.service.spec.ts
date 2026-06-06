@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { AgentMemoryService } from '../memory/agent-memory.service.js'
-import { makeRepo } from './test-helpers.js'
+import { makeDebugLogger, makeRepo } from './test-helpers.js'
 
 describe('AgentMemoryService', () => {
     test('writeCandidate dedups near-identical content within scope', async () => {
         const repo = makeRepo()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mem = new AgentMemoryService(repo as any)
+        const mem = new AgentMemoryService(repo as any, makeDebugLogger() as any)
         const first = await mem.writeCandidate('a', 'u', {
             content: 'Use Tailwind tokens',
             type: 'convention',
@@ -28,7 +28,7 @@ describe('AgentMemoryService', () => {
     test('retrieve filters by project scope', async () => {
         const repo = makeRepo()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const mem = new AgentMemoryService(repo as any)
+        const mem = new AgentMemoryService(repo as any, makeDebugLogger() as any)
         await mem.writeCandidate('a', 'u', {
             content: 'A',
             type: 'lesson',

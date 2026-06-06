@@ -40,7 +40,8 @@ export function makeRepo() {
             if (opts.order) {
                 const [k, dir] = Object.entries(opts.order)[0]
                 rows = [...rows].sort(
-                    (a, b) => ((a[k] as number) > (b[k] as number) ? 1 : -1) * (dir === 'DESC' ? -1 : 1)
+                    (a, b) =>
+                        ((a[k] as number) > (b[k] as number) ? 1 : -1) * (dir === 'DESC' ? -1 : 1)
                 )
             }
             if (opts.skip) rows = rows.slice(opts.skip)
@@ -63,5 +64,13 @@ export function makeFakeRedis() {
             map.set(k, v)
             return 'OK'
         }
+    }
+}
+
+export function makeDebugLogger() {
+    return {
+        log: () => undefined,
+        compactText: (text: string | null | undefined) => text ?? null,
+        blackboardSnapshot: (view: unknown) => view
     }
 }

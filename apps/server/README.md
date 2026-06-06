@@ -319,6 +319,8 @@ src/multiagents/group/
 │   └── entities/agent-memory-item.entity.ts
 ├── context/
 │   └── context-assembler.service.ts # 按检索优先级 + 预算装配单次派发上下文（A/B/C）
+├── debug/
+│   └── group-debug-logger.service.ts # 群聊运行时结构化 debug 日志（脱敏 + 长文本截断）
 ├── routing/
 │   ├── message-router.service.ts   # 纯机械解析 @ → routeKind（不调 LLM）
 │   └── continuity-resolver.service.ts # 再次修改场景 A/B/C 判定（热 buffer + 强指代 + 产出物匹配）
@@ -334,28 +336,29 @@ src/multiagents/group/
 
 ### 接口（前缀 `/api`，统一信封，全部需鉴权）
 
-| 方法       | 路径                                              | 功能                                                         |
-| ---------- | ------------------------------------------------- | ------------------------------------------------------------ |
-| POST       | `/api/group-chats`                                | 建群（成员 + Orchestrator 配置 + projectMeta；可传 `workspaceDir`，未传则后端分配；后端 git init）|
-| GET        | `/api/group-chats`                                | 列出当前用户群聊                                             |
-| GET        | `/api/group-chats/:id`                            | 群详情（成员/Orchestrator/projectMeta/activeRunId）          |
-| PATCH      | `/api/group-chats/:id`                            | 改标题 / projectMeta / 加成员                               |
-| DELETE     | `/api/group-chats/:id`                            | 删群（级联删数据库记录；工作区 `ACTIVE=false`，不删除目录） |
-| GET        | `/api/group-chats/:id/messages`                   | 展示层消息历史（升序，多发言者）                            |
-| POST       | `/api/group-chats/:id/converse`                   | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}` |
-| GET `@Sse` | `/api/group-chats/:id/runs/:runId/events`         | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束） |
-| POST       | `/api/group-chats/:id/runs/:runId/abort`          | 中止整个群运行（跨实例广播）                                |
-| GET        | `/api/group-chats/:id/blackboard`                 | 黑板状态快照                                                |
-| GET        | `/api/group-chats/:id/blackboard/events`          | 黑板事件流（审计/调试，分页）                               |
+| 方法       | 路径                                      | 功能                                                                                               |
+| ---------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| POST       | `/api/group-chats`                        | 建群（成员 + Orchestrator 配置 + projectMeta；可传 `workspaceDir`，未传则后端分配；后端 git init） |
+| GET        | `/api/group-chats`                        | 列出当前用户群聊                                                                                   |
+| GET        | `/api/group-chats/:id`                    | 群详情（成员/Orchestrator/projectMeta/activeRunId）                                                |
+| PATCH      | `/api/group-chats/:id`                    | 改标题 / projectMeta / 加成员                                                                      |
+| DELETE     | `/api/group-chats/:id`                    | 删群（级联删数据库记录；工作区 `ACTIVE=false`，不删除目录）                                        |
+| GET        | `/api/group-chats/:id/messages`           | 展示层消息历史（升序，多发言者）                                                                   |
+| POST       | `/api/group-chats/:id/converse`           | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}`                                  |
+| GET `@Sse` | `/api/group-chats/:id/runs/:runId/events` | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束）                                        |
+| POST       | `/api/group-chats/:id/runs/:runId/abort`  | 中止整个群运行（跨实例广播）                                                                       |
+| GET        | `/api/group-chats/:id/blackboard`         | 黑板状态快照                                                                                       |
+| GET        | `/api/group-chats/:id/blackboard/events`  | 黑板事件流（审计/调试，分页）                                                                      |
 
-> 协作动作（`dispatch_agent` / `report_completion` / `blackboard_write`）是**服务端内部协议**，不暴露为用户 REST：成员输出结构化 ```report```，服务端基于 git diff 代写黑板。
+> 协作动作（`dispatch_agent` / `report_completion` / `blackboard_write`）是**服务端内部协议**，不暴露为用户 REST：成员输出结构化 `report`，服务端基于 git diff 代写黑板。
 
 ### 运行与并发
 
 - 一次群运行 = 一条 Redis Stream（`GroupRunStream`，按单聊 `TurnStream` 范式），成员 turn 事件经 `member_turn_event` 透传，天然多端围观；活跃指针 `SET NX` 做「群」级跨实例互斥（已有活跃轮 → 返回冲突，引导用 `activeRunId` 围观）。
 - 成员干活复用单聊适配层（`createAgent` + `agentToConfig`），`workingDirectory` 指向该任务的 git worktree；私有 L1 落 `agent_message` / `agent_message_step`。
 - 共享工作区：创建群聊时可传 `workspaceDir`，服务端优先使用该目录作为共享 git 仓库；未传时分配到 `GROUP_WORKSPACE_ROOT/<groupId>/repo`。成员 worktree / SDK home 仍放在 `GROUP_WORKSPACE_ROOT/<groupId>/` 下。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
-- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，用于默认共享仓库、worktree、成员 SDK home）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）。
+- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，用于默认共享仓库、worktree、成员 SDK home）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
+- Debug 日志：`GroupDebugLogger` 会输出结构化 JSON，覆盖用户输入、路由结果、Orchestrator prompt/输出/任务分配、黑板快照、ContextAssembler trace、每个成员 Agent 收到的 prompt、memory 检索/保留/丢弃、turn 事件、report、git diff、黑板更新与 hot buffer。日志会递归脱敏 `apiKey` / `token` / `secret` / `password` 等字段。
 
 ### Orchestrator Planner
 

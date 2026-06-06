@@ -11,6 +11,7 @@ import {
     type OrchestratorPlanner,
     type OrchestratorContext
 } from './orchestrator-planner.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 export interface OrchestratorPlanParams {
     group: GroupChat
@@ -44,7 +45,8 @@ export class OrchestratorService {
         private readonly planner: OrchestratorPlanner,
         private readonly blackboard: BlackboardService,
         private readonly groupMessages: GroupMessageService,
-        private readonly runStream: GroupRunStream
+        private readonly runStream: GroupRunStream,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     /** 生成计划 → 写 task_graph → 发 task-list 消息 → 推 orchestrator_plan 事件。 */
@@ -63,6 +65,16 @@ export class OrchestratorService {
             })),
             activeTaskGraph: state.taskGraph
         }
+        this.debug.log('group.orchestrator.context', {
+            groupId: group.id,
+            runId,
+            userId,
+            userText: params.userText,
+            routeKind,
+            mentionedAgentIds,
+            blackboard: this.debug.blackboardSnapshot(state),
+            context
+        })
 
         const plan = await this.planner.plan({
             group,
@@ -71,6 +83,13 @@ export class OrchestratorService {
             routeKind,
             mentionedAgentIds,
             context
+        })
+        this.debug.log('group.orchestrator.plan.raw', {
+            groupId: group.id,
+            runId,
+            routeKind,
+            mentionedAgentIds,
+            plan
         })
 
         if (plan.tasks.length === 0) {
@@ -113,6 +132,20 @@ export class OrchestratorService {
             routeKind,
             tasks: nodes
         })
+        this.debug.log('group.orchestrator.plan.persisted', {
+            groupId: group.id,
+            runId,
+            routeKind,
+            assignments: nodes.map((n) => ({
+                taskId: n.id,
+                name: n.name,
+                agentId: n.agentId,
+                deps: n.deps,
+                objective: n.objective,
+                status: n.status
+            })),
+            note: plan.note
+        })
 
         return { nodes, note: plan.note }
     }
@@ -125,15 +158,23 @@ export class OrchestratorService {
         outcomes: TaskOutcome[]
     ): Promise<string> {
         const allOk = outcomes.every((o) => o.success)
-        const head = outcomes.length === 0
-            ? '本轮没有产生任务。'
-            : allOk
-              ? '本轮任务已全部完成：'
-              : '本轮任务部分完成（遇失败已停止后续派发）：'
+        const head =
+            outcomes.length === 0
+                ? '本轮没有产生任务。'
+                : allOk
+                  ? '本轮任务已全部完成：'
+                  : '本轮任务部分完成（遇失败已停止后续派发）：'
         const lines = outcomes.map((o) => `- ${o.success ? '✅' : '❌'} ${o.name}：${o.summary}`)
         const text = [head, ...lines].join('\n')
         await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
         await this.runStream.publish(runId, { type: 'orchestrator_report', runId, text })
+        this.debug.log('group.orchestrator.report', {
+            groupId: group.id,
+            runId,
+            userId,
+            outcomes,
+            text
+        })
         return text
     }
 }

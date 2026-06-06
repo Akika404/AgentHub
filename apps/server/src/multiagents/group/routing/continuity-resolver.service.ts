@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import { REDIS_CLIENT } from '../../../redis/redis.module.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import type { HotContext } from '../context/context-assembler.service.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 /** 短期热上下文（Redis，带 TTL；情况 A 专用，仅承载指代解析所需最小热信息） */
 export interface ShortTermBuffer {
@@ -57,7 +58,8 @@ const HOT_WINDOW_SEC = 5 * 60
 export class ContinuityResolver {
     constructor(
         @Inject(REDIS_CLIENT) private readonly redis: Redis,
-        private readonly blackboard: BlackboardService
+        private readonly blackboard: BlackboardService,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     private bufferKey(groupId: string, agentId: string): string {
@@ -70,7 +72,7 @@ export class ContinuityResolver {
 
         // 情况 A：热窗口未过期（buffer 存在即未过期，TTL 兜底）+ 强指代词
         if (buffer && hasDeixis && buffer.recentArtifacts.length > 0) {
-            return {
+            const result: ContinuityResult = {
                 case: 'A',
                 targetArtifactPaths: buffer.recentArtifacts.map((a) => a.path),
                 hotContext: {
@@ -80,36 +82,86 @@ export class ContinuityResolver {
                 },
                 needsOrchestratorJudgement: false
             }
+            this.debug.log('group.continuity.resolve', {
+                groupId,
+                agentId,
+                text,
+                hasDeixis,
+                buffer,
+                matchedArtifacts: result.targetArtifactPaths,
+                result
+            })
+            return result
         }
 
         // 情况 B：黑板 artifacts 命中同产出物。命中多个目标时规则无法确定改谁，
         // 交给 Orchestrator 用更完整的上下文判断。
         const matched = await this.matchArtifacts(groupId, text)
         if (matched.length === 1) {
-            return {
+            const result: ContinuityResult = {
                 case: 'B',
                 targetArtifactPaths: matched,
                 hotContext: null,
                 needsOrchestratorJudgement: false
             }
+            this.debug.log('group.continuity.resolve', {
+                groupId,
+                agentId,
+                text,
+                hasDeixis,
+                buffer,
+                matchedArtifacts: matched,
+                result
+            })
+            return result
         }
         if (matched.length > 1) {
-            return this.needsOrchestrator('B', matched)
+            const result = this.needsOrchestrator('B', matched)
+            this.debug.log('group.continuity.resolve', {
+                groupId,
+                agentId,
+                text,
+                hasDeixis,
+                buffer,
+                matchedArtifacts: matched,
+                result
+            })
+            return result
         }
 
         // 有强指代但既没有可用热 buffer，也没有明确 artifact 命中，说明"那个/刚才"
         // 无法由轻量规则落到某个产出物；按设计兜底交 Orchestrator。
         if (hasDeixis) {
-            return this.needsOrchestrator('C', [])
+            const result = this.needsOrchestrator('C', [])
+            this.debug.log('group.continuity.resolve', {
+                groupId,
+                agentId,
+                text,
+                hasDeixis,
+                buffer,
+                matchedArtifacts: matched,
+                result
+            })
+            return result
         }
 
         // 情况 C：无匹配 → 全新任务，仅通用信息
-        return {
+        const result: ContinuityResult = {
             case: 'C',
             targetArtifactPaths: [],
             hotContext: null,
             needsOrchestratorJudgement: false
         }
+        this.debug.log('group.continuity.resolve', {
+            groupId,
+            agentId,
+            text,
+            hasDeixis,
+            buffer,
+            matchedArtifacts: matched,
+            result
+        })
+        return result
     }
 
     private needsOrchestrator(
@@ -153,6 +205,7 @@ export class ContinuityResolver {
             'EX',
             HOT_WINDOW_SEC
         )
+        this.debug.log('group.continuity.write_buffer', { groupId, agentId, buffer })
     }
 
     async readBuffer(groupId: string, agentId: string): Promise<ShortTermBuffer | null> {

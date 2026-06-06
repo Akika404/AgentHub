@@ -4,6 +4,7 @@ import { Repository } from 'typeorm'
 import type { AgentMemoryItem, AgentMemorySourceType, AgentMemoryType } from '@agenthub/shared'
 import { AgentMemoryItemEntity } from './entities/agent-memory-item.entity.js'
 import { toAgentMemoryView } from '../mappers/agent-memory.mapper.js'
+import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
 export interface MemoryScope {
     project: string
@@ -28,7 +29,8 @@ export interface MemoryCandidate {
 export class AgentMemoryService {
     constructor(
         @InjectRepository(AgentMemoryItemEntity)
-        private readonly memoryRepo: Repository<AgentMemoryItemEntity>
+        private readonly memoryRepo: Repository<AgentMemoryItemEntity>,
+        private readonly debug: GroupDebugLogger
     ) {}
 
     /** 按 (agent, scope) 检索 active 记忆。module 命中精确模块或通用（module=null）。 */
@@ -41,7 +43,15 @@ export class AgentMemoryService {
         const filtered = rows.filter(
             (r) => r.scopeModule === null || wantModule === null || r.scopeModule === wantModule
         )
-        return filtered.map(toAgentMemoryView)
+        const memories = filtered.map(toAgentMemoryView)
+        this.debug.log('group.memory.retrieve', {
+            agentId,
+            scope,
+            totalRows: rows.length,
+            returned: memories.length,
+            memory: memories
+        })
+        return memories
     }
 
     /** 写入候选记忆：同 (agent, project) 下近似 content 已存在则跳过（轻量去重）。 */
@@ -57,7 +67,14 @@ export class AgentMemoryService {
             where: { agentId, scopeProject: candidate.scope.project, status: 'active' }
         })
         const dup = existing.some((e) => this.normalize(e.content) === normalized)
-        if (dup) return null
+        if (dup) {
+            this.debug.log('group.memory.write.skipped_duplicate', {
+                agentId,
+                userId,
+                candidate
+            })
+            return null
+        }
 
         const saved = await this.memoryRepo.save(
             this.memoryRepo.create({
@@ -73,7 +90,13 @@ export class AgentMemoryService {
                 lastUsedAt: null
             })
         )
-        return toAgentMemoryView(saved)
+        const memory = toAgentMemoryView(saved)
+        this.debug.log('group.memory.write.saved', {
+            agentId,
+            userId,
+            memory
+        })
+        return memory
     }
 
     /**
@@ -87,6 +110,7 @@ export class AgentMemoryService {
     /** 把单条记忆置 stale（ContextAssembler 检测到与黑板冲突时调用）。 */
     async markStale(itemId: string): Promise<void> {
         await this.memoryRepo.update({ id: itemId }, { status: 'stale' })
+        this.debug.log('group.memory.mark_stale', { itemId })
     }
 
     private normalize(content: string): string {
