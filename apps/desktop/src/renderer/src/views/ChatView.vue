@@ -1454,7 +1454,11 @@ function buildGroupRunHandlers(
       }
       if (activeSessionKey.value === key) handleGroupRuntimeEvent(event)
 
-      if (event.type === 'orchestrator_plan' || event.type === 'orchestrator_report') {
+      if (
+        event.type === 'orchestrator_plan' ||
+        event.type === 'orchestrator_report' ||
+        (event.type === 'task_status' && ['done', 'failed'].includes(event.status))
+      ) {
         void loadMessages(key, true)
       }
       if (
