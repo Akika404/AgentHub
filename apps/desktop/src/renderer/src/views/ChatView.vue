@@ -912,13 +912,18 @@ function groupRunMemberKey(
   return `${groupSessionKey(groupId)}:run:${runId}:task:${taskId}:agent:${agentId}`
 }
 
+function groupRunMemberChatKey(groupId: string, runId: string, agentId: string): string {
+  return `${groupSessionKey(groupId)}:run:${runId}:member-chat:${agentId}`
+}
+
 function groupTaskStatusLabel(status: BlackboardTaskNode['status']): string {
   const labels: Record<BlackboardTaskNode['status'], string> = {
     pending: '待分配',
     ready: '已分配',
     doing: '执行中',
     done: '已完成',
-    failed: '失败'
+    failed: '失败',
+    blocked: '已阻塞'
   }
   return labels[status]
 }
@@ -962,6 +967,17 @@ function ensureGroupMemberRunMessage(
 ): string {
   const sessionKey = groupSessionKey(group.id)
   const runKey = groupRunMemberKey(group.id, runId, taskId, agentId)
+  ensureRunMessage(runKey, sessionKey, groupMemberSender(group, agentId))
+  return runKey
+}
+
+function ensureGroupMemberChatRunMessage(
+  group: GroupChatView,
+  runId: string,
+  agentId: string
+): string {
+  const sessionKey = groupSessionKey(group.id)
+  const runKey = groupRunMemberChatKey(group.id, runId, agentId)
   ensureRunMessage(runKey, sessionKey, groupMemberSender(group, agentId))
   return runKey
 }
@@ -1543,8 +1559,8 @@ function handleGroupRuntimeEvent(event: GroupRunEvent): void {
     case 'task_status':
       runtime.value = {
         ...runtime.value,
-        phase: event.status === 'failed' ? 'error' : 'thinking',
-        label: `任务进度：${event.status}`
+        phase: event.status === 'failed' || event.status === 'blocked' ? 'error' : 'thinking',
+        label: `任务进度：${groupTaskStatusLabel(event.status)}`
       }
       return
     case 'member_turn_event': {
@@ -1624,12 +1640,23 @@ function buildGroupRunHandlers(
           } else if (event.status === 'done' || event.status === 'failed') {
             finishAgentRun(memberKey, event.status === 'done')
             completedMemberKeys.add(memberKey)
+          } else if (event.status === 'blocked') {
+            // 上游失败导致本任务从未派发：收尾该成员运行卡片，避免 UI 一直转圈
+            finishAgentRun(memberKey, false)
+            completedMemberKeys.add(memberKey)
           }
         }
       } else if (event.type === 'member_turn_event') {
-        const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
+        const memberKey =
+          event.taskId === null
+            ? groupRunMemberChatKey(groupId, runId, event.agentId)
+            : groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
         if (!completedMemberKeys.has(memberKey)) {
-          ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+          if (event.taskId === null) {
+            ensureGroupMemberChatRunMessage(group, runId, event.agentId)
+          } else {
+            ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+          }
           syncRunMessage(memberKey, event.event)
           if (event.event.type === 'done') completedMemberKeys.add(memberKey)
           if (event.event.type === 'text') {
