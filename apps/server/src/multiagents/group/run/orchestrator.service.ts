@@ -62,7 +62,8 @@ export class OrchestratorService {
             memberStatus: members.map(({ member, agent }) => ({
                 agentId: agent.id,
                 name: agent.name,
-                roleInGroup: member.roleInGroup
+                roleInGroup: member.roleInGroup,
+                capabilitySummary: agent.capabilitySummary ?? null
             })),
             activeTaskGraph: state.taskGraph
         }

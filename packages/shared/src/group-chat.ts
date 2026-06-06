@@ -56,6 +56,8 @@ export interface GroupMemberView {
   capabilities: AgentCapabilities
   /** free-text capability tag, e.g. "前端" / "后端"; null when unset */
   roleInGroup: string | null
+  /** short human-authored capability summary from the Agent config */
+  capabilitySummary: string | null
 }
 
 // —— Group chat ——

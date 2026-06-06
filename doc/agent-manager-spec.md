@@ -8,7 +8,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 
 核心决策：
 
-- Agent 只保存可复用配置：展示名、头像/颜色标识、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
+- Agent 只保存可复用配置：展示名、头像/颜色标识、能力摘要、vendor、Provider、model、默认目录、system prompt、skills/MCP/tools 等。
 - AgentSession 是一个具体单聊会话：title、workingDirectory、sessionHomeDirectory、sdkSessionId、有效 skills/MCP、status。
 - AgentMessage 按 `sessionId` 隔离 UI 消息历史。
 - AgentMessageStep 按 `messageId` 一对多承载 agent 消息的有序运行步骤（thinking/progress/tool/todo）。
@@ -27,6 +27,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 | Turn 事件流      | Redis                | 一轮一条 Stream 广播 AgentEvent；会话活跃指针 + 跨实例 abort 控制频道 |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
+`capabilitySummary` 是给用户和群聊 Orchestrator 看的简短能力描述，用于判断 Agent 擅长什么；它不会作为 system prompt 注入 adapter。
 
 ## Code Layout
 

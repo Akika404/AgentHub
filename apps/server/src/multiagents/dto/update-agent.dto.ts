@@ -48,6 +48,11 @@ export class UpdateAgentDto {
     color?: string
 
     @IsOptional()
+    @IsString()
+    @MaxLength(1000)
+    capabilitySummary?: string | null
+
+    @IsOptional()
     @IsIn(VENDORS)
     vendor?: AgentVendor
 

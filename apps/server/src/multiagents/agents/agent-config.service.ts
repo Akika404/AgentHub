@@ -59,6 +59,7 @@ export class AgentConfigService {
             name: dto.name,
             avatar: dto.avatar ?? null,
             color: this.policy.normalizeColor(dto.color),
+            capabilitySummary: this.policy.normalizeNullableText(dto.capabilitySummary, null),
             vendor: dto.vendor,
             platformProviderId: dto.platformProviderId,
             model: dto.model,
@@ -142,6 +143,12 @@ export class AgentConfigService {
         if (dto.name !== undefined) agent.name = dto.name
         if (dto.avatar !== undefined) agent.avatar = dto.avatar ?? null
         if (dto.color !== undefined) agent.color = this.policy.normalizeColor(dto.color)
+        if (dto.capabilitySummary !== undefined) {
+            agent.capabilitySummary = this.policy.normalizeNullableText(
+                dto.capabilitySummary,
+                agent.capabilitySummary
+            )
+        }
         agent.vendor = vendor
         agent.platformProviderId = platformProviderId
         agent.model = model

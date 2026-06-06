@@ -334,6 +334,12 @@ onMounted(load)
             }}</span>
           </div>
           <div class="flex px-4 py-3">
+            <span class="w-32 flex-shrink-0 text-sm text-text-muted">能力摘要</span>
+            <span class="whitespace-pre-wrap break-words text-base text-text-main">{{
+              selected.capabilitySummary || '—'
+            }}</span>
+          </div>
+          <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">能力</span>
             <span class="text-base text-text-main">
               {{

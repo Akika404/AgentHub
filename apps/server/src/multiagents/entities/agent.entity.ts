@@ -39,6 +39,10 @@ export class Agent {
     @Column({ type: 'varchar', length: 7, default: '#3370ff' })
     color!: string
 
+    /** 面向 Orchestrator / 用户的能力摘要；不作为 system prompt 注入成员运行时 */
+    @Column({ type: 'text', nullable: true })
+    capabilitySummary!: string | null
+
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
 

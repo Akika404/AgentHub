@@ -16,6 +16,8 @@ export interface AgentView {
     avatar: string | null
     /** 默认头像和列表标识色，形如 #3370ff */
     color: string
+    /** 面向 Orchestrator / 用户的能力摘要；未配置为 null */
+    capabilitySummary: string | null
     vendor: AgentVendor
     /** 引用的模型平台 id */
     platformProviderId: string

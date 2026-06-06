@@ -43,6 +43,7 @@ export function toAgentView(agent: Agent): AgentView {
         name: agent.name,
         avatar: agent.avatar,
         color: agent.color,
+        capabilitySummary: agent.capabilitySummary ?? null,
         vendor: agent.vendor,
         platformProviderId: agent.platformProviderId,
         model: agent.model,

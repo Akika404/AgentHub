@@ -16,6 +16,7 @@ CREATE TABLE `agent`
   `name`               varchar(64)   NOT NULL COMMENT '展示名',
   `avatar`             mediumtext             DEFAULT NULL COMMENT '头像 URL 或压缩后的 data URL；可空',
   `color`              varchar(7)    NOT NULL DEFAULT '#3370ff' COMMENT '默认头像和列表标识色',
+  `capabilitySummary`  text                   DEFAULT NULL COMMENT '能力摘要，用于群聊 Orchestrator 判断擅长什么',
   `vendor`             varchar(16)   NOT NULL COMMENT 'claude / codex',
   `platformProviderId` varchar(36)   NOT NULL COMMENT '引用 platform_provider.id',
   `model`              varchar(128)  NOT NULL COMMENT '模型名',

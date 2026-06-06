@@ -47,6 +47,13 @@ export class GroupMemberViewDto implements GroupMemberView {
 
     @ApiProperty({ type: String, nullable: true, description: '群内角色标签（如 前端/后端）' })
     roleInGroup!: string | null
+
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: 'Agent 能力摘要，用于 Orchestrator 判断成员擅长什么'
+    })
+    capabilitySummary!: string | null
 }
 
 export class ProjectMetaDto implements ProjectMeta {

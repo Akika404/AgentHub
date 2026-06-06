@@ -44,6 +44,7 @@ const form = reactive({
   name: '',
   avatar: null as string | null,
   color: DEFAULT_AGENT_COLOR,
+  capabilitySummary: '',
   vendor: 'claude' as AgentVendor,
   platformProviderId: '',
   model: '',
@@ -95,6 +96,7 @@ function reset(): void {
   form.name = agent?.name ?? ''
   form.avatar = agent?.avatar ?? null
   form.color = agent?.color ?? DEFAULT_AGENT_COLOR
+  form.capabilitySummary = agent?.capabilitySummary ?? ''
   form.vendor = agent?.vendor ?? 'claude'
   form.platformProviderId = agent?.platformProviderId ?? ''
   form.model = agent?.model ?? ''
@@ -167,6 +169,11 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
     platformProviderId: form.platformProviderId,
     model: form.model,
     workingDirectory: form.workingDirectory.trim()
+  }
+  if (form.capabilitySummary.trim()) {
+    payload.capabilitySummary = form.capabilitySummary.trim()
+  } else if (isEdit.value) {
+    payload.capabilitySummary = null
   }
 
   if (caps.value.supportsSystemPrompt) {
@@ -370,6 +377,21 @@ async function onSubmit(): Promise<void> {
             />
           </div>
         </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-text-main mb-1.5">
+          能力摘要
+          <span class="font-normal text-text-muted">（给 Orchestrator 看，可选）</span>
+        </label>
+        <BaseTextarea
+          v-model="form.capabilitySummary"
+          rows="2"
+          placeholder="如：负责产品需求梳理、交互评审和 MVP 范围判断"
+        />
+        <p class="mt-1 text-xs text-text-muted">
+          群聊编排时会用它判断这个 Agent 擅长什么，不会作为 system prompt 注入。
+        </p>
       </div>
 
       <div class="grid grid-cols-2 gap-3">

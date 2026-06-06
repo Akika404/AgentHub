@@ -13,7 +13,8 @@ export function toGroupMemberView(member: GroupChatMember, agent: Agent): GroupM
         color: agent.color,
         vendor: agent.vendor,
         capabilities: getCapabilities(agent.vendor),
-        roleInGroup: member.roleInGroup
+        roleInGroup: member.roleInGroup,
+        capabilitySummary: agent.capabilitySummary ?? null
     }
 }
 

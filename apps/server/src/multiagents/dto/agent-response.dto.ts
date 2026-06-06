@@ -59,6 +59,13 @@ export class AgentViewDto implements AgentView {
     @ApiProperty({ example: '#3370ff', description: '默认头像和列表标识色' })
     color!: string
 
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '面向 Orchestrator / 用户的能力摘要；未配置为 null'
+    })
+    capabilitySummary!: string | null
+
     @ApiProperty({ enum: VENDORS, description: '厂商' })
     vendor!: AgentVendor
 

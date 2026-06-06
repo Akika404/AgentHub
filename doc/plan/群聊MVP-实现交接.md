@@ -76,7 +76,7 @@
 ## 8. 运行流程要点
 - **MessageRouter**（不调 LLM）：解析 `@` → `routeKind`：`direct_single`(单@) / `multi`(多@) / `orchestrate`(@Orchestrator 或无@)；原文写 `group_message`。
 - **dispatch（单次派发）**：ContextAssembler 装配 → createTaskWorktree → 取/重建成员 AgentSession(cwd=worktree) → 跑 turn(事件入 group Stream + 落 agent_message_step) → 收口：`git diff` → `upsertArtifact(version+1)` → 合并 worktree → 处理 report(affected 校验 / decisions supersede / memory 去重写入) → appendEvent → setTaskStatus。
-- **Orchestrator**：用群 vendor/model + 内置 prompt + `orchestrator_context{projectGoal,activeTaskGraph,recentUserIntents,blackboardSummary,memberStatus}` → 任务消息产出计划(单任务 or task_graph) → 写黑板 + 发 task-list 消息 → 串行 dispatch → 聚合汇报；非任务消息返回 `tasks: []` + `note`，直接回复且不派发成员；适合成员角色轻量回应时可额外返回 `memberMessages`，只落 presentation_log 成员聊天气泡。计划生成走可注入 `OrchestratorPlanner` 接口。
+- **Orchestrator**：用群 vendor/model + 内置 prompt + `orchestrator_context{projectGoal,activeTaskGraph,recentUserIntents,blackboardSummary,memberStatus}` → 任务消息产出计划(单任务 or task_graph) → 写黑板 + 发 task-list 消息 → 串行 dispatch → 聚合汇报；`memberStatus` 携带 `agentId/name/roleInGroup/capabilitySummary`；非任务消息返回 `tasks: []` + `note`，直接回复且不派发成员；适合成员角色轻量回应时可额外返回 `memberMessages`，只落 presentation_log 成员聊天气泡。计划生成走可注入 `OrchestratorPlanner` 接口。
 - **ContinuityResolver（再次修改 A/B/C）**：A=热窗口未过期+强指代词 → buffer 解析指代 + **重读产出物**；B=黑板 artifacts 命中同产出物 → 重开+产出物摘要+记忆+重读；C=无匹配 → 全重开+仅通用信息；判不了兜底交 Orchestrator。
 - **ContextAssembler**：按检索优先级装配，黑板默认注 summary（全文交 Agent 文件工具读，`load_policy:read_before_edit`），memory 冲突丢弃，情况 A 附 short_term_buffer；预算超限裁剪序：历史会话摘要→低优记忆→非目标产出物摘要（保底 system+TaskContext+目标产出物 ref+相关契约）。
 - **安全最小**：Agent 读到的文件/产出物=不可信数据，不得覆盖 system/Orchestrator 指令；共享契约仅 owner 可改，非 owner 触碰 `approvalRequired` → 拒绝写入 + 上报 Orchestrator。

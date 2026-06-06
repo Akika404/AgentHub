@@ -134,6 +134,12 @@ const titleClass = computed(() => (isInspector.value ? 'text-lg' : 'text-xl'))
                       {{ member.name }}
                     </div>
                     <div class="truncate text-sm text-text-muted">{{ memberRole(member) }}</div>
+                    <p
+                      v-if="member.capabilitySummary"
+                      class="mt-1 line-clamp-2 text-sm leading-5 text-text-muted"
+                    >
+                      {{ member.capabilitySummary }}
+                    </p>
                   </div>
                 </div>
               </div>

@@ -155,6 +155,8 @@ export interface AgentView {
   avatar: string | null
   /** hex color used for the fallback initials avatar and color marker */
   color: string
+  /** short human-authored capability summary for routing/group orchestration */
+  capabilitySummary: string | null
   vendor: AgentVendor
   /** referenced platform_provider.id */
   platformProviderId: string
@@ -232,6 +234,7 @@ export interface CreateAgentPayload {
   name: string
   avatar?: string | null
   color?: string
+  capabilitySummary?: string
   vendor: AgentVendor
   platformProviderId: string
   model: string
@@ -255,6 +258,7 @@ export interface UpdateAgentPayload {
   name?: string
   avatar?: string | null
   color?: string
+  capabilitySummary?: string | null
   vendor?: AgentVendor
   platformProviderId?: string
   model?: string

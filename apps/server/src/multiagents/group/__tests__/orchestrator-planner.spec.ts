@@ -21,8 +21,18 @@ const req = {
         blackboardSummary: '(blackboard empty)',
         recentUserIntents: ['你们好，打个招呼'],
         memberStatus: [
-            { agentId: 'a1', name: '前端工程师', roleInGroup: null },
-            { agentId: 'a2', name: '产品经理', roleInGroup: null }
+            {
+                agentId: 'a1',
+                name: '前端工程师',
+                roleInGroup: null,
+                capabilitySummary: '负责界面实现、交互细节和前端工程质量。'
+            },
+            {
+                agentId: 'a2',
+                name: '产品经理',
+                roleInGroup: null,
+                capabilitySummary: '负责需求梳理、MVP 范围判断和设计合理性评审。'
+            }
         ],
         activeTaskGraph: []
     }
@@ -38,6 +48,19 @@ function makePlanner(): LlmOrchestratorPlanner {
 }
 
 describe('LlmOrchestratorPlanner', () => {
+    test('includes capability summaries in the member list prompt', () => {
+        const planner = makePlanner()
+        const prompt = (
+            planner as unknown as {
+                buildPrompt(req: unknown): string
+            }
+        ).buildPrompt(req)
+
+        assert.match(prompt, /成员（agentId \| 名称 \| 群角色 \| 能力摘要）：/)
+        assert.match(prompt, /a1 \| 前端工程师 \| \(未设定\) \| 负责界面实现、交互细节和前端工程质量。/)
+        assert.match(prompt, /a2 \| 产品经理 \| \(未设定\) \| 负责需求梳理、MVP 范围判断和设计合理性评审。/)
+    })
+
     test('accepts empty tasks with a note as a non-task reply', () => {
         const planner = makePlanner()
         const parsed = (

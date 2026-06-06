@@ -12,7 +12,7 @@ import { GroupWorkspaceService } from '../group-workspace.service.js'
 import type { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
-/** DI token：可注入的编排计划生成器（测试可注入假实现） */
+/** DI token：可注入的编排计划生成器 */
 export const ORCHESTRATOR_PLANNER = Symbol('ORCHESTRATOR_PLANNER')
 
 /** Orchestrator 的"项目控制面板"上下文（不吃全量历史，防上下文黑洞） */
@@ -20,7 +20,12 @@ export interface OrchestratorContext {
     projectGoal: string | null
     blackboardSummary: string
     recentUserIntents: string[]
-    memberStatus: Array<{ agentId: string; name: string; roleInGroup: string | null }>
+    memberStatus: Array<{
+        agentId: string
+        name: string
+        roleInGroup: string | null
+        capabilitySummary: string | null
+    }>
     activeTaskGraph: BlackboardTaskNode[]
 }
 
@@ -274,13 +279,16 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
 
     private buildPrompt(req: PlanRequest): string {
         const members = req.context.memberStatus
-            .map((m) => `- ${m.agentId} | ${m.name}${m.roleInGroup ? ` (${m.roleInGroup})` : ''}`)
+            .map(
+                (m) =>
+                    `- ${m.agentId} | ${m.name} | ${m.roleInGroup ?? '(未设定)'} | ${m.capabilitySummary ?? '(未设定)'}`
+            )
             .join('\n')
         const mentioned = req.mentionedAgentIds.length ? req.mentionedAgentIds.join(', ') : '(none)'
         return [
             `项目目标：${req.context.projectGoal ?? '(未设定)'}`,
             `黑板摘要：\n${req.context.blackboardSummary}`,
-            `成员（agentId | 名称 | 角色）：\n${members}`,
+            `成员（agentId | 名称 | 群角色 | 能力摘要）：\n${members}`,
             `路由来源：${req.routeKind}`,
             `用户显式提及的成员 agentId：${mentioned}`,
             `用户消息：${req.userText}`,
