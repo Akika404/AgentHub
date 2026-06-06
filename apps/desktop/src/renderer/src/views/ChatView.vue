@@ -7,6 +7,7 @@ import type {
   AgentRunStepView,
   AgentTodoItem,
   AgentView,
+  BlackboardTaskNode,
   BlackboardView,
   ChatDetail,
   ChatSummary,
@@ -100,6 +101,7 @@ const messageCache = new Map<string, ChatDisplayMessage[]>()
 const turnStreams = new Map<string, AgentConverseStream>()
 const groupStreams = new Map<string, GroupRunStream>()
 const runMessageIds = new Map<string, string>()
+const runMessageSessionKeys = new Map<string, string>()
 const notifiedTurnIds = new Set<string>()
 const notifiedGroupRunIds = new Set<string>()
 let activeLoadId = 0
@@ -595,21 +597,31 @@ function initialThinkingStep(): AgentRunStep {
   }
 }
 
-function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
-  const key = agentSessionKey(chat.id)
+function createRunMessage(
+  runKey: string,
+  sessionKey: string,
+  sender: SenderInfo,
+  firstStep: AgentRunStep = initialThinkingStep()
+): AgentRunMessage {
   const message: AgentRunMessage = {
     id: `m-agent-run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    chatId: key,
+    chatId: sessionKey,
     kind: 'agent-run',
     timestamp: new Date().toISOString(),
-    sender: agentSender(chat),
+    sender,
     status: 'thinking',
-    steps: [initialThinkingStep()],
+    steps: [firstStep],
     text: ''
   }
-  runMessageIds.set(key, message.id)
-  appendMessage(key, message)
+  runMessageIds.set(runKey, message.id)
+  runMessageSessionKeys.set(runKey, sessionKey)
+  appendMessage(sessionKey, message)
   return message
+}
+
+function createAgentRunMessage(chat: AgentChatView): AgentRunMessage {
+  const key = agentSessionKey(chat.id)
+  return createRunMessage(key, key, agentSender(chat))
 }
 
 function ensureAgentRunMessage(chat: AgentChatView): void {
@@ -621,6 +633,7 @@ function ensureAgentRunMessage(chat: AgentChatView): void {
   const reusableId = findReusableRunMessageId(key)
   if (reusableId) {
     runMessageIds.set(key, reusableId)
+    runMessageSessionKeys.set(key, key)
     return
   }
   createAgentRunMessage(chat)
@@ -642,6 +655,7 @@ function prepareRunMessageForReplay(chat: AgentChatView): string | null {
   const messageId = findReusableRunMessageId(key)
   if (!messageId) {
     runMessageIds.delete(key)
+    runMessageSessionKeys.delete(key)
     return null
   }
 
@@ -658,20 +672,34 @@ function prepareRunMessageForReplay(chat: AgentChatView): string | null {
     )
   )
   runMessageIds.set(key, messageId)
+  runMessageSessionKeys.set(key, key)
   return messageId
 }
 
 function updateAgentRunMessage(
-  sessionKey: string,
+  runKey: string,
   updater: (message: AgentRunMessage) => AgentRunMessage
 ): void {
-  const runMessageId = runMessageIds.get(sessionKey)
+  const runMessageId = runMessageIds.get(runKey)
   if (!runMessageId) return
+  const sessionKey = runMessageSessionKeys.get(runKey) ?? runKey
   updateCachedMessages(sessionKey, (cached) =>
     cached.map((message) =>
       message.id === runMessageId && isAgentRunMessage(message) ? updater(message) : message
     )
   )
+}
+
+function ensureRunMessage(
+  runKey: string,
+  sessionKey: string,
+  sender: SenderInfo,
+  firstStep: AgentRunStep = initialThinkingStep()
+): void {
+  const cached = messageCache.get(sessionKey) ?? []
+  const existingId = runMessageIds.get(runKey)
+  if (existingId && cached.some((message) => message.id === existingId)) return
+  createRunMessage(runKey, sessionKey, sender, firstStep)
 }
 
 function startRunStep(
@@ -751,6 +779,7 @@ function finishAgentRun(chatId: string, success: boolean): void {
     status: success ? 'done' : 'error'
   }))
   runMessageIds.delete(chatId)
+  runMessageSessionKeys.delete(chatId)
 }
 
 function removeCurrentAgentRun(sessionKey: string): void {
@@ -758,6 +787,7 @@ function removeCurrentAgentRun(sessionKey: string): void {
   if (!runMessageId) return
   removeMessage(sessionKey, runMessageId)
   runMessageIds.delete(sessionKey)
+  runMessageSessionKeys.delete(sessionKey)
 }
 
 function planLabel(todos: AgentTodoItem[]): string {
@@ -812,9 +842,11 @@ function upsertPlanStep(chatId: string, plan: string): void {
   })
 }
 
-function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
-  const key = agentSessionKey(chat.id)
+function syncRunMessage(key: string, event: AgentEvent): void {
   switch (event.type) {
+    case 'session_started':
+    case 'turn_started':
+      return
     case 'progress':
       appendProgressStep(key, event.text)
       return
@@ -860,6 +892,106 @@ function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
       if (event.finalText) updateAgentRunText(key, event.finalText)
       finishAgentRun(key, event.success)
       return
+  }
+}
+
+function syncAgentRunMessage(chat: AgentChatView, event: AgentEvent): void {
+  syncRunMessage(agentSessionKey(chat.id), event)
+}
+
+function groupRunOrchestratorKey(groupId: string, runId: string): string {
+  return `${groupSessionKey(groupId)}:run:${runId}:orchestrator`
+}
+
+function groupRunMemberKey(
+  groupId: string,
+  runId: string,
+  taskId: string,
+  agentId: string
+): string {
+  return `${groupSessionKey(groupId)}:run:${runId}:task:${taskId}:agent:${agentId}`
+}
+
+function groupTaskStatusLabel(status: BlackboardTaskNode['status']): string {
+  const labels: Record<BlackboardTaskNode['status'], string> = {
+    pending: '待分配',
+    ready: '已分配',
+    doing: '执行中',
+    done: '已完成',
+    failed: '失败'
+  }
+  return labels[status]
+}
+
+function groupTaskPlanText(tasks: BlackboardTaskNode[]): string {
+  return tasks
+    .map((task, index) => {
+      const assignee = task.agentId ?? '待分配'
+      const objective = task.objective.trim()
+      const suffix = objective ? `\n   ${objective}` : ''
+      return `${index + 1}. [${groupTaskStatusLabel(task.status)}] ${task.name} -> ${assignee}${suffix}`
+    })
+    .join('\n')
+}
+
+function groupTaskTodos(tasks: BlackboardTaskNode[]): AgentTodoItem[] {
+  return tasks.map((task) => ({
+    text: `${task.name}${task.agentId ? ` -> ${task.agentId}` : ''}`,
+    status:
+      task.status === 'done' ? 'completed' : task.status === 'doing' ? 'in_progress' : 'pending'
+  }))
+}
+
+function ensureGroupOrchestratorRunMessage(group: GroupChatView, runId: string): string {
+  const sessionKey = groupSessionKey(group.id)
+  const runKey = groupRunOrchestratorKey(group.id, runId)
+  ensureRunMessage(runKey, sessionKey, groupOrchestratorSender(), {
+    id: runStepId('thinking'),
+    type: 'thinking',
+    label: 'Orchestrator 编排中',
+    status: 'active'
+  })
+  return runKey
+}
+
+function ensureGroupMemberRunMessage(
+  group: GroupChatView,
+  runId: string,
+  taskId: string,
+  agentId: string
+): string {
+  const sessionKey = groupSessionKey(group.id)
+  const runKey = groupRunMemberKey(group.id, runId, taskId, agentId)
+  ensureRunMessage(runKey, sessionKey, groupMemberSender(group, agentId))
+  return runKey
+}
+
+function updateGroupPlanMessage(
+  group: GroupChatView,
+  runId: string,
+  tasks: BlackboardTaskNode[]
+): void {
+  const runKey = ensureGroupOrchestratorRunMessage(group, runId)
+  completeActiveRunStep(runKey)
+  upsertPlanStep(runKey, groupTaskPlanText(tasks))
+  upsertTodoStep(runKey, groupTaskTodos(tasks))
+  startRunStep(runKey, 'thinking', '等待成员执行', 'thinking')
+}
+
+function finishGroupRunMessages(groupId: string, runId: string, success: boolean): void {
+  const prefix = `${groupSessionKey(groupId)}:run:${runId}:`
+  for (const key of [...runMessageIds.keys()]) {
+    if (!key.startsWith(prefix)) continue
+    finishAgentRun(key, success)
+  }
+}
+
+function dropGroupRunMessageRefs(groupId: string, runId: string): void {
+  const prefix = `${groupSessionKey(groupId)}:run:${runId}:`
+  for (const key of [...runMessageIds.keys()]) {
+    if (!key.startsWith(prefix)) continue
+    runMessageIds.delete(key)
+    runMessageSessionKeys.delete(key)
   }
 }
 
@@ -938,6 +1070,29 @@ function groupMemberMeta(group: GroupChatView): Map<string, GroupSenderMeta> {
     })
   }
   return map
+}
+
+function groupOrchestratorSender(): SenderInfo {
+  return {
+    id: 'orchestrator',
+    name: 'Orchestrator',
+    role: 'orchestrator',
+    icon: 'hub',
+    accent: 'violet'
+  }
+}
+
+function groupMemberSender(group: GroupChatView, agentId: string): SenderInfo {
+  const member = group.members.find((item) => item.agentId === agentId)
+  return {
+    id: agentId,
+    name: member?.name ?? 'Agent',
+    role: 'agent',
+    initials: agentInitials(member?.name ?? 'Agent'),
+    color: member?.color,
+    avatarDataUrl: member?.avatar ?? undefined,
+    accent: 'green'
+  }
 }
 
 async function loadMessages(sessionKey: string, silent = false): Promise<void> {
@@ -1441,6 +1596,8 @@ function buildGroupRunHandlers(
 } {
   const groupId = group.id
   const key = groupSessionKey(groupId)
+  const memberTexts = new Map<string, string>()
+  const completedMemberKeys = new Set<string>()
   let groupFinished = false
   let success = false
 
@@ -1454,13 +1611,49 @@ function buildGroupRunHandlers(
       }
       if (activeSessionKey.value === key) handleGroupRuntimeEvent(event)
 
-      if (
-        event.type === 'orchestrator_plan' ||
-        event.type === 'orchestrator_report' ||
-        (event.type === 'task_status' && ['done', 'failed'].includes(event.status))
-      ) {
-        void loadMessages(key, true)
+      if (event.type === 'orchestrator_plan') {
+        updateGroupPlanMessage(group, runId, event.tasks)
+      } else if (event.type === 'task_status' && event.agentId) {
+        const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
+        if (!completedMemberKeys.has(memberKey)) {
+          ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+          if (event.status === 'doing') {
+            startRunStep(memberKey, 'thinking', '执行任务中', 'thinking')
+          } else if (event.status === 'ready') {
+            startRunStep(memberKey, 'thinking', '等待执行', 'thinking')
+          } else if (event.status === 'done' || event.status === 'failed') {
+            finishAgentRun(memberKey, event.status === 'done')
+            completedMemberKeys.add(memberKey)
+          }
+        }
+      } else if (event.type === 'member_turn_event') {
+        const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
+        if (!completedMemberKeys.has(memberKey)) {
+          ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+          syncRunMessage(memberKey, event.event)
+          if (event.event.type === 'done') completedMemberKeys.add(memberKey)
+          if (event.event.type === 'text') {
+            const existingText = memberTexts.get(memberKey)
+            const nextText = existingText
+              ? `${existingText}\n\n${event.event.text}`
+              : event.event.text
+            memberTexts.set(memberKey, nextText)
+            updateAgentRunText(memberKey, nextText)
+          } else if (
+            event.event.type === 'error' &&
+            event.event.fatal &&
+            !memberTexts.get(memberKey)
+          ) {
+            appendSystemMessage(key, event.event.message)
+          }
+        }
+      } else if (event.type === 'orchestrator_report') {
+        const orchestratorKey = ensureGroupOrchestratorRunMessage(group, runId)
+        updateAgentRunText(orchestratorKey, event.text)
+      } else if (event.type === 'done') {
+        finishGroupRunMessages(groupId, runId, event.success)
       }
+
       if (
         event.type === 'orchestrator_plan' ||
         event.type === 'task_status' ||
@@ -1484,6 +1677,7 @@ function buildGroupRunHandlers(
       setChatRunning(key, false)
       markGroupActiveRun(groupId, null)
       if (!groupFinished) {
+        dropGroupRunMessageRefs(groupId, runId)
         void reloadAfterGroupStreamDrop(groupId)
       } else {
         notifyGroupRunCompleted(group, runId, success)
@@ -1533,6 +1727,7 @@ async function watchGroupRun(group: GroupChatView, runId: string): Promise<void>
   if (activeSessionKey.value === key) {
     runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Watching group' }
   }
+  ensureGroupOrchestratorRunMessage(group, runId)
 
   const stream = groupChatApi.subscribeRun(group.id, runId, buildGroupRunHandlers(group, runId))
   groupStreams.set(key, stream)
@@ -1540,6 +1735,7 @@ async function watchGroupRun(group: GroupChatView, runId: string): Promise<void>
     if (groupStreams.get(key)?.runId !== runId) return
     groupStreams.delete(key)
     setChatRunning(key, false)
+    dropGroupRunMessageRefs(group.id, runId)
     void reloadAfterGroupRun(group.id)
   })
 }
@@ -1770,15 +1966,17 @@ async function sendGroupMessage(payload: {
     handlers = buildGroupRunHandlers(group, stream.runId)
     groupStreams.set(key, stream)
     markGroupActiveRun(groupId, stream.runId)
+    ensureGroupOrchestratorRunMessage(group, stream.runId)
     for (const event of earlyEvents) handlers.onEvent(event)
     for (const message of earlyErrors) handlers.onError?.(message)
     if (earlyDone) handlers.onDone?.()
     await stream.started
-    await Promise.all([loadMessages(key, true), loadGroupBlackboard(groupId)])
+    await loadGroupBlackboard(groupId)
   } catch (err) {
     if (stream) {
       groupStreams.delete(key)
       setChatRunning(key, false)
+      dropGroupRunMessageRefs(groupId, stream.runId)
       void reloadAfterGroupStreamDrop(groupId)
       return
     }

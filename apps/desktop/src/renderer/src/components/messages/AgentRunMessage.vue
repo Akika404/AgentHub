@@ -14,7 +14,9 @@ const hasText = computed(() => props.message.text.trim().length > 0)
 // 最新的那条才是最终状态（旧逻辑取 find 第一条会退化成只含首个 pending 任务）。
 const planStep = computed(() => props.message.steps.filter((step) => step.type === 'todo').at(-1))
 const planTodos = computed<AgentTodoItem[]>(() => planStep.value?.todos ?? [])
-const planDocStep = computed(() => props.message.steps.filter((step) => step.type === 'plan').at(-1))
+const planDocStep = computed(() =>
+  props.message.steps.filter((step) => step.type === 'plan').at(-1)
+)
 const planDoc = computed(() => planDocStep.value?.text?.trim() ?? '')
 const visibleSteps = computed(() =>
   props.message.steps.filter((step) => step.type !== 'todo' && step.type !== 'plan')
