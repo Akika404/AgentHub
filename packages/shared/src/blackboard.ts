@@ -63,7 +63,7 @@ export interface BlackboardContract {
 
 // —— Task graph ——
 
-export type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed'
+export type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked'
 
 export interface BlackboardTaskNode {
   id: string

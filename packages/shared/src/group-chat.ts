@@ -144,7 +144,8 @@ export type GroupRunEvent =
   | {
       type: 'member_turn_event'
       runId: string
-      taskId: string
+      /** null means a lightweight member chat turn, not a blackboard task. */
+      taskId: string | null
       agentId: string
       event: AgentEvent
     }
