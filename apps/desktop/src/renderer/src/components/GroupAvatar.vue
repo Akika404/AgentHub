@@ -21,23 +21,23 @@ const props = withDefaults(
 )
 
 const visibleMembers = computed(() => props.members.slice(0, 9))
-const gridClass = computed(() => {
+const tileColumns = computed(() => {
   const count = visibleMembers.value.length
-  if (count <= 1) return 'grid-cols-1'
-  if (count <= 4) return 'grid-cols-2'
-  return 'grid-cols-3'
+  if (count <= 1) return 1
+  if (count <= 4) return 2
+  return 3
 })
 
 const sizeClasses = {
-  sm: 'h-8 w-8 rounded-md p-[2px] gap-[2px]',
-  md: 'h-10 w-10 rounded-md p-[3px] gap-[2px]',
-  lg: 'h-14 w-14 rounded-lg p-1 gap-[3px]'
+  sm: 'h-8 w-8 rounded-md p-[2px]',
+  md: 'h-10 w-10 rounded-md p-[3px]',
+  lg: 'h-14 w-14 rounded-lg p-1'
 }
 
 const textClasses = {
-  sm: 'text-[9px]',
-  md: 'text-[10px]',
-  lg: 'text-xs'
+  sm: 'text-[7px]',
+  md: 'text-[8px]',
+  lg: 'text-[10px]'
 }
 
 const fallbackMembers = computed<GroupAvatarMember[]>(() =>
@@ -53,28 +53,43 @@ function tileStyle(member: GroupAvatarMember): { backgroundColor: string; color:
     color: avatarTextColor(backgroundColor)
   }
 }
+
+const gapBySize = {
+  sm: '2px',
+  md: '2px',
+  lg: '3px'
+}
+
+const layoutStyle = computed(() => ({
+  gap: gapBySize[props.size]
+}))
+
+const tileSizeStyle = computed(() => ({
+  flexBasis: `calc((100% - ${gapBySize[props.size]} * ${tileColumns.value - 1}) / ${tileColumns.value})`
+}))
 </script>
 
 <template>
   <div
-    class="grid flex-shrink-0 overflow-hidden bg-[#dde2e8] shadow-sm"
-    :class="[sizeClasses[size], gridClass]"
+    class="flex flex-shrink-0 flex-wrap content-center items-center justify-center overflow-hidden bg-[#dde2e8] shadow-sm"
+    :class="sizeClasses[size]"
+    :style="layoutStyle"
     :title="title"
   >
     <div
       v-for="(member, index) in fallbackMembers"
       :key="`${member.name}-${index}`"
-      class="flex min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-[3px] font-semibold leading-none"
+      class="flex aspect-square min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-[3px] bg-white font-semibold leading-none"
       :class="textClasses[size]"
-      :style="member.avatar ? undefined : tileStyle(member)"
+      :style="member.avatar ? tileSizeStyle : [tileSizeStyle, tileStyle(member)]"
     >
       <img
         v-if="member.avatar"
         :src="member.avatar"
         :alt="member.name"
-        class="h-full w-full object-cover"
+        class="h-full w-full object-contain"
       />
-      <span v-else>{{ agentInitials(member.name) }}</span>
+      <span v-else class="whitespace-nowrap">{{ agentInitials(member.name) }}</span>
     </div>
   </div>
 </template>
