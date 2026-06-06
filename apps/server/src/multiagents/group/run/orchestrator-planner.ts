@@ -34,10 +34,19 @@ export interface PlanTask {
     objective: string
 }
 
+export interface PlanMemberMessage {
+    /** 以该成员身份展示的纯聊天消息，不代表实际执行成员 turn。 */
+    agentId: string
+    text: string
+}
+
 export interface OrchestratorPlan {
+    /** 空数组表示只需要 Orchestrator 回复，不应创建黑板任务或派发成员。 */
     tasks: PlanTask[]
     /** 给用户的开场说明（可空） */
     note?: string
+    /** 非任务成员回复，可让成员以聊天气泡形式出现；不写黑板、不派发成员。 */
+    memberMessages?: PlanMemberMessage[]
 }
 
 export interface PlanRequest {
@@ -64,13 +73,18 @@ interface OrchestratorRunResult {
  * 系统内置编排提示词（用户不填）。要求 Orchestrator 仅输出结构化 JSON 计划。
  */
 export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrator（编排者）。
-你的职责：理解用户意图，判断复杂度，把任务拆解并指派给最合适的成员 Agent。
+你的职责：理解用户意图，判断复杂度；需要实际产出或行动时，把任务拆解并指派给最合适的成员 Agent。
 铁律：
-- 你不亲自写代码/产出物，只产出"计划"。
+- 你不亲自写代码/产出物。
+- 问候、感谢、闲聊、状态询问、设计/产品/技术合理性咨询、轻量评审、澄清讨论等无需成员执行工具或产出文件的消息，只返回空 tasks，并用 note / memberMessages 回复；不要为这类消息创建任务。
+- 如果用户明确要求"大家/你们/群成员打招呼、介绍一下、出来认识一下"，或用户在咨询某个成员角色适合回答的问题（例如产品经理评估设计是否合理、前端工程师说明交互实现取舍），返回空 tasks、note，以及相关 memberMessages；每个 memberMessages 项代表一个成员的简短聊天气泡，不是任务。
+- 只有当用户要求创建/修改文件、实现功能、产出文档、执行命令、检查工作区或完成可交付事项时，才创建 tasks。
 - 面向黑板协作，不臆造未提供的事实。
 - 只能指派给给定的成员 Agent（用其 agentId）。
 - 输出必须是一个 JSON 对象，且只输出该 JSON（不要额外解释），形如：
 {"tasks":[{"key":"t1","name":"任务名","agentId":"<成员agentId>","deps":[],"objective":"该成员要达成的具体目标"}],"note":"给用户的一句话说明"}
+- 非任务消息形如：{"tasks":[],"note":"给用户的直接回复"}。
+- 成员纯聊天消息形如：{"tasks":[],"note":"我请相关成员先给一个判断。","memberMessages":[{"agentId":"<成员agentId>","text":"一句简短观点、建议或问候"}]}。
 - 简单任务用单个 task；复杂任务拆成多个 task（本期串行执行，deps 仅表达顺序）。`
 
 /**
@@ -104,7 +118,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         const parsed =
             this.parsePlanObject(result.structuredOutput, req) ??
             this.parsePlanText(result.text, req)
-        if (!parsed || parsed.tasks.length === 0) {
+        if (!parsed) {
             this.debug.log('group.orchestrator_planner.parse_failed', {
                 groupId: req.group.id,
                 userId: req.userId,
@@ -112,7 +126,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                 mentionedAgentIds: req.mentionedAgentIds,
                 result
             })
-            throw BusinessException.upstream('Orchestrator returned an invalid task plan', {
+            throw BusinessException.upstream('Orchestrator returned an invalid plan', {
                 groupId: req.group.id,
                 outputPreview: result.text.slice(0, 1000)
             })
@@ -216,7 +230,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             properties: {
                 tasks: {
                     type: 'array',
-                    minItems: 1,
+                    minItems: 0,
                     items: {
                         type: 'object',
                         properties: {
@@ -233,6 +247,21 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                             objective: { type: 'string' }
                         },
                         required: ['key', 'name', 'agentId', 'deps', 'objective'],
+                        additionalProperties: false
+                    }
+                },
+                memberMessages: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            agentId: {
+                                type: 'string',
+                                ...(memberIds.length > 0 ? { enum: memberIds } : {})
+                            },
+                            text: { type: 'string' }
+                        },
+                        required: ['agentId', 'text'],
                         additionalProperties: false
                     }
                 },
@@ -255,7 +284,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             `路由来源：${req.routeKind}`,
             `用户显式提及的成员 agentId：${mentioned}`,
             `用户消息：${req.userText}`,
-            '请按结构化输出 schema 返回计划。'
+            '请按结构化输出 schema 返回计划；如果用户只是问候、闲聊、询问状态、征求设计/产品/技术观点或做轻量评审，请返回空 tasks，并用 note / memberMessages 直接回复；只有需要实际产出或修改时才创建 tasks。'
         ].join('\n\n')
     }
 
@@ -290,12 +319,45 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                 objective: typeof rec.objective === 'string' ? rec.objective : req.userText
             })
         })
-        if (tasks.length === 0) return null
+        const rawMemberMessages = (obj as { memberMessages?: unknown }).memberMessages
+        const parsedMemberMessages = this.parseMemberMessages(rawMemberMessages, memberIds)
+        if (rawMemberMessages !== undefined && !parsedMemberMessages) {
+            return null
+        }
+        const memberMessages = parsedMemberMessages ?? []
         const note =
             typeof (obj as { note?: unknown }).note === 'string'
                 ? (obj as { note: string }).note
                 : undefined
-        return { tasks, note }
+        if (tasks.length === 0) {
+            if (rawTasks.length > 0) return null
+            if (!note?.trim() && (!memberMessages || memberMessages.length === 0)) return null
+        }
+        return {
+            tasks,
+            note,
+            ...(memberMessages.length > 0 ? { memberMessages } : {})
+        }
+    }
+
+    private parseMemberMessages(
+        raw: unknown,
+        memberIds: Set<string>
+    ): PlanMemberMessage[] | null {
+        if (raw === undefined) return []
+        if (!Array.isArray(raw)) return null
+        const seen = new Set<string>()
+        const messages: PlanMemberMessage[] = []
+        for (const item of raw) {
+            if (typeof item !== 'object' || item === null) return null
+            const rec = item as Record<string, unknown>
+            const agentId = typeof rec.agentId === 'string' ? rec.agentId : ''
+            const text = typeof rec.text === 'string' ? rec.text.trim() : ''
+            if (!memberIds.has(agentId) || !text || seen.has(agentId)) return null
+            seen.add(agentId)
+            messages.push({ agentId, text })
+        }
+        return messages
     }
 
     private extractJson(text: string): string | null {

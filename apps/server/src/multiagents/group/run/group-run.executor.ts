@@ -357,6 +357,7 @@ export class GroupRunExecutor implements OnModuleInit {
             userText,
             nodes
         })
+        if (nodes.length === 0) return true
 
         const outcomes: TaskOutcome[] = []
         let success = true

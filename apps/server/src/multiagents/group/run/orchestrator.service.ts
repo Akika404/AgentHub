@@ -36,7 +36,8 @@ export interface TaskOutcome {
 
 /**
  * OrchestratorService — 独立内置编排角色：用群配置 vendor/model + 内置 prompt 产计划
- *（经可注入 OrchestratorPlanner），写黑板 task_graph + 发 task-list 消息，末尾聚合汇报。
+ *（经可注入 OrchestratorPlanner）。任务消息写黑板 task_graph + 发 task-list；
+ * 非任务消息只发 Orchestrator/成员文本回复。
  */
 @Injectable()
 export class OrchestratorService {
@@ -49,7 +50,7 @@ export class OrchestratorService {
         private readonly debug: GroupDebugLogger
     ) {}
 
-    /** 生成计划 → 写 task_graph → 发 task-list 消息 → 推 orchestrator_plan 事件。 */
+    /** 生成计划；有任务则写 task_graph + 发 task-list，非任务则只回复文本。 */
     async plan(params: OrchestratorPlanParams): Promise<OrchestratorPlanResult> {
         const { group, userId, runId, routeKind, mentionedAgentIds, members } = params
 
@@ -93,11 +94,33 @@ export class OrchestratorService {
         })
 
         if (plan.tasks.length === 0) {
-            await this.groupMessages.appendSystem(
-                group.id,
-                userId,
-                'Orchestrator 未能生成可执行的任务计划。'
-            )
+            const note = plan.note?.trim() || '收到。'
+            await this.groupMessages.appendText(group.id, userId, 'orchestrator', note)
+            const validMemberIds = new Set(members.map(({ agent }) => agent.id))
+            for (const message of plan.memberMessages ?? []) {
+                const text = message.text.trim()
+                if (!validMemberIds.has(message.agentId) || !text) continue
+                await this.groupMessages.appendText(
+                    group.id,
+                    userId,
+                    'agent',
+                    text,
+                    message.agentId
+                )
+            }
+            await this.runStream.publish(runId, {
+                type: 'orchestrator_report',
+                runId,
+                text: note
+            })
+            this.debug.log('group.orchestrator.plan.noop', {
+                groupId: group.id,
+                runId,
+                routeKind,
+                mentionedAgentIds,
+                note,
+                memberMessages: plan.memberMessages ?? []
+            })
             return { nodes: [], note: plan.note }
         }
 

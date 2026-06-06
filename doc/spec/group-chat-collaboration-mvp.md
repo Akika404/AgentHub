@@ -249,8 +249,8 @@ POST /group-chats/:id/converse { text, mentions }
 | --- | --- | --- |
 | `@SingleAgent <msg>` | `direct_single` | 走 ContinuityResolver 判 A/B/C → 直接派发该成员单任务（不强制全量拆解） |
 | `@A @B <msg>` | `multi` | 交 Orchestrator 轻量协调 → 顺序为 A、B 各派一个任务 |
-| `@Orchestrator <msg>` | `orchestrate` | 强制 Orchestrator 介入生成计划 |
-| `<msg>`（无 @） | `orchestrate` | 默认交 Orchestrator 判复杂度后分发 |
+| `@Orchestrator <msg>` | `orchestrate` | 强制 Orchestrator 介入；任务消息生成计划，非任务消息直接回复；适合成员角色轻量回应时展示成员聊天气泡 |
+| `<msg>`（无 @） | `orchestrate` | 默认交 Orchestrator 判复杂度；任务消息分发，非任务消息直接回复；适合成员角色轻量回应时展示成员聊天气泡 |
 
 `runGroup` 执行：
 
@@ -366,7 +366,7 @@ dispatch(groupId, task, mode):
 
 > 本节在编码完成后补记（spec-kit 阶段 4 回顾），记录实现层面对 spec 的细化与有意偏差。
 
-- **Orchestrator Planner 默认调用大模型**：`OrchestratorPlanner` 接口 + `ORCHESTRATOR_PLANNER` 注入令牌已就位；默认绑定 `LlmOrchestratorPlanner`，使用群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划。LLM 调用失败、输出 JSON 解析失败或指派给非群成员时，直接按上游错误处理，不静默降级成规则分派。自动化测试可覆盖注入令牌替换为假 Planner，以避免真实 LLM e2e 依赖。
+- **Orchestrator Planner 默认调用大模型**：`OrchestratorPlanner` 接口 + `ORCHESTRATOR_PLANNER` 注入令牌已就位；默认绑定 `LlmOrchestratorPlanner`，使用群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划。问候/闲聊/状态询问/轻量评审/合理性咨询等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员；当适合由某个成员角色给出观点或问候时，可额外返回 `memberMessages`，以成员聊天气泡形式展示但仍不触发成员 turn。LLM 调用失败、输出 JSON 解析失败或指派给非群成员时，直接按上游错误处理，不静默降级成规则分派。自动化测试可覆盖注入令牌替换为假 Planner，以避免真实 LLM e2e 依赖。
 - **成员 turn 复用方式**：成员 dispatch 未复用单聊 `AgentRuntimeService.startTurn`（其活跃锁/事件流按 session 粒度、且自带独立 turn-stream），而是**复用更底层的适配层**（`createAgent` + `agentToConfig` + `AgentMessageHistoryService.collectStep/saveSteps`）直接驱动成员 turn，事件经 `member_turn_event` 透传到群运行 Stream（`GroupRunStream`，按 `TurnStream` 范式新建、类型为 `GroupRunEvent`、锁粒度为「群」）。成员私有 L1 仍落 `agent_message` / `agent_message_step`。
 - **`report_completion` 落地**：成员不直接写库；turn 末尾输出 ```report``` JSON 块，dispatch 解析后**基于 git diff 代写黑板产出物**，并据 report 处理 decisions / contracts（owner 校验）/ memory_candidate（去重）。无 report 时回退为「以最终文本为摘要」。
 - **自动化测试范围**：`BlackboardService`（乐观锁 / decision supersede / contract owner 保护）、`AgentMemoryService`（去重 / scope）、`ContextAssembler`（黑板冲突丢弃 / 预算裁剪 / 情况 A）、`MessageRouter`（路由表全分支）、`ContinuityResolver`（A/B/C + 强指代）共 20 条单测，经 `tsx + node:test` 运行（`pnpm -F @agenthub/server test`）。**建群 + 单 @ 直派的端到端 happy path 依赖在线 MySQL + Redis + 真实 Agent SDK/LLM**，本轮以单元级管线 + 手动验证覆盖，未纳入自动化 CI e2e（与 spec「不强制真实 LLM e2e」一致）。
