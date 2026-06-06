@@ -36,7 +36,7 @@ const isSelf = (): boolean =>
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface-hover p-3 rounded-xl rounded-tl-sm text-md font-medium whitespace-pre-wrap break-words"
+        class="bg-surface-hover border border-surface-border p-3 rounded-xl rounded-tl-sm text-md font-medium whitespace-pre-wrap break-words"
       >
         <div
           v-if="message.replyTo"
