@@ -101,7 +101,7 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface-hover p-3 rounded-md rounded-tl-sm text-md whitespace-pre-wrap break-words"
+        class="bg-surface-hover p-3 rounded-xl rounded-tl-sm text-md whitespace-pre-wrap break-words"
         :class="{
           'w-72 max-w-full': isInitialThinking,
           'w-96 max-w-full': hasPlan && !isInitialThinking

@@ -49,7 +49,7 @@ function onInputKey(event: KeyboardEvent): void {
         <span class="text-sm text-text-muted">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div
-        class="bg-surface border border-surface-border p-4 rounded-md rounded-tl-sm text-md w-full max-w-lg shadow-sm"
+        class="bg-surface border border-surface-border p-4 rounded-xl rounded-tl-sm text-md w-full max-w-lg shadow-sm"
       >
         <p class="text-text-main mb-3 leading-[22px]">{{ message.text }}</p>
         <ul class="space-y-2">
