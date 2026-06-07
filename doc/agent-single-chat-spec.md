@@ -22,13 +22,13 @@
 | 概念             | 含义                                                                                                               | 存储                       |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------- |
 | Agent            | 用户创建的 Agent 配置，如展示名、头像/颜色标识、vendor、model、Provider、默认目录、system prompt                   | MySQL `agent`              |
-| AgentSession     | 一个单 Agent 聊天会话，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP                               | MySQL `agent_session`      |
+| AgentSession     | Agent 运行会话；单聊使用 `scope=user`，包含 chat title、cwd、session home、SDK 句柄、有效 skills/MCP               | MySQL `agent_session`      |
 | AgentMessage     | 某个聊天的 UI 主消息历史，只含 user / agent / system 文本                                                          | MySQL `agent_message`      |
 | AgentMessageStep | 一条 agent 消息产出过程中的有序运行步骤（thinking / progress / tool / todo）                                       | MySQL `agent_message_step` |
 | LiveAgent        | 进程内活实例，按 chat/session id 持有 adapter、busy、abort、lastUsedAt                                             | 内存 Map                   |
 | Turn 事件流      | 一轮对话的事件广播+回放载体，一轮一条 Redis Stream；另含会话活跃指针、turn/session 归属索引与跨实例 abort 控制频道 | Redis Streams / pub/sub    |
 
-`agent_session` 是左侧聊天列表的数据源；`agent_message.sessionId` 是消息隔离边界。`agent_message_step` 以 `messageId` 关联某条 agent 消息、`seq` 排序，与该消息一对多；删除 Agent 会删除它的所有聊天和消息，删除/清空聊天会一并删除该聊天的运行步骤。
+`agent_session` 中 `scope=user` 的记录是左侧单聊列表的数据源；`scope=group` 为群聊成员内部运行会话，不进入 `/agent-chats`。`agent_message.sessionId` 是消息隔离边界。`agent_message_step` 以 `messageId` 关联某条 agent 消息、`seq` 排序，与该消息一对多；删除 Agent 会删除它的所有聊天和消息，删除/清空聊天会一并删除该聊天的运行步骤。
 
 ### AgentMessageStep 步骤模型
 
@@ -115,11 +115,11 @@ interface AgentChatView {
 5. 将 Agent Home 下当前 vendor 的 `.claude` / `.codex` 配置合并到工作目录，目标已有文件/skill 优先；再导入本聊天指定 skill 文件夹。
 6. 计算有效 skills：Agent 原 skills 与导入 skill 名称去重合并；Agent 原值为 `all` 时保持 `all`。
 7. 计算有效 MCP：Agent 原 `mcpServers` 与聊天配置浅合并。
-8. 保存 `agent_session`，不开启底层 SDK 会话。
+8. 保存 `scope=user` 的 `agent_session`，不开启底层 SDK 会话。
 
 发送消息时（启动一轮 turn）：
 
-1. 按 `chatId` 读取 `AgentSession` 和 Agent 配置。
+1. 按 `chatId` 读取 `scope=user` 的 `AgentSession` 和 Agent 配置。
 2. 生成 `turnId`，用 `SET NX EX` 把会话标记为「有一轮在跑」（兼作跨实例并发互斥锁），同时写入 `agent:turn:{turnId}:session` 归属索引。若已有活跃轮，返回 `AGENT_BUSY`，不启动新轮、不重复落库 user 消息；围观已有轮应通过 `activeTurnId` 订阅事件流。
 3. 按 `session.id` 取或重建 `LiveAgent`；`workingDirectory/sessionHomeDirectory/skills/mcpServers` 来自聊天，模型、Provider、system prompt、tools/permission/reasoning 来自 Agent。若重建失败或后续启动前失败，会清理 active 指针与 turn/session 归属索引。
 4. 保存用户消息到 `agent_message`，包含 `sessionId`。

@@ -8,6 +8,9 @@ import type {
 } from '@agenthub/shared'
 import { BusinessException } from '../../common/index.js'
 import { Agent } from '../entities/agent.entity.js'
+import { AgentSession } from '../entities/agent-session.entity.js'
+import { AgentMessage } from '../entities/agent-message.entity.js'
+import { AgentMessageStep } from '../entities/agent-message-step.entity.js'
 import { AgentPolicyService } from '../agents/agent-policy.service.js'
 import { PlatformProviderService } from '../../platform-provider/platform-provider.service.js'
 import { GroupChat } from './entities/group-chat.entity.js'
@@ -175,8 +178,24 @@ export class GroupChatService {
 
     async deleteGroupChat(userId: string, id: string): Promise<{ deleted: true }> {
         const group = await this.loadGroup(userId, id)
+        const memberSessions = await this.memberRepo.find({
+            select: ['agentSessionId'],
+            where: { userId, groupChatId: group.id }
+        })
+        const sessionIds = [
+            ...new Set(
+                memberSessions
+                    .map((member) => member.agentSessionId)
+                    .filter((sessionId): sessionId is string => !!sessionId)
+            )
+        ]
         // 级联删除数据库记录；工作区只标记 inactive，不删除任何目录。
         await this.dataSource.transaction(async (m) => {
+            if (sessionIds.length > 0) {
+                await m.delete(AgentMessageStep, { sessionId: In(sessionIds) })
+                await m.delete(AgentMessage, { userId, sessionId: In(sessionIds) })
+                await m.delete(AgentSession, { userId, id: In(sessionIds) })
+            }
             await m.delete(GroupChatMember, { groupChatId: group.id })
             await m.delete(GroupMessage, { groupChatId: group.id })
             await m.delete(GroupRun, { groupChatId: group.id })

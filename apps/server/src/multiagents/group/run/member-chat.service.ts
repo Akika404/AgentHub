@@ -174,10 +174,12 @@ export class MemberChatService {
 
         await this.messages.saveMessage(params.userId, agent.id, session.id, 'user', prompt)
         try {
-            const iterator = adapter.send(prompt, {
-                signal: params.signal,
-                outputSchema: LIGHTWEIGHT_CHAT_SCHEMA
-            })[Symbol.asyncIterator]()
+            const iterator = adapter
+                .send(prompt, {
+                    signal: params.signal,
+                    outputSchema: LIGHTWEIGHT_CHAT_SCHEMA
+                })
+                [Symbol.asyncIterator]()
             while (true) {
                 const next = await Promise.race([iterator.next(), timeoutPromise])
                 if (next.done) break
@@ -210,7 +212,11 @@ export class MemberChatService {
         }
 
         const rawFinalText = finalFromDone ?? textParts.join('')
-        const finalText = (structuredText ?? this.parseJsonTextField(rawFinalText) ?? rawFinalText).trim()
+        const finalText = (
+            structuredText ??
+            this.parseJsonTextField(rawFinalText) ??
+            rawFinalText
+        ).trim()
         this.debug.log('group.member_chat.turn_finished', {
             groupId: params.group.id,
             runId: params.runId,
@@ -283,6 +289,7 @@ export class MemberChatService {
                 userId: group.userId,
                 agentId: agent.id,
                 vendor: agent.vendor,
+                scope: 'group',
                 title: null,
                 workingDirectory,
                 sessionHomeDirectory: home,
@@ -303,6 +310,7 @@ export class MemberChatService {
                 home
             })
         }
+        session.scope = 'group'
         session.workingDirectory = workingDirectory
         await this.sessionRepo.save(session)
 

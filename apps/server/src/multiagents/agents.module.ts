@@ -16,6 +16,7 @@ import { Agent } from './entities/agent.entity.js'
 import { AgentSession } from './entities/agent-session.entity.js'
 import { AgentMessage } from './entities/agent-message.entity.js'
 import { AgentMessageStep } from './entities/agent-message-step.entity.js'
+import { GroupChatMember } from './group/entities/group-chat-member.entity.js'
 
 /**
  * AgentsModule — 用户虚拟员工管理。
@@ -27,7 +28,13 @@ import { AgentMessageStep } from './entities/agent-message-step.entity.js'
  */
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Agent, AgentSession, AgentMessage, AgentMessageStep]),
+        TypeOrmModule.forFeature([
+            Agent,
+            AgentSession,
+            AgentMessage,
+            AgentMessageStep,
+            GroupChatMember
+        ]),
         UserModule,
         PlatformProviderModule
     ],

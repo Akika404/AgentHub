@@ -681,6 +681,7 @@ export class DispatchService {
                 userId: group.userId,
                 agentId: agent.id,
                 vendor: agent.vendor,
+                scope: 'group',
                 title: null,
                 workingDirectory: worktree,
                 sessionHomeDirectory: home,
@@ -701,6 +702,7 @@ export class DispatchService {
                 home
             })
         }
+        session.scope = 'group'
         session.workingDirectory = worktree
         await this.sessionRepo.save(session)
 

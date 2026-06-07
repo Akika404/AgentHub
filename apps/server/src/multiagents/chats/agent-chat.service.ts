@@ -9,6 +9,7 @@ import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
+import { GroupChatMember } from '../group/entities/group-chat-member.entity.js'
 import { toAgentChatView } from '../mappers/agent.mapper.js'
 import { BusinessException } from '../../common/index.js'
 import { AgentConfigService } from '../agents/agent-config.service.js'
@@ -24,6 +25,8 @@ export class AgentChatService {
         private readonly agentRepo: Repository<Agent>,
         @InjectRepository(AgentSession)
         private readonly sessionRepo: Repository<AgentSession>,
+        @InjectRepository(GroupChatMember)
+        private readonly groupMemberRepo: Repository<GroupChatMember>,
         private readonly agents: AgentConfigService,
         private readonly policy: AgentPolicyService,
         private readonly workspace: AgentWorkspaceService,
@@ -67,6 +70,7 @@ export class AgentChatService {
             userId,
             agentId: agent.id,
             vendor: agent.vendor,
+            scope: 'user',
             title: this.policy.normalizeTitle(dto.title),
             workingDirectory,
             sessionHomeDirectory,
@@ -81,18 +85,20 @@ export class AgentChatService {
     }
 
     async listChats(userId: string): Promise<AgentChatView[]> {
+        const groupSessionIds = await this.listGroupMemberSessionIds(userId)
         const sessions = await this.sessionRepo.find({
-            where: { userId },
+            where: { userId, scope: 'user' },
             order: { updatedAt: 'DESC', createdAt: 'DESC' }
         })
-        if (sessions.length === 0) return []
+        const userSessions = sessions.filter((session) => !groupSessionIds.has(session.id))
+        if (userSessions.length === 0) return []
 
         const agents = await this.agentRepo.find({
-            where: { userId, id: In([...new Set(sessions.map((s) => s.agentId))]) }
+            where: { userId, id: In([...new Set(userSessions.map((s) => s.agentId))]) }
         })
         const agentById = new Map(agents.map((agent) => [agent.id, agent]))
-        const activeTurns = await this.runtime.getActiveTurns(sessions.map((s) => s.id))
-        return sessions
+        const activeTurns = await this.runtime.getActiveTurns(userSessions.map((s) => s.id))
+        return userSessions
             .map((session) => {
                 const agent = agentById.get(session.agentId)
                 return agent
@@ -113,11 +119,7 @@ export class AgentChatService {
         return this.messages.listChatMessages(userId, session.id)
     }
 
-    async startTurn(
-        userId: string,
-        chatId: string,
-        prompt: string
-    ): Promise<{ turnId: string }> {
+    async startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
         const { session } = await this.loadChat(userId, chatId)
         return this.runtime.startTurn(session, prompt)
     }
@@ -131,11 +133,7 @@ export class AgentChatService {
         return this.runtime.subscribeTurn(session, chatId, turnId)
     }
 
-    async abortTurn(
-        userId: string,
-        chatId: string,
-        turnId: string
-    ): Promise<{ aborted: true }> {
+    async abortTurn(userId: string, chatId: string, turnId: string): Promise<{ aborted: true }> {
         const { session } = await this.loadChat(userId, chatId)
         return this.runtime.abortTurn(session, chatId, turnId)
     }
@@ -164,11 +162,33 @@ export class AgentChatService {
         userId: string,
         chatId: string
     ): Promise<{ agent: Agent; session: AgentSession }> {
-        const session = await this.sessionRepo.findOne({ where: { id: chatId, userId } })
-        if (!session) {
+        const session = await this.sessionRepo.findOne({
+            where: { id: chatId, userId, scope: 'user' }
+        })
+        if (!session || (await this.isGroupMemberSession(userId, session.id))) {
             throw BusinessException.notFound(`Agent chat ${chatId} not found`)
         }
         const agent = await this.agents.loadAgent(userId, session.agentId)
         return { session, agent }
+    }
+
+    private async listGroupMemberSessionIds(userId: string): Promise<Set<string>> {
+        const members = await this.groupMemberRepo.find({
+            select: ['agentSessionId'],
+            where: { userId }
+        })
+        return new Set(
+            members
+                .map((member) => member.agentSessionId)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        )
+    }
+
+    private async isGroupMemberSession(userId: string, sessionId: string): Promise<boolean> {
+        return (
+            (await this.groupMemberRepo.exists({
+                where: { userId, agentSessionId: sessionId }
+            })) === true
+        )
     }
 }

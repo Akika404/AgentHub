@@ -4,7 +4,7 @@
 -- 真实结构以 apps/server/src/multiagents/entities/*.entity.ts 为准。
 -- 当前模型：
 --   Agent（用户拥有的可复用配置）
---   AgentSession（一个单 Agent 聊天会话）
+--   AgentSession（用户单 Agent 聊天会话 / 群聊内部成员运行会话）
 --   AgentMessage（按 sessionId 隔离的 UI 消息历史）
 --   AgentMessageStep（一条 agent 消息产出过程中的有序运行步骤）
 -- =============================================================================
@@ -43,6 +43,7 @@ CREATE TABLE `agent_session`
   `userId`               varchar(36)   NOT NULL COMMENT '归属用户 id',
   `agentId`              varchar(36)   NOT NULL COMMENT '关联 agent.id',
   `vendor`               varchar(16)   NOT NULL COMMENT '冗余厂商字段',
+  `scope`                varchar(16)   NOT NULL DEFAULT 'user' COMMENT 'user / group；群聊内部成员会话不进单聊列表',
   `title`                varchar(128)           DEFAULT NULL COMMENT '可选聊天标题',
   `workingDirectory`     varchar(1024) NOT NULL COMMENT '本聊天工作目录',
   `sessionHomeDirectory` varchar(1024) NOT NULL COMMENT '本聊天私有 home',
@@ -55,10 +56,11 @@ CREATE TABLE `agent_session`
   `updatedAt`            datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `IDX_agent_session_userId` (`userId`),
-  KEY `IDX_agent_session_agentId` (`agentId`)
+  KEY `IDX_agent_session_agentId` (`agentId`),
+  KEY `IDX_agent_session_scope` (`scope`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_0900_ai_ci COMMENT ='单 Agent 聊天会话';
+  COLLATE = utf8mb4_0900_ai_ci COMMENT ='Agent 会话（用户单聊 / 群聊内部成员运行）';
 
 CREATE TABLE `agent_message`
 (

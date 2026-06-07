@@ -10,12 +10,16 @@ import type { AgentVendor } from '../adapter/index.js'
 
 /** 会话状态：活跃 / 已暂存（从内存驱逐，可恢复）/ 已清空（句柄丢弃，下次开新会话） */
 export type AgentSessionStatus = 'active' | 'suspended' | 'cleared'
+/** 会话用途：用户显式创建的单聊 / 群聊内部成员运行会话 */
+export type AgentSessionScope = 'user' | 'group'
 
 /**
  * AgentSession — 一个单 Agent 聊天会话。
  *
- * 一个 Agent 可以被创建出多条互不影响的单聊会话。每条会话拥有自己的工作目录、
- * 会话私有 home、SDK 会话句柄、合并后的 skills/MCP 运行配置和 UI 消息历史。
+ * 一个 Agent 可以被创建出多条互不影响的会话。用户显式创建的单聊 scope=user，
+ * 群聊成员复用的内部运行会话 scope=group，不进入 /agent-chats 列表。
+ * 每条会话拥有自己的工作目录、会话私有 home、SDK 会话句柄、合并后的
+ * skills/MCP 运行配置和 UI 消息历史。
  */
 @Entity('agent_session')
 export class AgentSession {
@@ -35,6 +39,11 @@ export class AgentSession {
     /** 冗余 vendor，免去重建时为取 vendor 而 join agent */
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
+
+    /** 用户单聊 / 群聊内部成员会话；内部会话不暴露在单聊 API 中 */
+    @Index()
+    @Column({ type: 'varchar', length: 16, default: 'user' })
+    scope!: AgentSessionScope
 
     /** 可选聊天标题；为空时客户端按 Agent 名称 + 创建时间展示 */
     @Column({ type: 'varchar', length: 128, nullable: true })

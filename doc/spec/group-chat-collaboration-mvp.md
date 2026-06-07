@@ -37,6 +37,7 @@
 ## Context
 
 群聊把多个已添加的 Agent 拉进同一会话，用户可以：
+
 - 发布复杂任务，由 **Orchestrator** 自动理解意图、拆解、串行分派给合适的子 Agent，并在聊天流聚合汇报；
 - `@某个 Agent` 单独指派或在其完成后要求修改；
 - `@多个 Agent`，由 Orchestrator 轻量协调，成员像群聊成员一样依次回复各自产出。
@@ -53,21 +54,21 @@
 
 ### 新增实体（MySQL）
 
-| 概念 | 含义 | 存储 |
-| --- | --- | --- |
-| **GroupChat** | 一个群聊：标题、所属用户、Orchestrator 配置、共享工作区、状态 | `group_chat` |
-| **GroupChatMember** | 群成员：关联 Agent、群内角色、加入时间 | `group_chat_member` |
-| **GroupMessage** | 展示层 presentation_log：多发言者消息（text / task-list / options / system） | `group_message` |
-| **BlackboardArtifact** | 产出物索引 | `blackboard_artifact` |
-| **BlackboardDecision** | 决策（带 status / supersedes / rationale） | `blackboard_decision` |
-| **BlackboardContract** | 共享契约（带 owner / consumers / approval_required / version） | `blackboard_contract` |
-| **BlackboardTask** | 任务图节点（task_graph node：deps / agent / status） | `blackboard_task` |
-| **BlackboardEvent** | 黑板事实变更事件流（append-only） | `blackboard_event` |
-| **AgentMemoryItem** | 某 Agent 跨任务私有记忆（scope / source / status） | `agent_memory_item` |
-| **GroupRun** | 一次用户消息触发的群运行（含 Orchestrator 决策 + 若干成员 turn），围观载体 | `group_run` + Redis Stream |
+| 概念                   | 含义                                                                         | 存储                       |
+| ---------------------- | ---------------------------------------------------------------------------- | -------------------------- |
+| **GroupChat**          | 一个群聊：标题、所属用户、Orchestrator 配置、共享工作区、状态                | `group_chat`               |
+| **GroupChatMember**    | 群成员：关联 Agent、群内角色、加入时间                                       | `group_chat_member`        |
+| **GroupMessage**       | 展示层 presentation_log：多发言者消息（text / task-list / options / system） | `group_message`            |
+| **BlackboardArtifact** | 产出物索引                                                                   | `blackboard_artifact`      |
+| **BlackboardDecision** | 决策（带 status / supersedes / rationale）                                   | `blackboard_decision`      |
+| **BlackboardContract** | 共享契约（带 owner / consumers / approval_required / version）               | `blackboard_contract`      |
+| **BlackboardTask**     | 任务图节点（task_graph node：deps / agent / status）                         | `blackboard_task`          |
+| **BlackboardEvent**    | 黑板事实变更事件流（append-only）                                            | `blackboard_event`         |
+| **AgentMemoryItem**    | 某 Agent 跨任务私有记忆（scope / source / status）                           | `agent_memory_item`        |
+| **GroupRun**           | 一次用户消息触发的群运行（含 Orchestrator 决策 + 若干成员 turn），围观载体   | `group_run` + Redis Stream |
 
 > `project_meta`（name / goal / tech_stack / status / workspace_dir）作为字段直接挂在 `group_chat` 上，不单建表。
-> 成员"干活"复用现有 `agent_session` / `agent_message` / `agent_message_step`：每个派发任务绑定/复用一个成员 `AgentSession`，其 `workingDirectory` 指向该任务的 git worktree。`short_term_buffer` 存 Redis（带 TTL），不落 MySQL。
+> 成员"干活"复用现有 `agent_session` / `agent_message` / `agent_message_step`：每个派发任务绑定/复用一个 `scope=group` 的成员内部 `AgentSession`，其 `workingDirectory` 指向该任务的 git worktree，且不进入 `/agent-chats` 单聊列表。`short_term_buffer` 存 Redis（带 TTL），不落 MySQL。
 
 ### 关键结构（落到 `packages/shared/src/`，供前后端共享）
 
@@ -77,17 +78,17 @@ interface GroupChatView {
   id: string
   title: string
   status: 'active' | 'archived'
-  workspaceDir: string                 // 共享 git 工作区根
+  workspaceDir: string // 共享 git 工作区根
   orchestrator: OrchestratorConfigView // 独立内置角色配置
   members: GroupMemberView[]
   projectMeta: ProjectMeta
-  activeRunId: string | null           // 进行中的群运行；空闲为 null（用于打开群时订阅）
+  activeRunId: string | null // 进行中的群运行；空闲为 null（用于打开群时订阅）
   createdAt: string
   updatedAt: string
 }
 
 interface OrchestratorConfigView {
-  vendor: AgentVendor                  // 与成员 Agent 解耦，单独配置
+  vendor: AgentVendor // 与成员 Agent 解耦，单独配置
   model: string
   providerId: string
   // systemPrompt 由系统内置（编排角色提示词），用户不填
@@ -100,8 +101,8 @@ interface GroupMemberView {
   color: string
   vendor: AgentVendor
   capabilities: AgentCapabilities
-  roleInGroup: string | null           // 自由文本能力标签，如 "前端" / "后端"；可空
-  capabilitySummary: string | null     // Agent 配置上的能力摘要；供 Orchestrator 判断擅长领域
+  roleInGroup: string | null // 自由文本能力标签，如 "前端" / "后端"；可空
+  capabilitySummary: string | null // Agent 配置上的能力摘要；供 Orchestrator 判断擅长领域
 }
 
 interface ProjectMeta {
@@ -124,9 +125,9 @@ interface BlackboardArtifact {
   type: 'code' | 'document' | 'design' | 'test_report'
   path: string
   ownerAgentId: string
-  version: number                      // 乐观锁基准
+  version: number // 乐观锁基准
   status: 'draft' | 'proposed' | 'approved' | 'deprecated'
-  summary: string                      // 供"注摘要不注全文"
+  summary: string // 供"注摘要不注全文"
   updatedAt: string
   updatedByAgentId: string
 }
@@ -139,15 +140,15 @@ interface BlackboardDecision {
   scope: string | null
   supersedes: string[]
   createdByAgentId: string
-  approvedBy: string | null            // 'orchestrator' | agentId | userId
+  approvedBy: string | null // 'orchestrator' | agentId | userId
   ts: string
 }
 
 interface BlackboardContract {
-  id: string                           // e.g. "time_api"
-  spec: Record<string, unknown>        // endpoint/returns/... 结构化字段
+  id: string // e.g. "time_api"
+  spec: Record<string, unknown> // endpoint/returns/... 结构化字段
   ownerAgentId: string
-  consumers: string[]                  // agentId[]
+  consumers: string[] // agentId[]
   approvalRequired: boolean
   version: number
 }
@@ -155,9 +156,9 @@ interface BlackboardContract {
 interface BlackboardTaskNode {
   id: string
   name: string
-  agentId: string | null               // 派给谁；拆解后由 Orchestrator 指定
-  deps: string[]                        // 依赖任务 id
-  status: 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked'  // 'blocked' 见加固 spec
+  agentId: string | null // 派给谁；拆解后由 Orchestrator 指定
+  deps: string[] // 依赖任务 id
+  status: 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked' // 'blocked' 见加固 spec
   objective: string
 }
 
@@ -189,29 +190,29 @@ interface AgentMemoryItem {
 
 ### 群聊管理
 
-| Method | Path | 说明 |
-| --- | --- | --- |
-| `POST` | `/group-chats` | 创建群聊（成员列表 + Orchestrator 配置 + 项目元信息；优先使用用户传入的 `workspaceDir`，未传则后端分配，并校验/初始化为 git 仓库） |
-| `GET` | `/group-chats` | 当前用户的全部群聊，列表使用 |
-| `GET` | `/group-chats/:id` | 群详情（成员、Orchestrator、projectMeta、activeRunId） |
-| `PATCH` | `/group-chats/:id` | 改标题 / projectMeta / 成员（最小实现：加成员、改标题） |
-| `DELETE` | `/group-chats/:id` | 删除群聊（级联删数据库记录；共享仓库 `ACTIVE=false`，任何情况下都不删除目录） |
+| Method   | Path               | 说明                                                                                                                               |
+| -------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/group-chats`     | 创建群聊（成员列表 + Orchestrator 配置 + 项目元信息；优先使用用户传入的 `workspaceDir`，未传则后端分配，并校验/初始化为 git 仓库） |
+| `GET`    | `/group-chats`     | 当前用户的全部群聊，列表使用                                                                                                       |
+| `GET`    | `/group-chats/:id` | 群详情（成员、Orchestrator、projectMeta、activeRunId）                                                                             |
+| `PATCH`  | `/group-chats/:id` | 改标题 / projectMeta / 成员（最小实现：加成员、改标题）                                                                            |
+| `DELETE` | `/group-chats/:id` | 删除群聊（级联删数据库记录；共享仓库 `ACTIVE=false`，任何情况下都不删除目录）                                                      |
 
 ### 群聊会话（presentation_log + 群运行）
 
-| Method | Path | 说明 |
-| --- | --- | --- |
-| `GET` | `/group-chats/:id/messages` | 展示层消息历史（升序，多发言者） |
-| `POST` | `/group-chats/:id/converse` | 用户发消息，启动一次**群运行**（后台游离），body `{ text, mentions?: string[] }`，返回 `{ runId }` |
+| Method     | Path                                  | 说明                                                                                                                         |
+| ---------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET`      | `/group-chats/:id/messages`           | 展示层消息历史（升序，多发言者）                                                                                             |
+| `POST`     | `/group-chats/:id/converse`           | 用户发消息，启动一次**群运行**（后台游离），body `{ text, mentions?: string[] }`，返回 `{ runId }`                           |
 | `GET @Sse` | `/group-chats/:id/runs/:runId/events` | 订阅群运行事件流：回放 + 追尾，逐条推送 `GroupRunEvent`（Orchestrator 决策、成员 turn 进度、黑板更新、汇报），遇 `done` 结束 |
-| `POST` | `/group-chats/:id/runs/:runId/abort` | 中止整个群运行（跨实例广播，连带中止其下进行中的成员 turn） |
+| `POST`     | `/group-chats/:id/runs/:runId/abort`  | 中止整个群运行（跨实例广播，连带中止其下进行中的成员 turn）                                                                  |
 
 ### 黑板（只读 + 调试）
 
-| Method | Path | 说明 |
-| --- | --- | --- |
-| `GET` | `/group-chats/:id/blackboard` | 当前黑板状态快照（artifacts/decisions/contracts/taskGraph） |
-| `GET` | `/group-chats/:id/blackboard/events` | 黑板事件流（审计/调试，分页） |
+| Method | Path                                 | 说明                                                        |
+| ------ | ------------------------------------ | ----------------------------------------------------------- |
+| `GET`  | `/group-chats/:id/blackboard`        | 当前黑板状态快照（artifacts/decisions/contracts/taskGraph） |
+| `GET`  | `/group-chats/:id/blackboard/events` | 黑板事件流（审计/调试，分页）                               |
 
 > **协作动作不走用户 REST**：`dispatch_agent`（Orchestrator → 成员）、`report_completion`（成员 → Orchestrator）、`blackboard_write`（成员/Orchestrator → 黑板）是**服务端内部协作协议**（以 Agent 工具调用 / 内部服务方法实现），不暴露为用户 HTTP 接口。详见 Runtime Flow。
 
@@ -221,15 +222,15 @@ interface AgentMemoryItem {
 
 ### 组件职责
 
-| 组件 | 职责 | 调 LLM |
-| --- | --- | --- |
-| `MessageRouter` | 解析 `@mentions`，决定去向；原文写入 `group_message`（presentation_log） | ❌ |
-| `Orchestrator` | 复杂度判断、拆解写 task_graph、串行派发、聚合汇报 | ✅（独立 vendor/model） |
-| `BlackboardService` | 黑板读写（乐观锁 version）、追加 event、级联触发 | ❌ |
-| `ContextAssembler` | 按检索优先级 + 预算装配单次派发上下文 | ❌ |
-| `AgentMemoryService` | 记忆读写、轻量去重、与黑板对齐丢弃 stale | ❌ |
-| `ContinuityResolver` | 再次修改场景 A/B/C 判定（时间窗口 + 指代词 + 产出物匹配） | ❌（兜底交 Orchestrator） |
-| `GroupRunExecutor` | 编排一次群运行；把成员任务落成 `AgentSession` + turn 串行执行 | ❌ |
+| 组件                 | 职责                                                                     | 调 LLM                    |
+| -------------------- | ------------------------------------------------------------------------ | ------------------------- |
+| `MessageRouter`      | 解析 `@mentions`，决定去向；原文写入 `group_message`（presentation_log） | ❌                        |
+| `Orchestrator`       | 复杂度判断、拆解写 task_graph、串行派发、聚合汇报                        | ✅（独立 vendor/model）   |
+| `BlackboardService`  | 黑板读写（乐观锁 version）、追加 event、级联触发                         | ❌                        |
+| `ContextAssembler`   | 按检索优先级 + 预算装配单次派发上下文                                    | ❌                        |
+| `AgentMemoryService` | 记忆读写、轻量去重、与黑板对齐丢弃 stale                                 | ❌                        |
+| `ContinuityResolver` | 再次修改场景 A/B/C 判定（时间窗口 + 指代词 + 产出物匹配）                | ❌（兜底交 Orchestrator） |
+| `GroupRunExecutor`   | 编排一次群运行；把成员任务落成 `AgentSession` + turn 串行执行            | ❌                        |
 
 ### 流程一：建群
 
@@ -250,12 +251,12 @@ POST /group-chats/:id/converse { text, mentions }
 
 `MessageRouter` 路由表：
 
-| 输入 | routeKind | 行为 |
-| --- | --- | --- |
-| `@SingleAgent <msg>` | `direct_single` | 走 ContinuityResolver 判 A/B/C → 直接派发该成员单任务（不强制全量拆解） |
-| `@A @B <msg>` | `multi` | 交 Orchestrator 轻量协调；需要交付时派任务，需要轻量聊天时走成员真实轻量 turn |
-| `@Orchestrator <msg>` | `orchestrate` | 强制 Orchestrator 介入；任务消息生成计划，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns` |
-| `<msg>`（无 @） | `orchestrate` | 默认交 Orchestrator 判复杂度；任务消息分发，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns` |
+| 输入                  | routeKind       | 行为                                                                                                                   |
+| --------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `@SingleAgent <msg>`  | `direct_single` | 走 ContinuityResolver 判 A/B/C → 直接派发该成员单任务（不强制全量拆解）                                                |
+| `@A @B <msg>`         | `multi`         | 交 Orchestrator 轻量协调；需要交付时派任务，需要轻量聊天时走成员真实轻量 turn                                          |
+| `@Orchestrator <msg>` | `orchestrate`   | 强制 Orchestrator 介入；任务消息生成计划，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns`   |
+| `<msg>`（无 @）       | `orchestrate`   | 默认交 Orchestrator 判复杂度；任务消息分发，非任务消息由 Orchestrator 直接回复；需要成员本人轻量回应时走 `memberTurns` |
 
 `runGroup` 执行：
 
@@ -290,7 +291,7 @@ dispatch(groupId, task, mode):
      检索优先级铁律：当前产出物 > 黑板契约/决策 > 任务上下文 > 私有记忆 > 历史会话摘要
      预算超限裁剪序：历史会话摘要 → 低优记忆 → 非目标产出物摘要（保底：system+TaskContext+目标产出物 ref+相关契约）
   2. 准备工作区：为该 task 在群共享 repo 创建 worktree/分支 task/<taskId>
-       取/重建该成员的 AgentSession，workingDirectory = 该 worktree
+       取/重建该成员的 scope=group AgentSession，workingDirectory = 该 worktree
   3. 运行 turn（复用单聊 turn 机制）：成员是 coding agent，用自带文件工具 read→plan→patch→test
        turn 事件 XADD 到 group run 的 Redis Stream（多端围观），并按现有方式落 agent_message_step（成员私有 L1）
   4. turn 结束后服务端收口：
@@ -374,6 +375,6 @@ dispatch(groupId, task, mode):
 - **Orchestrator Planner 默认调用大模型**：`OrchestratorPlanner` 接口 + `ORCHESTRATOR_PLANNER` 注入令牌已就位；默认绑定 `LlmOrchestratorPlanner`，使用群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。LLM 调用失败、输出 JSON 解析失败或指派给非群成员时，直接按上游错误处理，不静默降级成规则分派。自动化测试可覆盖注入令牌替换为假 Planner，以避免真实 LLM e2e 依赖。
 - **成员能力摘要**：Agent 新增 `capabilitySummary` 配置字段，群聊成员视图和 Orchestrator prompt 会携带 `agentId/name/roleInGroup/capabilitySummary`，帮助 Orchestrator 在不读取完整 Agent system prompt 的情况下判断该把任务或轻量回复交给谁。
 - **成员 turn 复用方式**：成员 dispatch 未复用单聊 `AgentRuntimeService.startTurn`（其活跃锁/事件流按 session 粒度、且自带独立 turn-stream），而是**复用更底层的适配层**（`createAgent` + `agentToConfig` + `AgentMessageHistoryService.collectStep/saveSteps`）直接驱动成员 turn，事件经 `member_turn_event` 透传到群运行 Stream（`GroupRunStream`，按 `TurnStream` 范式新建、类型为 `GroupRunEvent`、锁粒度为「群」）。成员私有 L1 仍落 `agent_message` / `agent_message_step`。
-- **`report_completion` 落地**：成员不直接写库；turn 末尾输出 ```report``` JSON 块，dispatch 解析后**基于 git diff 代写黑板产出物**，并据 report 处理 decisions / contracts（owner 校验）/ memory_candidate（去重）。无 report 时回退为「以最终文本为摘要」。
+- **`report_completion` 落地**：成员不直接写库；turn 末尾输出 `report` JSON 块，dispatch 解析后**基于 git diff 代写黑板产出物**，并据 report 处理 decisions / contracts（owner 校验）/ memory_candidate（去重）。无 report 时回退为「以最终文本为摘要」。
 - **自动化测试范围**：`BlackboardService`（乐观锁 / decision supersede / contract owner 保护）、`AgentMemoryService`（去重 / scope）、`ContextAssembler`（黑板冲突丢弃 / 预算裁剪 / 情况 A）、`MessageRouter`（路由表全分支）、`ContinuityResolver`（A/B/C + 强指代）共 20 条单测，经 `tsx + node:test` 运行（`pnpm -F @agenthub/server test`）。**建群 + 单 @ 直派的端到端 happy path 依赖在线 MySQL + Redis + 真实 Agent SDK/LLM**，本轮以单元级管线 + 手动验证覆盖，未纳入自动化 CI e2e（与 spec「不强制真实 LLM e2e」一致）。
 - **共享工作区 git 操作**：经 `node:child_process` 调用系统 `git`（`init -b main` / `worktree add` / `merge --no-ff` / `diff`），无第三方 git 库依赖。建群写 `ACTIVE=true`；删除群聊只写 `ACTIVE=false`，不删除共享仓库、默认分配目录、worktree/member home 等任何目录。
