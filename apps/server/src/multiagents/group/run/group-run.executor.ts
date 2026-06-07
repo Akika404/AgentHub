@@ -15,7 +15,10 @@ import type { Agent } from '../../entities/agent.entity.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import { GroupMessageService } from '../group-message.service.js'
 import { GroupChatService } from '../group-chat.service.js'
-import { ContinuityResolver } from '../routing/continuity-resolver.service.js'
+import {
+    ContinuityResolver,
+    type ContinuityResult
+} from '../routing/continuity-resolver.service.js'
 import { MessageRouter } from '../routing/message-router.service.js'
 import { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupChatMember } from '../entities/group-chat-member.entity.js'
@@ -30,6 +33,20 @@ import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 interface MemberPair {
     member: GroupChatMember
     agent: Agent
+}
+
+/** 一次群运行某阶段的结果：success=全部完成；suspended=有成员挂起等待用户答复（非失败）。 */
+interface RunPhaseResult {
+    success: boolean
+    suspended: boolean
+}
+
+/** 强制续接成员同一 SDK 会话（用于把用户答复喂回挂起任务）。 */
+const RESUME_CONTINUITY: ContinuityResult = {
+    case: 'A',
+    targetArtifactPaths: [],
+    hotContext: null,
+    needsOrchestratorJudgement: false
 }
 
 /**
@@ -172,7 +189,7 @@ export class GroupRunExecutor implements OnModuleInit {
         const abort = new AbortController()
         this.runningRuns.set(runId, abort)
         const byAgent = new Map(members.map((p) => [p.agent.id, p]))
-        let success = true
+        let phase: RunPhaseResult = { success: true, suspended: false }
         this.debug.log('group.run.started', {
             groupId: group.id,
             runId,
@@ -188,8 +205,26 @@ export class GroupRunExecutor implements OnModuleInit {
         })
 
         try {
-            if (routeKind === 'direct_single') {
-                success = await this.runDirectSingle(
+            // 恢复优先：本群存在挂起任务且本条消息构成对其的答复 → 恢复该任务，跳过常规路由。
+            const resume = await this.resolveResume(group, userId, mentionedAgentIds, byAgent)
+            if (resume === 'ambiguous') {
+                phase = { success: true, suspended: false }
+            } else if (resume) {
+                // 用户回复即作为答复 → 把对应提问卡片标记已作答（刷新后置灰），再恢复任务。
+                await this.groupMessages
+                    .markAgentQuestionAnswered(group.id, resume.node.id, userText)
+                    .catch(() => undefined)
+                phase = await this.drive(
+                    group,
+                    userId,
+                    runId,
+                    resume.graphNodes,
+                    byAgent,
+                    abort.signal,
+                    { node: resume.node, answerText: userText }
+                )
+            } else if (routeKind === 'direct_single') {
+                phase = await this.runDirectSingle(
                     group,
                     userId,
                     runId,
@@ -199,7 +234,7 @@ export class GroupRunExecutor implements OnModuleInit {
                     abort.signal
                 )
             } else {
-                success = await this.runOrchestrated(
+                phase = await this.runOrchestrated(
                     group,
                     userId,
                     runId,
@@ -212,37 +247,106 @@ export class GroupRunExecutor implements OnModuleInit {
                 )
             }
         } catch (err) {
-            success = false
+            phase = { success: false, suspended: false }
             this.logger.error(`Group run ${runId} failed: ${this.errMsg(err)}`)
             await this.groupMessages
                 .appendSystem(group.id, userId, `群运行出错：${this.errMsg(err)}`)
                 .catch(() => undefined)
         } finally {
             const aborted = abort.signal.aborted
+            const suspended = phase.suspended && !aborted
             this.runningRuns.delete(runId)
             await this.runRepo
                 .update(
                     { id: runId },
                     {
-                        status: aborted ? 'aborted' : success ? 'done' : 'failed',
+                        status: aborted
+                            ? 'aborted'
+                            : suspended
+                              ? 'waiting'
+                              : phase.success
+                                ? 'done'
+                                : 'failed',
                         endedAt: new Date()
                     }
                 )
                 .catch(() => undefined)
             await this.runStream.releaseActiveRun(group.id, runId).catch(() => undefined)
+            // 挂起不是失败：done 事件按"非失败"上报，避免前端把"等待回复"渲染成错误。
             await this.runStream
-                .publish(runId, { type: 'done', runId, success: success && !aborted })
+                .publish(runId, {
+                    type: 'done',
+                    runId,
+                    success: (phase.success || suspended) && !aborted
+                })
                 .catch(() => undefined)
             await this.runStream.finalize(runId).catch(() => undefined)
             this.debug.log('group.run.finished', {
                 groupId: group.id,
                 runId,
                 userId,
-                success,
+                success: phase.success,
+                suspended,
                 aborted,
-                finalSuccess: success && !aborted
+                finalSuccess: (phase.success || suspended) && !aborted
             })
         }
+    }
+
+    /**
+     * 恢复判定：本群是否存在 waiting_input 任务，且本条消息构成对它的答复。
+     * - 0 个挂起 → null（正常流程）。
+     * - 1 个挂起：无 @mention 或 @ 的正是该成员 → 恢复；@ 了别人 → null（留逃生口当新请求）。
+     * - 多个挂起：仅当 @ 命中某挂起任务的成员才恢复那一个；否则提示用户 @对应成员（返回 'ambiguous'）。
+     */
+    private async resolveResume(
+        group: GroupChat,
+        userId: string,
+        mentionedAgentIds: string[],
+        byAgent: Map<string, MemberPair>
+    ): Promise<{ node: BlackboardTaskNode; graphNodes: BlackboardTaskNode[] } | 'ambiguous' | null> {
+        const waiting = await this.blackboard.listWaitingTasks(group.id)
+        if (waiting.length === 0) return null
+
+        let target: (typeof waiting)[number] | null = null
+        if (waiting.length === 1) {
+            const only = waiting[0]
+            const mentionsOnly =
+                !!only.agentId && mentionedAgentIds.includes(only.agentId)
+            if (mentionedAgentIds.length === 0 || mentionsOnly) target = only
+        } else {
+            target =
+                waiting.find((t) => !!t.agentId && mentionedAgentIds.includes(t.agentId)) ?? null
+            if (!target) {
+                const names = waiting
+                    .map((t) => (t.agentId ? byAgent.get(t.agentId)?.agent.name : null))
+                    .filter((n): n is string => !!n)
+                await this.groupMessages.appendSystem(
+                    group.id,
+                    userId,
+                    `当前有多个成员在等待你的回复（${names.join('、')}）。请 @对应成员 再回复，以便恢复对应任务。`
+                )
+                this.debug.log('group.run.resume.ambiguous', {
+                    groupId: group.id,
+                    waitingTaskIds: waiting.map((t) => t.id),
+                    mentionedAgentIds
+                })
+                return 'ambiguous'
+            }
+        }
+        if (!target || !target.runId) return null
+
+        const graphNodes = await this.blackboard.listTasksByRunId(group.id, target.runId)
+        const node = graphNodes.find((n) => n.id === target.id)
+        if (!node) return null
+        this.debug.log('group.run.resume.resolved', {
+            groupId: group.id,
+            taskId: node.id,
+            agentId: node.agentId,
+            graphRunId: target.runId,
+            graphSize: graphNodes.length
+        })
+        return { node, graphNodes }
     }
 
     private async runDirectSingle(
@@ -253,7 +357,7 @@ export class GroupRunExecutor implements OnModuleInit {
         userText: string,
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal
-    ): Promise<boolean> {
+    ): Promise<RunPhaseResult> {
         const pair = byAgent.get(agentId)
         if (!pair) {
             this.debug.log('group.run.direct_single.missing_member', {
@@ -263,7 +367,7 @@ export class GroupRunExecutor implements OnModuleInit {
                 userText
             })
             await this.groupMessages.appendSystem(group.id, userId, `成员 ${agentId} 不在本群。`)
-            return false
+            return { success: false, suspended: false }
         }
         const continuity = await this.continuity.resolve(group.id, agentId, userText)
         this.debug.log('group.run.direct_single.decision', {
@@ -326,7 +430,11 @@ export class GroupRunExecutor implements OnModuleInit {
             continuity,
             signal
         })
-        const status = result.success ? 'done' : 'failed'
+        const status: BlackboardTaskStatus = result.suspended
+            ? 'waiting_input'
+            : result.success
+              ? 'done'
+              : 'failed'
         await this.blackboard.setTaskStatus(group.id, node.id, status)
         await this.runStream.publish(runId, {
             type: 'task_status',
@@ -335,7 +443,7 @@ export class GroupRunExecutor implements OnModuleInit {
             status,
             agentId
         })
-        return result.success
+        return { success: result.success, suspended: !!result.suspended }
     }
 
     private async runOrchestrated(
@@ -348,7 +456,7 @@ export class GroupRunExecutor implements OnModuleInit {
         members: MemberPair[],
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal
-    ): Promise<boolean> {
+    ): Promise<RunPhaseResult> {
         const { nodes, memberTurns } = await this.orchestrator.plan({
             group,
             userId,
@@ -370,14 +478,9 @@ export class GroupRunExecutor implements OnModuleInit {
         if (memberTurns.length > 0) {
             return this.runMemberTurns(group, userId, runId, memberTurns, byAgent, signal)
         }
-        if (nodes.length === 0) return true
+        if (nodes.length === 0) return { success: true, suspended: false }
 
-        if (memberTurns.length > 0) {
-            return this.runMemberTurns(group, userId, runId, memberTurns, byAgent, signal)
-        }
-        if (nodes.length === 0) return true
-
-        return this.scheduleTaskGraph(group, userId, runId, nodes, byAgent, signal)
+        return this.drive(group, userId, runId, nodes, byAgent, signal)
     }
 
     /**
@@ -385,21 +488,29 @@ export class GroupRunExecutor implements OnModuleInit {
      * 同一 Agent 不并发双开（共享 AgentSession.workingDirectory）。单任务失败重试 1 次；
      * 仍失败 → 标 failed 并把其传递下游标 blocked，互不依赖任务继续；遇冲突（escalation）
      * 同样计 failed + 阻塞下游，最终由 orchestrator.report 在汇报里列出"需你决策"。
+     *
+     * 成员主动挂起（suspended）→ 计 waiting_input：既不算完成、也不算失败，故下游 deps（≠done）
+     * 不满足、自然不就绪（不放行）；也不调 markDownstreamBlocked（不阻塞）。
+     *
+     * resume 存在时：先把用户答复（answerText）在同一 SDK 会话喂回挂起任务，完成后再进入常规循环
+     * 释放其下游。
      */
-    private async scheduleTaskGraph(
+    private async drive(
         group: GroupChat,
         userId: string,
         runId: string,
         nodes: BlackboardTaskNode[],
         byAgent: Map<string, MemberPair>,
-        signal: AbortSignal
-    ): Promise<boolean> {
+        signal: AbortSignal,
+        resume?: { node: BlackboardTaskNode; answerText: string }
+    ): Promise<RunPhaseResult> {
         const maxParallel = this.maxParallelTasks()
         const statusById = new Map<string, BlackboardTaskStatus>(nodes.map((n) => [n.id, n.status]))
         const nodeById = new Map(nodes.map((n) => [n.id, n]))
         const outcomesById = new Map<string, TaskOutcome>()
         const busyAgents = new Set<string>()
         const inFlight = new Map<string, Promise<void>>()
+        let suspended = false
 
         const setStatus = async (
             taskId: string,
@@ -466,6 +577,48 @@ export class GroupRunExecutor implements OnModuleInit {
             })
         }
 
+        const recordSuspended = async (
+            node: BlackboardTaskNode,
+            question: string,
+            agentId: string | null
+        ): Promise<void> => {
+            suspended = true
+            await setStatus(node.id, 'waiting_input', agentId)
+            outcomesById.set(node.id, {
+                name: node.name,
+                summary: question,
+                success: false,
+                status: 'waiting_input',
+                question
+            })
+            this.debug.log('group.run.orchestrated.task_suspended', {
+                groupId: group.id,
+                runId,
+                taskId: node.id,
+                question
+            })
+        }
+
+        const applyResult = async (
+            node: BlackboardTaskNode,
+            result: DispatchResult,
+            agentId: string | null
+        ): Promise<void> => {
+            if (result.suspended) {
+                await recordSuspended(node, result.suspended.question, agentId)
+            } else if (result.success) {
+                await setStatus(node.id, 'done', agentId)
+                outcomesById.set(node.id, {
+                    name: node.name,
+                    summary: result.summary,
+                    success: true,
+                    status: 'done'
+                })
+            } else {
+                await failNode(node, result.summary, result.escalation, agentId)
+            }
+        }
+
         const runOne = async (node: BlackboardTaskNode): Promise<void> => {
             const pair = node.agentId ? byAgent.get(node.agentId) : undefined
             if (!pair) {
@@ -479,16 +632,37 @@ export class GroupRunExecutor implements OnModuleInit {
             }
             await setStatus(node.id, 'doing', pair.agent.id)
             const result = await this.dispatchWithRetry(group, userId, runId, node, pair, signal)
-            if (result.success) {
-                await setStatus(node.id, 'done', pair.agent.id)
-                outcomesById.set(node.id, {
-                    name: node.name,
-                    summary: result.summary,
-                    success: true,
-                    status: 'done'
-                })
+            await applyResult(node, result, pair.agent.id)
+        }
+
+        // 恢复：先在同一 SDK 会话里把用户答复喂回挂起任务（强制 Case A），完成后再走常规调度释放下游。
+        if (resume) {
+            const node = resume.node
+            const pair = node.agentId ? byAgent.get(node.agentId) : undefined
+            if (!pair) {
+                await failNode(node, '挂起任务的成员已不在群', undefined, node.agentId ?? null)
             } else {
-                await failNode(node, result.summary, result.escalation, pair.agent.id)
+                await setStatus(node.id, 'doing', pair.agent.id)
+                this.debug.log('group.run.resume.dispatch', {
+                    groupId: group.id,
+                    runId,
+                    taskId: node.id,
+                    agentId: pair.agent.id,
+                    answerText: resume.answerText
+                })
+                const result = await this.dispatch.dispatch({
+                    group,
+                    userId,
+                    runId,
+                    taskId: node.id,
+                    taskName: node.name,
+                    objective: resume.answerText,
+                    agent: pair.agent,
+                    member: pair.member,
+                    continuity: RESUME_CONTINUITY,
+                    signal
+                })
+                await applyResult(node, result, pair.agent.id)
             }
         }
 
@@ -517,17 +691,28 @@ export class GroupRunExecutor implements OnModuleInit {
             .map((n) => outcomesById.get(n.id))
             .filter((o): o is TaskOutcome => o !== undefined)
         await this.orchestrator.report(group, userId, runId, outcomes)
+        // 图中只要还有 waiting_input（含本轮新挂起或同图其它未答复任务）→ 本轮按"等待"收尾。
+        const anyWaiting =
+            suspended || [...statusById.values()].some((s) => s === 'waiting_input')
         this.debug.log('group.run.orchestrated.scheduled', {
             groupId: group.id,
             runId,
             maxParallel,
             aborted: signal.aborted,
+            suspended: anyWaiting,
             outcomes
         })
-        return !signal.aborted && outcomes.length > 0 && outcomes.every((o) => o.status === 'done')
+        return {
+            success:
+                !signal.aborted &&
+                !anyWaiting &&
+                outcomes.length > 0 &&
+                outcomes.every((o) => o.status === 'done'),
+            suspended: anyWaiting && !signal.aborted
+        }
     }
 
-    /** 派发单任务，失败（非冲突、非中止）时重试 1 次。 */
+    /** 派发单任务，失败（非冲突、非挂起、非中止）时重试 1 次。 */
     private async dispatchWithRetry(
         group: GroupChat,
         userId: string,
@@ -537,7 +722,8 @@ export class GroupRunExecutor implements OnModuleInit {
         signal: AbortSignal
     ): Promise<DispatchResult> {
         const first = await this.dispatchTask(group, userId, runId, node, pair, signal)
-        if (first.success || first.escalation || signal.aborted) return first
+        // suspended 是"主动挂起等用户答复"，不是失败，绝不重试（否则会重复建 worktree/分支并报错）。
+        if (first.success || first.suspended || first.escalation || signal.aborted) return first
         this.debug.log('group.run.orchestrated.retry', {
             groupId: group.id,
             runId,
@@ -590,7 +776,7 @@ export class GroupRunExecutor implements OnModuleInit {
     }
 
     private toTaskItemStatus(status: BlackboardTaskStatus): TaskItem['status'] {
-        if (status === 'doing') return 'in-progress'
+        if (status === 'doing' || status === 'waiting_input') return 'in-progress'
         if (status === 'done') return 'done'
         if (status === 'failed') return 'failed'
         if (status === 'blocked') return 'blocked'
@@ -604,7 +790,7 @@ export class GroupRunExecutor implements OnModuleInit {
         memberTurns: Array<{ agentId: string; instruction: string }>,
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal
-    ): Promise<boolean> {
+    ): Promise<RunPhaseResult> {
         let success = true
         for (const turn of memberTurns) {
             if (signal.aborted) {
@@ -653,7 +839,7 @@ export class GroupRunExecutor implements OnModuleInit {
             runId,
             success
         })
-        return success
+        return { success, suspended: false }
     }
 
     private shorten(text: string): string {

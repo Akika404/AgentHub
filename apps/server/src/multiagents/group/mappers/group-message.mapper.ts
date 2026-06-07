@@ -1,4 +1,5 @@
 import type {
+    AgentQuestion,
     GroupMessageView,
     OptionItem,
     TaskItem
@@ -34,6 +35,18 @@ export function toGroupMessageView(message: GroupMessage): GroupMessageView {
                     typeof payload.answeredOptionId === 'string'
                         ? payload.answeredOptionId
                         : undefined
+            }
+        case 'agent-question':
+            return {
+                ...base,
+                kind: 'agent-question',
+                taskId: typeof payload.taskId === 'string' ? payload.taskId : '',
+                questions: Array.isArray(payload.questions)
+                    ? (payload.questions as AgentQuestion[])
+                    : [],
+                summary: message.text ?? '',
+                answered: typeof payload.answered === 'boolean' ? payload.answered : undefined,
+                answerText: typeof payload.answerText === 'string' ? payload.answerText : undefined
             }
         case 'system':
             return { ...base, kind: 'system', text: message.text ?? '' }

@@ -19,7 +19,15 @@ import type {
 const ARTIFACT_TYPES: BlackboardArtifactType[] = ['code', 'document', 'design', 'test_report']
 const ARTIFACT_STATUSES: BlackboardArtifactStatus[] = ['draft', 'proposed', 'approved', 'deprecated']
 const DECISION_STATUSES: BlackboardDecisionStatus[] = ['proposed', 'approved', 'superseded', 'rejected']
-const TASK_STATUSES: BlackboardTaskStatus[] = ['pending', 'ready', 'doing', 'done', 'failed', 'blocked']
+const TASK_STATUSES: BlackboardTaskStatus[] = [
+    'pending',
+    'ready',
+    'doing',
+    'done',
+    'failed',
+    'blocked',
+    'waiting_input'
+]
 const UPDATE_KINDS: BlackboardUpdateKind[] = ['artifact', 'decision', 'contract', 'task']
 const UPDATE_OPS: BlackboardUpdateOp[] = ['created', 'updated', 'superseded', 'rejected']
 const ARTIFACT_PREVIEW_KINDS: BlackboardArtifactPreviewKind[] = [

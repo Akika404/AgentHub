@@ -11,6 +11,7 @@ import type {
   BlackboardTaskNode,
   BlackboardView,
   ChatDetail,
+  AgentQuestionMessage,
   ChatSummary,
   GroupChatView,
   GroupMemberView,
@@ -929,6 +930,7 @@ function groupTaskStatusLabel(status: BlackboardTaskNode['status']): string {
     pending: '待分配',
     ready: '已分配',
     doing: '执行中',
+    waiting_input: '等待回复',
     done: '已完成',
     failed: '失败',
     blocked: '已阻塞'
@@ -1898,7 +1900,11 @@ async function stopCurrentTurn(): Promise<void> {
   else if (kind === 'group') await stopGroupRun(id)
 }
 
-async function sendMessage(payload: { text: string; replyTo?: MessageReplyRef }): Promise<void> {
+async function sendMessage(payload: {
+  text: string
+  replyTo?: MessageReplyRef
+  mentions?: string[]
+}): Promise<void> {
   if (activeChat.value) {
     await sendAgentMessage(payload)
     return
@@ -1982,6 +1988,7 @@ async function sendAgentMessage(payload: {
 async function sendGroupMessage(payload: {
   text: string
   replyTo?: MessageReplyRef
+  mentions?: string[]
 }): Promise<void> {
   const group = activeGroup.value
   if (!group || streaming.value) return
@@ -2025,7 +2032,11 @@ async function sendGroupMessage(payload: {
   }
 
   try {
-    stream = await groupChatApi.converse(groupId, { text: prompt }, proxyHandlers)
+    stream = await groupChatApi.converse(
+      groupId,
+      { text: prompt, ...(payload.mentions?.length ? { mentions: payload.mentions } : {}) },
+      proxyHandlers
+    )
     handlers = buildGroupRunHandlers(group, stream.runId)
     groupStreams.set(key, stream)
     markGroupActiveRun(groupId, stream.runId)
@@ -2066,6 +2077,26 @@ async function onReplyOption(payload: { message: OptionsMessage; text: string })
   await sendMessage({ text: payload.text })
 }
 
+async function onSubmitQuestion(payload: {
+  message: AgentQuestionMessage
+  text: string
+  mentions: string[]
+}): Promise<void> {
+  if (payload.message.answered || streaming.value) return
+  // 乐观置灰本地卡片，避免刷新前重复提交。
+  const sessionKey = activeSessionKey.value
+  if (sessionKey) {
+    updateCachedMessages(sessionKey, (cached) =>
+      cached.map((msg) =>
+        msg.id === payload.message.id && msg.kind === 'agent-question'
+          ? { ...msg, answered: true, answerText: payload.text }
+          : msg
+      )
+    )
+  }
+  await sendMessage({ text: payload.text, mentions: payload.mentions })
+}
+
 function messageToPlainText(msg: ChatDisplayMessage): string {
   if (isAgentRunMessage(msg)) {
     const text = msg.text.trim()
@@ -2082,6 +2113,8 @@ function messageToPlainText(msg: ChatDisplayMessage): string {
       return [msg.heading, ...msg.tasks.map((t) => `- ${t.title} [${t.status}]`)].join('\n')
     case 'options':
       return [msg.text, ...msg.options.map((o) => `- ${o.label}`)].join('\n')
+    case 'agent-question':
+      return [msg.summary, ...msg.questions.map((q) => `- ${q.header || q.question}`)].join('\n')
   }
 }
 
@@ -2187,6 +2220,7 @@ onUnmounted(() => {
         :loading="messagesLoading"
         @select-option="onSelectOption"
         @reply-option="onReplyOption"
+        @submit-question="onSubmitQuestion"
         @pin-message="onPinMessage"
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"

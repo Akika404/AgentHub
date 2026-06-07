@@ -57,6 +57,28 @@ export interface OptionItem {
   selected?: boolean
 }
 
+/** 成员提问卡片：单个可选项（镜像 AskUserQuestion 的 option）。 */
+export interface AgentQuestionOption {
+  id: string
+  label: string
+  /** 选项的补充说明（次要文字） */
+  description?: string
+}
+
+/** 成员提问卡片：单个问题（镜像 AskUserQuestion 的 question）。 */
+export interface AgentQuestion {
+  id: string
+  question: string
+  /** 简短标签 */
+  header?: string
+  /** 可选项；为空表示该题纯自由输入 */
+  options: AgentQuestionOption[]
+  /** 允许多选 */
+  multiSelect?: boolean
+  /** 允许「其它/补充」自由输入 */
+  allowText?: boolean
+}
+
 interface BaseMessage {
   id: string
   chatId: string
@@ -106,7 +128,27 @@ export interface OptionsMessage extends BaseMessage {
   answeredOptionId?: string
 }
 
-export type ChatMessage = SystemMessage | TextMessage | TaskListMessage | OptionsMessage
+/**
+ * 成员提问卡片（渲染层）：成员挂起任务向用户提问时展示，用户逐题作答后拼接成一句回复自动发送。
+ */
+export interface AgentQuestionMessage extends BaseMessage {
+  kind: 'agent-question'
+  sender: SenderInfo
+  questions: AgentQuestion[]
+  /** 一句话摘要（预览/回退） */
+  summary: string
+  /** 已作答后置灰只读 */
+  answered?: boolean
+  /** 已作答时用户提交的拼接回复 */
+  answerText?: string
+}
+
+export type ChatMessage =
+  | SystemMessage
+  | TextMessage
+  | TaskListMessage
+  | OptionsMessage
+  | AgentQuestionMessage
 
 /**
  * Group chat presentation_log message (multi-speaker). This is the persisted,
@@ -149,11 +191,23 @@ export interface GroupOptionsMessageView extends GroupMessageBase {
   answeredOptionId?: string
 }
 
+export interface GroupAgentQuestionView extends GroupMessageBase {
+  kind: 'agent-question'
+  /** 关联的挂起任务 id（用户回复时据此恢复 + 标记已作答） */
+  taskId: string
+  questions: AgentQuestion[]
+  /** 一句话摘要（预览/回退） */
+  summary: string
+  answered?: boolean
+  answerText?: string
+}
+
 export type GroupMessageView =
   | GroupTextMessageView
   | GroupSystemMessageView
   | GroupTaskListMessageView
   | GroupOptionsMessageView
+  | GroupAgentQuestionView
 
 export interface ChatDetail {
   id: string

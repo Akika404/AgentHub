@@ -3,7 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import type { AgentMemoryType, BlackboardArtifactType, BlackboardUpdate } from '@agenthub/shared'
+import type {
+    AgentMemoryType,
+    AgentQuestion,
+    BlackboardArtifactType,
+    BlackboardUpdate
+} from '@agenthub/shared'
 import { createAgent, type AgentEvent } from '../../adapter/index.js'
 import { Agent } from '../../entities/agent.entity.js'
 import { AgentSession } from '../../entities/agent-session.entity.js'
@@ -46,6 +51,12 @@ interface MemberReport {
         consumers?: string[]
     }>
     memory_candidate?: { content: string; type?: AgentMemoryType; module?: string | null }
+    /** 成员需要向用户确认信息时置 true：任务将被挂起，等用户答复后在同一会话恢复 */
+    awaiting_user_input?: boolean
+    /** 抛给用户的问题一句话摘要（预览/无结构化问题时的回退正文） */
+    question?: string
+    /** 结构化问题（镜像 AskUserQuestion）；存在时渲染为可交互提问卡片 */
+    questions?: AgentQuestion[]
 }
 
 export interface DispatchParams {
@@ -73,6 +84,8 @@ export interface DispatchResult {
     summary: string
     /** 存在时表示遇冲突需停下问用户；executor 据此把任务计 failed 并阻塞下游。 */
     escalation?: DispatchEscalation
+    /** 存在时表示成员主动挂起等待用户答复；executor 据此把任务计 waiting_input（不放行下游、不阻塞下游）。 */
+    suspended?: { question: string; questions?: AgentQuestion[] }
 }
 
 const REPORT_INSTRUCTION = `
@@ -82,7 +95,28 @@ const REPORT_INSTRUCTION = `
 \`\`\`report
 {"summary":"一句话说明做了什么","affected":{"artifacts":[],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
 \`\`\`
-只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。`
+只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。
+
+# 需要向用户确认信息时（重要）
+不要使用 AskUserQuestion 工具（群聊后台运行里它拿不到用户输入、必失败）。改为在 report 里设 awaiting_user_input:true，并尽量输出结构化的 questions 数组（会渲染成可点选的提问卡片，用户作答后自动拼成回复发回给你）：
+\`\`\`report
+{
+  "summary":"等待用户确认时区计算器需求",
+  "awaiting_user_input":true,
+  "question":"请确认城市/形态/交互/夏令时 4 个问题",
+  "questions":[
+    {"header":"代表城市","question":"各国用哪个代表城市？","multiSelect":true,"allowText":true,
+     "options":[{"label":"北京","description":"中国(UTC+8)"},{"label":"纽约","description":"美东"},{"label":"洛杉矶","description":"美西"}]},
+    {"header":"产品形态","question":"做成什么形态？",
+     "options":[{"label":"Web 网页版"},{"label":"命令行 CLI"},{"label":"桌面应用"}]},
+    {"header":"夏令时","question":"是否处理英美夏令时？",
+     "options":[{"label":"需要"},{"label":"不需要"}]}
+  ]
+}
+\`\`\`
+规则：每题 question 必填；options 每项至少含 label（description 可选）；multiSelect/allowText 默认 false；
+若确实无法结构化，至少给出 question 一句话摘要（将回退为纯文本提问）。question 仅作一句话摘要，不要把所有细节塞进它。
+设置后本任务会被挂起、依赖它的下游任务不会启动；用户回复后，你会在同一会话里收到答复并继续完成任务（无需重述上下文）。`
 
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000
 
@@ -214,6 +248,46 @@ export class DispatchService {
             report,
             summary
         })
+
+        // 3.5 成员主动挂起：把问题抛给用户，任务等待答复。跳过完成态收口（writeback/合并/applyReport），
+        //     只把问题发到群里并写热缓冲；返回 suspended，由 executor 计 waiting_input（不放行/不阻塞下游）。
+        if (!fatal && report.awaiting_user_input === true) {
+            const questions = (report.questions ?? []).filter(
+                (q): q is AgentQuestion => !!q && typeof q.question === 'string'
+            )
+            const question = (report.question || summary || finalText).trim() || '（需要你的确认）'
+            // 有结构化问题 → 提问卡片；否则回退为纯文本提问
+            if (questions.length > 0) {
+                await this.groupMessages.appendAgentQuestion(
+                    group.id,
+                    userId,
+                    agent.id,
+                    taskId,
+                    questions,
+                    question
+                )
+            } else {
+                await this.groupMessages.appendText(group.id, userId, 'agent', question, agent.id)
+            }
+            await this.writeHotBuffer(params, question, [])
+            const suspended: DispatchResult = {
+                success: false,
+                summary: question,
+                suspended: {
+                    question,
+                    ...(questions.length > 0 ? { questions } : {})
+                }
+            }
+            this.debug.log('group.dispatch.suspended', {
+                groupId: group.id,
+                runId,
+                taskId,
+                agentId: agent.id,
+                question,
+                questionCount: questions.length
+            })
+            return suspended
+        }
 
         // 4. 收口：git → 黑板；成功才提交/合并，失败仅清理 worktree
         const updates: BlackboardUpdate[] = []

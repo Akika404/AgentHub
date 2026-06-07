@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import type { OptionItem, OptionsMessage } from '../api'
+import type { AgentQuestionMessage, OptionItem, OptionsMessage } from '../api'
 import { isAgentRunMessage, type ChatDisplayMessage } from '../types/chatDisplay'
 import SystemMessageView from './messages/SystemMessage.vue'
 import TextMessageView from './messages/TextMessage.vue'
 import TaskListMessageView from './messages/TaskListMessage.vue'
 import OptionsMessageView from './messages/OptionsMessage.vue'
+import AgentQuestionMessageView from './messages/AgentQuestionMessage.vue'
 import AgentRunMessageView from './messages/AgentRunMessage.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
@@ -18,6 +19,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select-option', payload: { message: OptionsMessage; option: OptionItem }): void
   (e: 'reply-option', payload: { message: OptionsMessage; text: string }): void
+  (
+    e: 'submit-question',
+    payload: { message: AgentQuestionMessage; text: string; mentions: string[] }
+  ): void
   (e: 'pin-message', message: ChatDisplayMessage): void
   (e: 'copy-message', message: ChatDisplayMessage): void
   (e: 'reply-message', message: ChatDisplayMessage): void
@@ -157,6 +162,11 @@ watch(scrollSignature, async () => {
           :message="msg"
           @select="emit('select-option', $event)"
           @reply="emit('reply-option', $event)"
+        />
+        <AgentQuestionMessageView
+          v-else-if="msg.kind === 'agent-question'"
+          :message="msg"
+          @submit="emit('submit-question', $event)"
         />
         <AgentRunMessageView v-else-if="isAgentRunMessage(msg)" :message="msg" />
       </div>

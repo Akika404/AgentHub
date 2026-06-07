@@ -127,6 +127,28 @@ export class BlackboardService {
         return state
     }
 
+    /** 本群处于 waiting_input（成员挂起等待用户答复）的任务，供恢复判定（需 runId/agentId，故返回实体）。 */
+    async listWaitingTasks(groupId: string): Promise<BlackboardTaskEntity[]> {
+        const tasks = await this.taskRepo.find({
+            where: { groupChatId: groupId, status: 'waiting_input' },
+            order: { seq: 'ASC' }
+        })
+        this.debug.log('group.blackboard.list_waiting_tasks', {
+            groupId,
+            taskIds: tasks.map((t) => t.id)
+        })
+        return tasks
+    }
+
+    /** 按原编排图的 runId 重载该图全部任务节点，供挂起恢复后继续调度下游。 */
+    async listTasksByRunId(groupId: string, runId: string): Promise<BlackboardTaskNode[]> {
+        const tasks = await this.taskRepo.find({
+            where: { groupChatId: groupId, runId },
+            order: { seq: 'ASC' }
+        })
+        return tasks.map(toTaskView)
+    }
+
     async getArtifact(groupId: string, path: string): Promise<BlackboardArtifact | null> {
         const e = await this.artifactRepo.findOne({ where: { groupChatId: groupId, path } })
         const artifact = e ? toArtifactView(e) : null

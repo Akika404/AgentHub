@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
 import type { GroupRouteKind } from '@agenthub/shared'
 
-export type GroupRunStatus = 'running' | 'done' | 'failed' | 'aborted'
+export type GroupRunStatus = 'running' | 'done' | 'failed' | 'aborted' | 'waiting'
 
 /**
  * GroupRun — 一次用户消息触发的群运行（含 Orchestrator 决策 + 若干成员 turn）。

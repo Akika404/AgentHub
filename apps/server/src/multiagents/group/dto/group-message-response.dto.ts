@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
-import type { GroupSenderRole, OptionItem, TaskItem } from '@agenthub/shared'
+import type { AgentQuestion, GroupSenderRole, OptionItem, TaskItem } from '@agenthub/shared'
 
 const SENDER_ROLES: GroupSenderRole[] = ['user', 'orchestrator', 'agent', 'system']
-const MESSAGE_KINDS = ['text', 'system', 'task-list', 'options'] as const
+const MESSAGE_KINDS = ['text', 'system', 'task-list', 'options', 'agent-question'] as const
 
 /**
  * 群聊展示层消息（多发言者）。运行时是 text/system/task-list/options 的判别联合；
@@ -50,11 +50,28 @@ export class GroupMessageViewDto {
     })
     options?: OptionItem[]
 
-    @ApiProperty({ required: false, description: 'options 是否已作答' })
+    @ApiProperty({ required: false, description: 'options/agent-question 是否已作答' })
     answered?: boolean
 
     @ApiProperty({ required: false, description: 'options 已选项 id' })
     answeredOptionId?: string
+
+    @ApiProperty({ required: false, description: 'agent-question 关联的挂起任务 id' })
+    taskId?: string
+
+    @ApiProperty({
+        required: false,
+        type: 'array',
+        items: { type: 'object', additionalProperties: true },
+        description: 'agent-question 结构化问题列表'
+    })
+    questions?: AgentQuestion[]
+
+    @ApiProperty({ required: false, description: 'agent-question 一句话摘要' })
+    summary?: string
+
+    @ApiProperty({ required: false, description: 'agent-question 已作答时用户提交的拼接回复' })
+    answerText?: string
 
     @ApiProperty({ description: '创建时间，ISO8601' })
     createdAt!: string

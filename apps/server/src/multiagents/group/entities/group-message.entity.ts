@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 import type { GroupSenderRole } from '@agenthub/shared'
 
 /** 展示层消息卡片类型 */
-export type GroupMessageKind = 'text' | 'system' | 'task-list' | 'options'
+export type GroupMessageKind = 'text' | 'system' | 'task-list' | 'options' | 'agent-question'
 
 /**
  * GroupMessage — 群聊展示层 presentation_log（给人看 / 审计），多发言者。

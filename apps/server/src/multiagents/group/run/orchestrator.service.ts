@@ -39,9 +39,11 @@ export interface TaskOutcome {
     name: string
     summary: string
     success: boolean
-    status: 'done' | 'failed' | 'blocked'
+    status: 'done' | 'failed' | 'blocked' | 'waiting_input'
     /** 存在时表示该任务遇冲突需用户裁决，汇报里单列"需你决策"。 */
     escalation?: DispatchEscalation
+    /** status===waiting_input 时，成员抛给用户的问题正文。 */
+    question?: string
 }
 
 /**
@@ -265,7 +267,7 @@ export class OrchestratorService {
     }
 
     private toTaskItemStatus(status: BlackboardTaskNode['status']): TaskItem['status'] {
-        if (status === 'doing') return 'in-progress'
+        if (status === 'doing' || status === 'waiting_input') return 'in-progress'
         if (status === 'done') return 'done'
         if (status === 'failed') return 'failed'
         if (status === 'blocked') return 'blocked'
@@ -282,17 +284,38 @@ export class OrchestratorService {
         const done = outcomes.filter((o) => o.status === 'done').length
         const failed = outcomes.filter((o) => o.status === 'failed')
         const blocked = outcomes.filter((o) => o.status === 'blocked')
+        const waiting = outcomes.filter((o) => o.status === 'waiting_input')
         const escalated = outcomes.filter((o) => o.escalation)
         const head =
             outcomes.length === 0
                 ? '本轮没有产生任务。'
-                : failed.length === 0 && blocked.length === 0
+                : failed.length === 0 && blocked.length === 0 && waiting.length === 0
                   ? '本轮任务已全部完成：'
-                  : `本轮任务部分完成（${done} 成功 / ${failed.length} 失败 / ${blocked.length} 阻塞）：`
+                  : `本轮任务部分完成（${done} 成功 / ${failed.length} 失败 / ${blocked.length} 阻塞 / ${waiting.length} 等待回复）：`
         const icon = (o: TaskOutcome): string =>
-            o.status === 'done' ? '✅' : o.status === 'blocked' ? '⏸️' : '❌'
+            o.status === 'done'
+                ? '✅'
+                : o.status === 'blocked'
+                  ? '⛔'
+                  : o.status === 'waiting_input'
+                    ? '⏸️'
+                    : '❌'
         const lines = outcomes.map((o) => `- ${icon(o)} ${o.name}：${o.summary}`)
         const parts = [head, ...lines]
+        if (waiting.length > 0) {
+            parts.push(
+                '',
+                '⏸ 正在等待你的回复（依赖它的下游任务已暂停）：'
+            )
+            for (const o of waiting) {
+                parts.push(`- ${o.name}：${o.question ?? o.summary}`)
+            }
+            parts.push(
+                waiting.length > 1
+                    ? '请 @对应成员 回复对应问题以继续。'
+                    : '直接回复即可让其继续。'
+            )
+        }
         if (escalated.length > 0) {
             parts.push('', '⚠️ 需你决策（已停止相关派发，请裁决后重新发起）：')
             for (const o of escalated) {

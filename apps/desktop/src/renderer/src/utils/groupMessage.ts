@@ -60,5 +60,16 @@ export function groupMessageToDisplay(
       answeredOptionId: view.answeredOptionId
     }
   }
+  if (view.kind === 'agent-question') {
+    return {
+      ...base,
+      kind: 'agent-question',
+      sender,
+      questions: view.questions,
+      summary: view.summary,
+      answered: view.answered,
+      answerText: view.answerText
+    }
+  }
   return { ...base, kind: 'text', sender, text: view.text }
 }

@@ -84,7 +84,14 @@ export class GroupWorkspaceService {
         return repo
     }
 
-    /** 为一个派发任务创建 worktree + 分支 task/<taskId>，从 main 切出。返回 worktree 路径。 */
+    /**
+     * 为一个派发任务创建 worktree + 分支 task/<taskId>，从 HEAD 切出。返回 worktree 路径。
+     *
+     * 幂等：suspend→resume（成员挂起等用户答复后再恢复）会以同一 taskId 再次进入。
+     * - worktree 已登记 → 直接复用（保留成员的草稿改动，保证续接连续性）；
+     * - 仅分支存在（worktree 曾被清理）→ 用既有分支重建 worktree；
+     * - 都不存在 → 新建分支 + worktree。
+     */
     async createTaskWorktree(
         groupId: string,
         taskId: string,
@@ -92,9 +99,15 @@ export class GroupWorkspaceService {
     ): Promise<string> {
         const repo = this.repoDir(groupId, workspaceDir)
         const wt = this.worktreeDir(groupId, taskId)
+        const branch = this.branchName(taskId)
         try {
             await mkdir(join(this.root, groupId, 'worktrees'), { recursive: true })
-            await this.git(repo, ['worktree', 'add', '-b', this.branchName(taskId), wt, 'HEAD'])
+            if (await this.worktreeRegistered(repo, wt)) return wt
+            if (await this.branchExists(repo, branch)) {
+                await this.git(repo, ['worktree', 'add', wt, branch])
+            } else {
+                await this.git(repo, ['worktree', 'add', '-b', branch, wt, 'HEAD'])
+            }
         } catch (err) {
             throw BusinessException.badRequest(
                 `Failed to create task worktree: ${this.errMsg(err)}`,
@@ -102,6 +115,33 @@ export class GroupWorkspaceService {
             )
         }
         return wt
+    }
+
+    /** 分支 refs/heads/<branch> 是否存在（用于挂起恢复时复用既有任务分支）。 */
+    private async branchExists(repo: string, branch: string): Promise<boolean> {
+        try {
+            await this.git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /** worktree 路径是否已在该仓库登记（用于挂起恢复时复用既有 worktree，保留草稿）。 */
+    private async worktreeRegistered(repo: string, wt: string): Promise<boolean> {
+        try {
+            const list = await this.git(repo, ['worktree', 'list', '--porcelain'])
+            const target = resolve(wt)
+            return list
+                .split('\n')
+                .some(
+                    (line) =>
+                        line.startsWith('worktree ') &&
+                        resolve(line.slice('worktree '.length).trim()) === target
+                )
+        } catch {
+            return false
+        }
     }
 
     /**

@@ -33,6 +33,7 @@ const taskTone: Record<BlackboardTaskStatus, string> = {
   pending: 'bg-gray-100 text-gray-600',
   ready: 'bg-primary-soft text-primary',
   doing: 'bg-warning-soft text-warning',
+  waiting_input: 'bg-warning-soft text-warning',
   done: 'bg-success-soft text-success',
   failed: 'bg-danger-soft text-danger',
   blocked: 'bg-gray-100 text-gray-500'

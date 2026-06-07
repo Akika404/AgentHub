@@ -86,7 +86,15 @@ export interface BlackboardContract {
 
 // —— Task graph ——
 
-export type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked'
+export type BlackboardTaskStatus =
+  | 'pending'
+  | 'ready'
+  | 'doing'
+  | 'done'
+  | 'failed'
+  | 'blocked'
+  /** 成员已把问题抛给用户，任务挂起等待用户答复；不满足下游 deps（≠done），故不放行下游 */
+  | 'waiting_input'
 
 export interface BlackboardTaskNode {
   id: string
