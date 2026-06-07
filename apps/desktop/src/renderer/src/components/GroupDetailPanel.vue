@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { BlackboardTaskStatus, BlackboardView, GroupChatView, GroupMemberView } from '../api'
+import { shouldShowBlackboardArtifact } from '../utils/blackboard'
 import { vendorLabel } from '../utils/vendor'
 import AgentAvatar from './AgentAvatar.vue'
 import GroupAvatar from './GroupAvatar.vue'
@@ -41,6 +42,9 @@ const memberGridClass = computed(() =>
 const headerClass = computed(() => (isInspector.value ? 'h-16 px-5' : 'px-6 py-5'))
 const avatarSize = computed(() => (isInspector.value ? 'md' : 'lg'))
 const titleClass = computed(() => (isInspector.value ? 'text-lg' : 'text-xl'))
+const visibleArtifacts = computed(
+  () => props.blackboard?.artifacts.filter(shouldShowBlackboardArtifact) ?? []
+)
 </script>
 
 <template>
@@ -207,14 +211,11 @@ const titleClass = computed(() => (isInspector.value ? 'text-lg' : 'text-xl'))
 
             <section class="rounded-md border border-surface-border bg-white p-4">
               <h3 class="mb-3 text-md font-semibold text-text-main">产出物</h3>
-              <p
-                v-if="!blackboard || blackboard.artifacts.length === 0"
-                class="text-sm text-text-muted"
-              >
+              <p v-if="visibleArtifacts.length === 0" class="text-sm text-text-muted">
                 暂无产出物
               </p>
               <div v-else class="space-y-2">
-                <div v-for="artifact in blackboard.artifacts" :key="artifact.id">
+                <div v-for="artifact in visibleArtifacts" :key="artifact.id">
                   <div class="truncate font-mono text-sm text-text-main">{{ artifact.path }}</div>
                   <div class="truncate text-xs text-text-muted">
                     v{{ artifact.version }} · {{ artifact.status }}

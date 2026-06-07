@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { BlackboardView } from '../api'
+import { shouldShowBlackboardArtifact } from '../utils/blackboard'
 
-defineProps<{ blackboard: BlackboardView | null; loading?: boolean }>()
+const props = defineProps<{ blackboard: BlackboardView | null; loading?: boolean }>()
 
 const taskTone: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -10,6 +12,10 @@ const taskTone: Record<string, string> = {
   done: 'bg-success-soft text-success',
   failed: 'bg-danger-soft text-danger'
 }
+
+const visibleArtifacts = computed(
+  () => props.blackboard?.artifacts.filter(shouldShowBlackboardArtifact) ?? []
+)
 </script>
 
 <template>
@@ -47,10 +53,10 @@ const taskTone: Record<string, string> = {
         <!-- Artifacts -->
         <section>
           <h4 class="mb-2 text-sm font-semibold text-text-muted">产出物</h4>
-          <p v-if="blackboard.artifacts.length === 0" class="text-sm text-gray-400">暂无产出物</p>
+          <p v-if="visibleArtifacts.length === 0" class="text-sm text-gray-400">暂无产出物</p>
           <ul v-else class="space-y-1.5">
             <li
-              v-for="a in blackboard.artifacts"
+              v-for="a in visibleArtifacts"
               :key="a.id"
               class="rounded-md bg-surface-hover px-2.5 py-1.5"
             >
