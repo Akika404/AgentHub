@@ -40,6 +40,10 @@ import {
     LlmOrchestratorFinalReviewer,
     ORCHESTRATOR_FINAL_REVIEWER
 } from './run/orchestrator-final-reviewer.js'
+import {
+    LlmOrchestratorHandoffReviewer,
+    ORCHESTRATOR_HANDOFF_REVIEWER
+} from './run/orchestrator-handoff-reviewer.js'
 import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
 
 /**
@@ -92,11 +96,16 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         GroupRunExecutor,
         LlmOrchestratorPlanner,
         LlmOrchestratorFinalReviewer,
+        LlmOrchestratorHandoffReviewer,
         GroupDebugLogger,
         { provide: ORCHESTRATOR_PLANNER, useExisting: LlmOrchestratorPlanner },
         {
             provide: ORCHESTRATOR_FINAL_REVIEWER,
             useExisting: LlmOrchestratorFinalReviewer
+        },
+        {
+            provide: ORCHESTRATOR_HANDOFF_REVIEWER,
+            useExisting: LlmOrchestratorHandoffReviewer
         },
         // 复用单聊的无状态服务（按本模块的 repo 作用域重新提供）
         AgentPolicyService,

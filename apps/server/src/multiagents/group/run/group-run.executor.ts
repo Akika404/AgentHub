@@ -434,9 +434,20 @@ export class GroupRunExecutor implements OnModuleInit {
             continuity,
             signal
         })
-        const status: BlackboardTaskStatus = result.suspended
+        const reviewed = await this.reviewDispatchResult(
+            group,
+            userId,
+            runId,
+            userText,
+            node,
+            pair,
+            result,
+            [],
+            signal
+        )
+        const status: BlackboardTaskStatus = reviewed.suspended
             ? 'waiting_input'
-            : result.success
+            : reviewed.success
               ? 'done'
               : 'failed'
         await this.blackboard.setTaskStatus(group.id, node.id, status)
@@ -447,7 +458,7 @@ export class GroupRunExecutor implements OnModuleInit {
             status,
             agentId
         })
-        return { success: result.success, suspended: !!result.suspended }
+        return { success: reviewed.success, suspended: !!reviewed.suspended }
     }
 
     private async runOrchestrated(
@@ -568,15 +579,18 @@ export class GroupRunExecutor implements OnModuleInit {
                 signal,
                 undefined,
                 {
-                    report: false
+                    report: false,
+                    originalUserText: userText
                 }
             )
             allOutcomes.push(...(stagePhase.outcomes ?? []))
             if (!stagePhase.success || stagePhase.suspended) {
-                await this.reportIfNeeded(group, userId, runId, allOutcomes, {
-                    originalUserText: userText,
-                    reviewFinal: false
-                })
+                if (!stagePhase.suspended) {
+                    await this.reportIfNeeded(group, userId, runId, allOutcomes, {
+                        originalUserText: userText,
+                        reviewFinal: false
+                    })
+                }
                 return {
                     ...stagePhase,
                     outcomes: allOutcomes
@@ -776,7 +790,18 @@ export class GroupRunExecutor implements OnModuleInit {
             }
             await setStatus(node.id, 'doing', pair.agent.id)
             const result = await this.dispatchWithRetry(group, userId, runId, node, pair, signal)
-            await applyResult(node, result, pair.agent.id)
+            const reviewed = await this.reviewDispatchResult(
+                group,
+                userId,
+                runId,
+                options.originalUserText ?? '',
+                node,
+                pair,
+                result,
+                [...nodeById.values()],
+                signal
+            )
+            await applyResult(node, reviewed, pair.agent.id)
         }
 
         // 恢复：先在同一 SDK 会话里把用户答复喂回挂起任务（强制 Case A），完成后再走常规调度释放下游。
@@ -806,7 +831,18 @@ export class GroupRunExecutor implements OnModuleInit {
                     continuity: RESUME_CONTINUITY,
                     signal
                 })
-                await applyResult(node, result, pair.agent.id)
+                const reviewed = await this.reviewDispatchResult(
+                    group,
+                    userId,
+                    runId,
+                    options.originalUserText ?? resume.answerText,
+                    node,
+                    pair,
+                    result,
+                    [...nodeById.values()],
+                    signal
+                )
+                await applyResult(node, reviewed, pair.agent.id)
             }
         }
 
@@ -834,13 +870,13 @@ export class GroupRunExecutor implements OnModuleInit {
         const outcomes = nodes
             .map((n) => outcomesById.get(n.id))
             .filter((o): o is TaskOutcome => o !== undefined)
-        if (options.report !== false) {
+        // 图中只要还有 waiting_input（含本轮新挂起或同图其它未答复任务）→ 本轮按"等待"收尾。
+        const anyWaiting = suspended || [...statusById.values()].some((s) => s === 'waiting_input')
+        if (options.report !== false && !anyWaiting) {
             await this.orchestrator.report(group, userId, runId, outcomes, {
                 originalUserText: options.originalUserText
             })
         }
-        // 图中只要还有 waiting_input（含本轮新挂起或同图其它未答复任务）→ 本轮按"等待"收尾。
-        const anyWaiting = suspended || [...statusById.values()].some((s) => s === 'waiting_input')
         this.debug.log('group.run.orchestrated.scheduled', {
             groupId: group.id,
             runId,
@@ -916,6 +952,90 @@ export class GroupRunExecutor implements OnModuleInit {
             continuity,
             signal
         })
+    }
+
+    private async reviewDispatchResult(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        originalUserText: string,
+        node: BlackboardTaskNode,
+        pair: MemberPair,
+        result: DispatchResult,
+        graphNodes: BlackboardTaskNode[],
+        signal: AbortSignal
+    ): Promise<DispatchResult> {
+        if (!result.success || result.suspended || result.escalation || signal.aborted) {
+            return result
+        }
+        try {
+            const downstreamTasks = graphNodes
+                .filter((candidate) => candidate.deps.includes(node.id))
+                .map((candidate) => ({
+                    id: candidate.id,
+                    name: candidate.name,
+                    objective: candidate.objective,
+                    agentId: candidate.agentId,
+                    deps: candidate.deps
+                }))
+            const review = await this.orchestrator.reviewTaskHandoff({
+                group,
+                userId,
+                runId,
+                originalUserText: originalUserText || node.objective,
+                task: {
+                    id: node.id,
+                    name: node.name,
+                    objective: node.objective,
+                    agentId: node.agentId,
+                    agentName: pair.agent.name,
+                    summary: result.rawOutput?.trim() || result.summary
+                },
+                downstreamTasks
+            })
+            if (review.awaitingUserInput) {
+                const question = review.question?.trim() || result.summary
+                this.debug.log('group.run.task_handoff.waiting_input', {
+                    groupId: group.id,
+                    runId,
+                    taskId: node.id,
+                    agentId: pair.agent.id,
+                    question,
+                    reason: review.reason
+                })
+                return {
+                    ...result,
+                    success: false,
+                    summary: question,
+                    suspended: { question }
+                }
+            }
+            if (!review.completed) {
+                const summary = review.reason || 'Orchestrator 判断该任务尚未完成'
+                this.debug.log('group.run.task_handoff.incomplete', {
+                    groupId: group.id,
+                    runId,
+                    taskId: node.id,
+                    agentId: pair.agent.id,
+                    summary,
+                    review
+                })
+                return {
+                    ...result,
+                    success: false,
+                    summary
+                }
+            }
+        } catch (err) {
+            this.debug.log('group.run.task_handoff.review_failed', {
+                groupId: group.id,
+                runId,
+                taskId: node.id,
+                agentId: pair.agent.id,
+                error: this.errMsg(err)
+            })
+        }
+        return result
     }
 
     private maxParallelTasks(): number {

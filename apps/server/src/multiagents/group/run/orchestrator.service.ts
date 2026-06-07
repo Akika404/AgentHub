@@ -20,6 +20,12 @@ import {
     type OrchestratorFinalReviewer,
     type OrchestratorFinalReviewResult
 } from './orchestrator-final-reviewer.js'
+import {
+    ORCHESTRATOR_HANDOFF_REVIEWER,
+    type OrchestratorTaskHandoffReviewer,
+    type OrchestratorTaskHandoffReviewRequest,
+    type OrchestratorTaskHandoffReviewResult
+} from './orchestrator-handoff-reviewer.js'
 import type { DispatchEscalation } from './dispatch.service.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
@@ -126,6 +132,8 @@ export class OrchestratorService {
         private readonly planner: OrchestratorPlanner,
         @Inject(ORCHESTRATOR_FINAL_REVIEWER)
         private readonly finalReviewer: OrchestratorFinalReviewer,
+        @Inject(ORCHESTRATOR_HANDOFF_REVIEWER)
+        private readonly handoffReviewer: OrchestratorTaskHandoffReviewer,
         @InjectRepository(GroupChat)
         private readonly groupRepo: Repository<GroupChat>,
         private readonly blackboard: BlackboardService,
@@ -263,6 +271,26 @@ export class OrchestratorService {
         })
 
         return { nodes, note: plan.note, memberTurns: [] }
+    }
+
+    /**
+     * 隐藏交接判断：成员声称成功后，确认是否可以释放下游任务。该方法不写 presentation_log、
+     * 不推 run stream；若成员用普通文本向用户提问，会返回 awaitingUserInput=true 让 executor
+     * 把任务挂起，从而不启动下一个 Agent。
+     */
+    async reviewTaskHandoff(
+        params: OrchestratorTaskHandoffReviewRequest
+    ): Promise<OrchestratorTaskHandoffReviewResult> {
+        const review = await this.handoffReviewer.review(params)
+        await this.persistOrchestratorSessionId(params.group, review.orchestratorSessionId)
+        this.debug.log('group.orchestrator.handoff_review', {
+            groupId: params.group.id,
+            runId: params.runId,
+            taskId: params.task.id,
+            taskName: params.task.name,
+            review
+        })
+        return review
     }
 
     private async persistPlannerState(
@@ -484,13 +512,15 @@ export class OrchestratorService {
         group: GroupChat,
         review: OrchestratorFinalReviewResult
     ): Promise<void> {
-        if (
-            !review.orchestratorSessionId ||
-            group.orchestratorSessionId === review.orchestratorSessionId
-        ) {
-            return
-        }
-        group.orchestratorSessionId = review.orchestratorSessionId
+        await this.persistOrchestratorSessionId(group, review.orchestratorSessionId)
+    }
+
+    private async persistOrchestratorSessionId(
+        group: GroupChat,
+        orchestratorSessionId?: string | null
+    ): Promise<void> {
+        if (!orchestratorSessionId || group.orchestratorSessionId === orchestratorSessionId) return
+        group.orchestratorSessionId = orchestratorSessionId
         await this.groupRepo.save(group)
     }
 

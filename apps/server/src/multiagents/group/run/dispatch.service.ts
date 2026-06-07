@@ -82,6 +82,8 @@ export interface DispatchEscalation {
 export interface DispatchResult {
     success: boolean
     summary: string
+    /** 成员完整最终输出；用于 Orchestrator 隐藏交接判断，不直接展示。 */
+    rawOutput?: string
     /** 存在时表示遇冲突需停下问用户；executor 据此把任务计 failed 并阻塞下游。 */
     escalation?: DispatchEscalation
     /** 存在时表示成员主动挂起等待用户答复；executor 据此把任务计 waiting_input（不放行下游、不阻塞下游）。 */
@@ -273,6 +275,7 @@ export class DispatchService {
             const suspended: DispatchResult = {
                 success: false,
                 summary: question,
+                rawOutput: finalText,
                 suspended: {
                     question,
                     ...(questions.length > 0 ? { questions, hasQuestionCard: true } : {})
@@ -393,6 +396,7 @@ export class DispatchService {
                 : escalation
                   ? `需决策：${escalation.detail}`
                   : summary,
+            rawOutput: finalText,
             ...(escalation ? { escalation } : {})
         }
         this.debug.log('group.dispatch.finished', {
