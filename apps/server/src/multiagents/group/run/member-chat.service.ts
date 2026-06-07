@@ -48,6 +48,37 @@ const LIGHTWEIGHT_CHAT_SCHEMA: AgentOutputSchema = {
 
 const LIGHTWEIGHT_CHAT_TIMEOUT_MS = 2 * 60 * 1000
 
+export function normalizeMemberChatStreamEvent(ev: AgentEvent): AgentEvent {
+    if (ev.type === 'text') {
+        return { ...ev, text: displayTextFrom(ev.text) ?? ev.text }
+    }
+    if (ev.type === 'turn_completed' || ev.type === 'done') {
+        const finalText = displayTextFrom(ev.finalText, ev.structuredOutput)
+        return finalText ? { ...ev, finalText } : ev
+    }
+    return ev
+}
+
+function displayTextFrom(rawText?: string, structuredOutput?: unknown): string | null {
+    return parseStructuredText(structuredOutput) ?? parseJsonTextField(rawText) ?? rawText ?? null
+}
+
+function parseStructuredText(raw: unknown): string | null {
+    if (typeof raw !== 'object' || raw === null) return null
+    const text = (raw as { text?: unknown }).text
+    return typeof text === 'string' && text.trim() ? text.trim() : null
+}
+
+function parseJsonTextField(raw: string | null | undefined): string | null {
+    if (!raw) return null
+    try {
+        const parsed = JSON.parse(raw) as unknown
+        return parseStructuredText(parsed)
+    } catch {
+        return null
+    }
+}
+
 /**
  * MemberChatService — 真实调用成员 Agent 做轻量聊天回复。
  *
@@ -184,17 +215,22 @@ export class MemberChatService {
                 const next = await Promise.race([iterator.next(), timeoutPromise])
                 if (next.done) break
                 const ev = next.value
+                const normalized = normalizeMemberChatStreamEvent(ev)
                 if (ev.type === 'done') {
-                    if (ev.finalText) finalFromDone = ev.finalText
-                    const parsed = this.parseStructuredText(ev.structuredOutput)
+                    const displayText = displayTextFrom(ev.finalText, ev.structuredOutput)
+                    if (displayText) finalFromDone = displayText
+                    const parsed = parseStructuredText(ev.structuredOutput)
                     if (parsed) structuredText = parsed
+                    await this.publishMemberEvent(params, normalized)
                     continue
                 }
                 if (ev.type === 'turn_completed') {
-                    const parsed = this.parseStructuredText(ev.structuredOutput)
+                    const displayText = displayTextFrom(ev.finalText, ev.structuredOutput)
+                    if (displayText) finalFromDone = displayText
+                    const parsed = parseStructuredText(ev.structuredOutput)
                     if (parsed) structuredText = parsed
                 }
-                if (ev.type === 'text') textParts.push(ev.text)
+                if (normalized.type === 'text') textParts.push(normalized.text)
                 else if (ev.type === 'error' && ev.fatal) fatal = ev.message
                 else this.messages.collectStep(ev, stepDrafts, toolIndex)
                 this.debug.log('group.member_chat.turn_event', {
@@ -203,7 +239,7 @@ export class MemberChatService {
                     agentId: agent.id,
                     event: ev
                 })
-                await this.publishMemberEvent(params, this.normalizeStreamEvent(ev))
+                await this.publishMemberEvent(params, normalized)
             }
         } catch (err) {
             fatal ??= this.errMsg(err)
@@ -214,7 +250,7 @@ export class MemberChatService {
         const rawFinalText = finalFromDone ?? textParts.join('')
         const finalText = (
             structuredText ??
-            this.parseJsonTextField(rawFinalText) ??
+            parseJsonTextField(rawFinalText) ??
             rawFinalText
         ).trim()
         this.debug.log('group.member_chat.turn_finished', {
@@ -258,18 +294,6 @@ export class MemberChatService {
                 event: ev
             })
             .catch(() => undefined)
-    }
-
-    private normalizeStreamEvent(ev: AgentEvent): AgentEvent {
-        if (ev.type === 'text') {
-            return { ...ev, text: this.parseJsonTextField(ev.text) ?? ev.text }
-        }
-        if (ev.type === 'turn_completed') {
-            const raw = ev.finalText
-            if (!raw) return ev
-            return { ...ev, finalText: this.parseJsonTextField(raw) ?? raw }
-        }
-        return ev
     }
 
     private async prepareMemberSession(
@@ -341,21 +365,6 @@ export class MemberChatService {
             throw BusinessException.agentUnavailable(
                 `Member ${agent.id} provider ${agent.platformProviderId} unavailable`
             )
-        }
-    }
-
-    private parseStructuredText(raw: unknown): string | null {
-        if (typeof raw !== 'object' || raw === null) return null
-        const text = (raw as { text?: unknown }).text
-        return typeof text === 'string' && text.trim() ? text.trim() : null
-    }
-
-    private parseJsonTextField(raw: string): string | null {
-        try {
-            const parsed = JSON.parse(raw) as unknown
-            return this.parseStructuredText(parsed)
-        } catch {
-            return null
         }
     }
 
