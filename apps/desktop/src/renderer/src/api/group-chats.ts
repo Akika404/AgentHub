@@ -2,6 +2,7 @@ import {
   ERROR_CODE,
   SUCCESS_CODE,
   type ApiResponse,
+  type BlackboardArtifactPreview,
   type BlackboardEventView,
   type BlackboardView,
   type ConverseGroupPayload,
@@ -142,6 +143,10 @@ export const groupChatApi = {
   abortRun: (id: string, runId: string) =>
     http.post<{ aborted: true }>(`/group-chats/${id}/runs/${runId}/abort`),
   getBlackboard: (id: string) => http.get<BlackboardView>(`/group-chats/${id}/blackboard`),
+  getArtifactPreview: (id: string, artifactId: string) =>
+    http.get<BlackboardArtifactPreview>(
+      `/group-chats/${id}/blackboard/artifacts/${artifactId}/preview`
+    ),
   getBlackboardEvents: (id: string) =>
     http.get<BlackboardEventView[]>(`/group-chats/${id}/blackboard/events`)
 }

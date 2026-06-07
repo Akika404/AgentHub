@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import type { BlackboardView, GroupChatView } from '../api'
+import type { BlackboardArtifact, BlackboardView, GroupChatView } from '../api'
 import { ApiError } from '../api'
 import { groupChatApi } from '../api/group-chats'
 import GroupAvatar from '../components/GroupAvatar.vue'
 import GroupDetailPanel from '../components/GroupDetailPanel.vue'
 import GroupChatCreateDialog from '../components/GroupChatCreateDialog.vue'
+import ArtifactPreviewDrawer from '../components/ArtifactPreviewDrawer.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseSkeleton from '../components/ui/BaseSkeleton.vue'
 
@@ -20,6 +21,7 @@ const activeGroup = ref<GroupChatView | null>(null)
 const blackboard = ref<BlackboardView | null>(null)
 const errorText = ref<string | null>(null)
 const createOpen = ref(false)
+const previewArtifact = ref<BlackboardArtifact | null>(null)
 
 async function loadGroups(): Promise<void> {
   groupsLoading.value = true
@@ -46,6 +48,7 @@ async function selectGroup(id: string): Promise<void> {
   detailLoading.value = true
   blackboardLoading.value = true
   blackboard.value = null
+  previewArtifact.value = null
   errorText.value = null
   try {
     const [groupDetail, board] = await Promise.all([
@@ -144,6 +147,13 @@ onMounted(loadGroups)
       :blackboard="blackboard"
       :loading="detailLoading"
       :blackboard-loading="blackboardLoading"
+      @open-artifact="previewArtifact = $event"
+    />
+
+    <ArtifactPreviewDrawer
+      :group-id="activeGroup?.id ?? null"
+      :artifact="previewArtifact"
+      @close="previewArtifact = null"
     />
 
     <GroupChatCreateDialog :open="createOpen" @close="createOpen = false" @created="onCreated" />

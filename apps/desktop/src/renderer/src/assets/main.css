@@ -107,13 +107,28 @@ body {
   transform: scale(0.96);
 }
 
+/* Right-side file preview drawer. */
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 180ms ease;
+}
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(16px);
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .modal-enter-active,
   .modal-leave-active,
   .modal-enter-active .modal-card,
   .modal-leave-active .modal-card,
   .pop-enter-active,
-  .pop-leave-active {
+  .pop-leave-active,
+  .drawer-slide-enter-active,
+  .drawer-slide-leave-active {
     transition: none;
   }
 }

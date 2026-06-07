@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { BlackboardTaskStatus, BlackboardView, GroupChatView, GroupMemberView } from '../api'
+import type {
+  BlackboardArtifact,
+  BlackboardTaskStatus,
+  BlackboardView,
+  GroupChatView,
+  GroupMemberView
+} from '../api'
 import { shouldShowBlackboardArtifact } from '../utils/blackboard'
 import { vendorLabel } from '../utils/vendor'
 import AgentAvatar from './AgentAvatar.vue'
@@ -18,6 +24,10 @@ const props = withDefaults(
     mode: 'page'
   }
 )
+
+const emit = defineEmits<{
+  (e: 'open-artifact', artifact: BlackboardArtifact): void
+}>()
 
 const taskTone: Record<BlackboardTaskStatus, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -215,12 +225,18 @@ const visibleArtifacts = computed(
                 暂无产出物
               </p>
               <div v-else class="space-y-2">
-                <div v-for="artifact in visibleArtifacts" :key="artifact.id">
+                <button
+                  v-for="artifact in visibleArtifacts"
+                  :key="artifact.id"
+                  type="button"
+                  class="block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-hover"
+                  @click="emit('open-artifact', artifact)"
+                >
                   <div class="truncate font-mono text-sm text-text-main">{{ artifact.path }}</div>
                   <div class="truncate text-xs text-text-muted">
                     v{{ artifact.version }} · {{ artifact.status }}
                   </div>
-                </div>
+                </button>
               </div>
             </section>
 

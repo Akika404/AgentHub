@@ -31,6 +31,10 @@ export interface RendererApi {
   streamCancel(streamId: string): Promise<void>
   selectDirectory(): Promise<string | null>
   selectDirectories(): Promise<string[]>
+  /** Register self-contained preview HTML; returns an `agent-preview://` URL to load in an iframe. */
+  registerPreviewHtml(html: string): Promise<string>
+  /** Release a previously registered preview URL so its HTML can be garbage-collected. */
+  releasePreviewHtml(url: string): Promise<void>
   onStream(name: 'event' | 'error' | 'done', callback: (payload: unknown) => void): () => void
 }
 

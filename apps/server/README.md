@@ -348,6 +348,7 @@ src/multiagents/group/
 | GET `@Sse` | `/api/group-chats/:id/runs/:runId/events` | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束）                                        |
 | POST       | `/api/group-chats/:id/runs/:runId/abort`  | 中止整个群运行（跨实例广播）                                                                       |
 | GET        | `/api/group-chats/:id/blackboard`         | 黑板状态快照                                                                                       |
+| GET        | `/api/group-chats/:id/blackboard/artifacts/:artifactId/preview` | 读取黑板产出物对应工作区文件的预览内容                                              |
 | GET        | `/api/group-chats/:id/blackboard/events`  | 黑板事件流（审计/调试，分页）                                                                      |
 
 > 协作动作（`dispatch_agent` / `report_completion` / `blackboard_write`）是**服务端内部协议**，不暴露为用户 REST：成员输出结构化 `report`，服务端基于 git diff 代写黑板。

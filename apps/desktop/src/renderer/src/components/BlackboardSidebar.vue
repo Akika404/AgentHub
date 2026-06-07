@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { BlackboardView } from '../api'
+import type { BlackboardArtifact, BlackboardView } from '../api'
 import { shouldShowBlackboardArtifact } from '../utils/blackboard'
 
 const props = defineProps<{ blackboard: BlackboardView | null; loading?: boolean }>()
+const emit = defineEmits<{
+  (e: 'open-artifact', artifact: BlackboardArtifact): void
+}>()
 
 const taskTone: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -55,10 +58,12 @@ const visibleArtifacts = computed(
           <h4 class="mb-2 text-sm font-semibold text-text-muted">产出物</h4>
           <p v-if="visibleArtifacts.length === 0" class="text-sm text-gray-400">暂无产出物</p>
           <ul v-else class="space-y-1.5">
-            <li
+            <button
               v-for="a in visibleArtifacts"
               :key="a.id"
-              class="rounded-md bg-surface-hover px-2.5 py-1.5"
+              type="button"
+              class="block w-full rounded-md bg-surface-hover px-2.5 py-1.5 text-left transition-colors hover:bg-surface-active"
+              @click="emit('open-artifact', a)"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="min-w-0 flex-1 truncate font-mono text-sm text-text-main">{{
@@ -67,7 +72,7 @@ const visibleArtifacts = computed(
                 <span class="flex-shrink-0 text-xs text-text-muted">v{{ a.version }}</span>
               </div>
               <p class="mt-0.5 truncate text-xs text-text-muted">{{ a.summary }}</p>
-            </li>
+            </button>
           </ul>
         </section>
 

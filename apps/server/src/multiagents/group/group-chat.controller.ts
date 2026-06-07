@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger'
 import { Observable, from, map } from 'rxjs'
 import type {
+    BlackboardArtifactPreview,
     BlackboardEventView,
     BlackboardView,
     GroupChatView,
@@ -35,7 +36,11 @@ import {
     StartGroupRunResultDto
 } from './dto/group-chat-response.dto.js'
 import { GroupMessageViewDto } from './dto/group-message-response.dto.js'
-import { BlackboardEventViewDto, BlackboardViewDto } from './dto/blackboard-response.dto.js'
+import {
+    BlackboardArtifactPreviewDto,
+    BlackboardEventViewDto,
+    BlackboardViewDto
+} from './dto/blackboard-response.dto.js'
 
 @ApiTags('group-chats')
 @ApiBearerAuth()
@@ -151,6 +156,17 @@ export class GroupChatController {
     @ApiEnvelope(BlackboardViewDto)
     blackboard(@CurrentUser() user: User, @Param('id') id: string): Promise<BlackboardView> {
         return this.manager.getBlackboard(user.id, id)
+    }
+
+    @Get(':id/blackboard/artifacts/:artifactId/preview')
+    @ApiOperation({ summary: '读取黑板产出物对应文件的预览内容' })
+    @ApiEnvelope(BlackboardArtifactPreviewDto)
+    artifactPreview(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('artifactId') artifactId: string
+    ): Promise<BlackboardArtifactPreview> {
+        return this.manager.getArtifactPreview(user.id, id, artifactId)
     }
 
     @Get(':id/blackboard/events')

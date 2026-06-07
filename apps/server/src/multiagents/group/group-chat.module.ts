@@ -23,6 +23,7 @@ import { GroupChatController } from './group-chat.controller.js'
 import { GroupChatManager } from './group-chat.manager.js'
 import { GroupChatService } from './group-chat.service.js'
 import { GroupMessageService } from './group-message.service.js'
+import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { AgentMemoryService } from './memory/agent-memory.service.js'
@@ -73,6 +74,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         GroupChatManager,
         GroupChatService,
         GroupMessageService,
+        GroupArtifactPreviewService,
         GroupWorkspaceService,
         BlackboardService,
         AgentMemoryService,

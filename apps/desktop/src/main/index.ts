@@ -3,6 +3,10 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerApiProxy } from './api-proxy'
+import { registerPreviewProtocol, registerPreviewScheme } from './preview-protocol'
+
+// Must run before app `ready`: privileged schemes can only be declared early.
+registerPreviewScheme()
 
 function registerDialogHandlers(): void {
   ipcMain.handle('dialog:select-directory', async (event): Promise<string | null> => {
@@ -78,6 +82,7 @@ app.whenReady().then(() => {
 
   // Backend REST calls funnel through the main process (avoids renderer CORS).
   registerApiProxy()
+  registerPreviewProtocol()
   registerDialogHandlers()
 
   createWindow()

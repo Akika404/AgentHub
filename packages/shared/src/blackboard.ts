@@ -28,6 +28,29 @@ export interface BlackboardArtifact {
   updatedByAgentId: string
 }
 
+export type BlackboardArtifactPreviewKind =
+  | 'text'
+  | 'html'
+  | 'pdf'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'office'
+  | 'binary'
+  | 'too_large'
+
+export interface BlackboardArtifactPreview {
+  artifact: BlackboardArtifact
+  fileName: string
+  extension: string
+  mimeType: string
+  size: number
+  previewKind: BlackboardArtifactPreviewKind
+  content: string | null
+  dataUrl: string | null
+  message: string | null
+}
+
 // —— Decisions ——
 
 export type BlackboardDecisionStatus = 'proposed' | 'approved' | 'superseded' | 'rejected'

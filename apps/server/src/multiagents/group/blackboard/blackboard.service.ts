@@ -134,6 +134,13 @@ export class BlackboardService {
         return artifact
     }
 
+    async getArtifactById(groupId: string, artifactId: string): Promise<BlackboardArtifact | null> {
+        const e = await this.artifactRepo.findOne({ where: { groupChatId: groupId, id: artifactId } })
+        const artifact = e ? toArtifactView(e) : null
+        this.debug.log('group.blackboard.read_artifact_by_id', { groupId, artifactId, artifact })
+        return artifact
+    }
+
     /** 产出物 upsert（乐观锁）。version 不符 → CONFLICT，要求重读后重试。 */
     async upsertArtifact(
         groupId: string,

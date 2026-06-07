@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type {
+    BlackboardArtifactPreview,
     BlackboardEventView,
     BlackboardView,
     ConverseGroupPayload,
@@ -14,6 +15,7 @@ import { GroupChatService } from './group-chat.service.js'
 import { GroupMessageService } from './group-message.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
+import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
 import { BusinessException } from '../../common/index.js'
 
 /**
@@ -26,6 +28,7 @@ export class GroupChatManager {
         private readonly groupChat: GroupChatService,
         private readonly groupMessages: GroupMessageService,
         private readonly blackboard: BlackboardService,
+        private readonly artifactPreview: GroupArtifactPreviewService,
         private readonly runStream: GroupRunStream,
         private readonly executor: GroupRunExecutor
     ) {}
@@ -86,6 +89,15 @@ export class GroupChatManager {
     async getBlackboard(userId: string, groupId: string): Promise<BlackboardView> {
         await this.groupChat.loadGroup(userId, groupId)
         return this.blackboard.getState(groupId)
+    }
+
+    async getArtifactPreview(
+        userId: string,
+        groupId: string,
+        artifactId: string
+    ): Promise<BlackboardArtifactPreview> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        return this.artifactPreview.preview(group.id, group.workspaceDir, artifactId)
     }
 
     async listBlackboardEvents(

@@ -7,6 +7,7 @@ import type {
   AgentRunStepView,
   AgentTodoItem,
   AgentView,
+  BlackboardArtifact,
   BlackboardTaskNode,
   BlackboardView,
   ChatDetail,
@@ -44,6 +45,7 @@ import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
 import GroupChatCreateDialog from '../components/GroupChatCreateDialog.vue'
 import GroupDetailPanel from '../components/GroupDetailPanel.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import ArtifactPreviewDrawer from '../components/ArtifactPreviewDrawer.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
 type SessionKind = 'agent' | 'group'
@@ -93,6 +95,7 @@ const agents = ref<AgentView[]>([])
 const activeSessionKey = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
 const activeGroupBlackboard = ref<BlackboardView | null>(null)
+const previewArtifact = ref<BlackboardArtifact | null>(null)
 const groupBlackboards = new Map<string, BlackboardView | null>()
 const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST_DEFAULT_WIDTH))
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
@@ -1241,6 +1244,7 @@ async function detachAllTurns(): Promise<void> {
 async function selectChat(key: string): Promise<void> {
   activeSessionKey.value = key
   pendingReply.value = null
+  previewArtifact.value = null
   runtime.value = idleRuntime()
   activeGroupBlackboard.value =
     sessionKind(key) === 'group' ? (groupBlackboards.get(key) ?? null) : null
@@ -2212,6 +2216,7 @@ onUnmounted(() => {
       :group="activeGroup"
       :blackboard="activeGroupBlackboard"
       mode="inspector"
+      @open-artifact="previewArtifact = $event"
     />
     <RightInspector
       v-else
@@ -2219,6 +2224,11 @@ onUnmounted(() => {
       :network="[]"
       :chat="activeChat"
       :runtime="runtime"
+    />
+    <ArtifactPreviewDrawer
+      :group-id="activeGroup?.id ?? null"
+      :artifact="previewArtifact"
+      @close="previewArtifact = null"
     />
     <AgentChatCreateDialog
       :open="createChatOpen"

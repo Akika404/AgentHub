@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger'
 import type {
     BlackboardArtifact,
+    BlackboardArtifactPreview,
+    BlackboardArtifactPreviewKind,
     BlackboardArtifactStatus,
     BlackboardArtifactType,
     BlackboardContract,
@@ -20,6 +22,17 @@ const DECISION_STATUSES: BlackboardDecisionStatus[] = ['proposed', 'approved', '
 const TASK_STATUSES: BlackboardTaskStatus[] = ['pending', 'ready', 'doing', 'done', 'failed', 'blocked']
 const UPDATE_KINDS: BlackboardUpdateKind[] = ['artifact', 'decision', 'contract', 'task']
 const UPDATE_OPS: BlackboardUpdateOp[] = ['created', 'updated', 'superseded', 'rejected']
+const ARTIFACT_PREVIEW_KINDS: BlackboardArtifactPreviewKind[] = [
+    'text',
+    'html',
+    'pdf',
+    'image',
+    'audio',
+    'video',
+    'office',
+    'binary',
+    'too_large'
+]
 
 export class BlackboardArtifactDto implements BlackboardArtifact {
     @ApiProperty() id!: string
@@ -68,6 +81,18 @@ export class BlackboardViewDto implements BlackboardView {
     @ApiProperty({ type: [BlackboardDecisionDto] }) decisions!: BlackboardDecisionDto[]
     @ApiProperty({ type: [BlackboardContractDto] }) contracts!: BlackboardContractDto[]
     @ApiProperty({ type: [BlackboardTaskNodeDto] }) taskGraph!: BlackboardTaskNodeDto[]
+}
+
+export class BlackboardArtifactPreviewDto implements BlackboardArtifactPreview {
+    @ApiProperty({ type: BlackboardArtifactDto }) artifact!: BlackboardArtifactDto
+    @ApiProperty() fileName!: string
+    @ApiProperty() extension!: string
+    @ApiProperty() mimeType!: string
+    @ApiProperty() size!: number
+    @ApiProperty({ enum: ARTIFACT_PREVIEW_KINDS }) previewKind!: BlackboardArtifactPreviewKind
+    @ApiProperty({ type: String, nullable: true }) content!: string | null
+    @ApiProperty({ type: String, nullable: true }) dataUrl!: string | null
+    @ApiProperty({ type: String, nullable: true }) message!: string | null
 }
 
 export class BlackboardEventViewDto implements BlackboardEventView {

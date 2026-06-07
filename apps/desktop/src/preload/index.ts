@@ -25,6 +25,10 @@ const api = {
   streamCancel: (streamId: string) => ipcRenderer.invoke('api:stream:cancel', streamId),
   selectDirectory: () => ipcRenderer.invoke('dialog:select-directory') as Promise<string | null>,
   selectDirectories: () => ipcRenderer.invoke('dialog:select-directories') as Promise<string[]>,
+  registerPreviewHtml: (html: string) =>
+    ipcRenderer.invoke('preview:register-html', html) as Promise<string>,
+  releasePreviewHtml: (url: string) =>
+    ipcRenderer.invoke('preview:release-html', url) as Promise<void>,
   onStream: (name: StreamEventName, callback: (payload: unknown) => void) => {
     const channel = `api:stream:${name}`
     const listener = (_event: IpcRendererEvent, payload: unknown): void => callback(payload)
