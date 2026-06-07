@@ -82,4 +82,36 @@ export class GroupMessageService {
         )
         return toGroupMessageView(saved)
     }
+
+    async updateTaskListTaskStatus(
+        groupId: string,
+        taskId: string,
+        status: TaskItem['status']
+    ): Promise<number> {
+        const messages = await this.messageRepo.find({
+            where: { groupChatId: groupId, kind: 'task-list' }
+        })
+        let updated = 0
+        for (const message of messages) {
+            const payload = message.payload ?? {}
+            if (!Array.isArray(payload.tasks)) continue
+            let changed = false
+            const tasks = payload.tasks.map((item) => {
+                if (!this.isTaskItem(item) || item.id !== taskId) return item
+                changed = changed || item.status !== status
+                return { ...item, status }
+            })
+            if (!changed) continue
+            message.payload = { ...payload, tasks }
+            await this.messageRepo.save(message)
+            updated += 1
+        }
+        return updated
+    }
+
+    private isTaskItem(value: unknown): value is TaskItem {
+        if (typeof value !== 'object' || value === null) return false
+        const rec = value as Record<string, unknown>
+        return typeof rec.id === 'string' && typeof rec.title === 'string'
+    }
 }

@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
 import type { BlackboardTaskNode, GroupRouteKind, TaskItem } from '@agenthub/shared'
+import { Repository } from 'typeorm'
 import type { Agent } from '../../entities/agent.entity.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import { GroupMessageService } from '../group-message.service.js'
@@ -10,6 +12,7 @@ import {
     ORCHESTRATOR_PLANNER,
     type OrchestratorPlanner,
     type OrchestratorContext,
+    type OrchestratorContextUpdates,
     type PlanMemberTurn
 } from './orchestrator-planner.js'
 import type { DispatchEscalation } from './dispatch.service.js'
@@ -28,6 +31,7 @@ export interface OrchestratorPlanParams {
 export interface OrchestratorPlanResult {
     nodes: BlackboardTaskNode[]
     note?: string
+    displayText?: string
     memberTurns: PlanMemberTurn[]
 }
 
@@ -51,6 +55,8 @@ export class OrchestratorService {
     constructor(
         @Inject(ORCHESTRATOR_PLANNER)
         private readonly planner: OrchestratorPlanner,
+        @InjectRepository(GroupChat)
+        private readonly groupRepo: Repository<GroupChat>,
         private readonly blackboard: BlackboardService,
         private readonly groupMessages: GroupMessageService,
         private readonly runStream: GroupRunStream,
@@ -100,24 +106,31 @@ export class OrchestratorService {
             mentionedAgentIds,
             plan
         })
+        await this.persistPlannerState(group, userId, runId, plan)
 
         if (plan.tasks.length === 0) {
-            const note = plan.note?.trim() || '收到。'
-            await this.groupMessages.appendText(group.id, userId, 'orchestrator', note)
+            const text = plan.displayText?.trim() || plan.note?.trim() || '收到。'
+            await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
             await this.runStream.publish(runId, {
                 type: 'orchestrator_report',
                 runId,
-                text: note
+                text
             })
             this.debug.log('group.orchestrator.plan.noop', {
                 groupId: group.id,
                 runId,
                 routeKind,
                 mentionedAgentIds,
-                note,
+                note: plan.note,
+                displayText: plan.displayText ?? null,
                 memberTurns: plan.memberTurns ?? []
             })
-            return { nodes: [], note: plan.note, memberTurns: plan.memberTurns ?? [] }
+            return {
+                nodes: [],
+                note: plan.note,
+                ...(plan.displayText ? { displayText: plan.displayText } : {}),
+                memberTurns: plan.memberTurns ?? []
+            }
         }
 
         const nodes = await this.blackboard.upsertTaskGraph(
@@ -137,7 +150,7 @@ export class OrchestratorService {
         const items: TaskItem[] = nodes.map((n) => ({
             id: n.id,
             title: n.name,
-            status: 'pending'
+            status: this.toTaskItemStatus(n.status)
         }))
         await this.groupMessages.appendTaskList(
             group.id,
@@ -168,6 +181,95 @@ export class OrchestratorService {
         })
 
         return { nodes, note: plan.note, memberTurns: [] }
+    }
+
+    private async persistPlannerState(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        plan: {
+            orchestratorSessionId?: string | null
+            contextUpdates?: OrchestratorContextUpdates
+        }
+    ): Promise<void> {
+        const updates = plan.contextUpdates
+        let groupChanged = false
+        if (plan.orchestratorSessionId && group.orchestratorSessionId !== plan.orchestratorSessionId) {
+            group.orchestratorSessionId = plan.orchestratorSessionId
+            groupChanged = true
+        }
+        if (updates?.projectName !== undefined && updates.projectName !== group.projectName) {
+            group.projectName = updates.projectName
+            groupChanged = true
+        }
+        if (updates?.projectGoal !== undefined && updates.projectGoal !== group.projectGoal) {
+            group.projectGoal = updates.projectGoal
+            groupChanged = true
+        }
+        if (
+            updates?.projectTechStack !== undefined &&
+            !this.sameStringArray(updates.projectTechStack, group.projectTechStack ?? [])
+        ) {
+            group.projectTechStack = updates.projectTechStack
+            groupChanged = true
+        }
+        if (updates?.projectStatus !== undefined && updates.projectStatus !== group.projectStatus) {
+            group.projectStatus = updates.projectStatus
+            groupChanged = true
+        }
+        if (groupChanged) {
+            await this.groupRepo.save(group)
+        }
+
+        const decisions = updates?.decisions ?? []
+        const createdDecisionIds: string[] = []
+        const existingDecisionKeys =
+            decisions.length > 0
+                ? new Set(
+                      (await this.blackboard.getState(group.id)).decisions.map((d) =>
+                          this.decisionKey(d.content, d.scope)
+                      )
+                  )
+                : new Set<string>()
+        for (const decision of decisions) {
+            const key = this.decisionKey(decision.content, decision.scope ?? null)
+            if (existingDecisionKeys.has(key)) continue
+            const saved = await this.blackboard.writeDecision(group.id, {
+                content: decision.content,
+                rationale: decision.rationale ?? null,
+                scope: decision.scope ?? null,
+                createdByAgentId: 'orchestrator',
+                status: 'approved',
+                approvedBy: userId
+            })
+            existingDecisionKeys.add(key)
+            createdDecisionIds.push(saved.id)
+        }
+        this.debug.log('group.orchestrator.context_updates.persisted', {
+            groupId: group.id,
+            runId,
+            userId,
+            orchestratorSessionId: plan.orchestratorSessionId ?? null,
+            projectMetaChanged: groupChanged,
+            contextUpdates: updates ?? null,
+            createdDecisionIds
+        })
+    }
+
+    private sameStringArray(a: string[], b: string[]): boolean {
+        return a.length === b.length && a.every((value, index) => value === b[index])
+    }
+
+    private decisionKey(content: string, scope: string | null | undefined): string {
+        return `${scope ?? ''}\u0000${content.trim()}`
+    }
+
+    private toTaskItemStatus(status: BlackboardTaskNode['status']): TaskItem['status'] {
+        if (status === 'doing') return 'in-progress'
+        if (status === 'done') return 'done'
+        if (status === 'failed') return 'failed'
+        if (status === 'blocked') return 'blocked'
+        return 'pending'
     }
 
     /** 聚合各成员产出，生成 text 汇报消息发到 presentation_log + 推 orchestrator_report。 */

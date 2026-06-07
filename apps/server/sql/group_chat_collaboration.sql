@@ -29,6 +29,7 @@ CREATE TABLE `group_chat`
     `orchestratorVendor`     varchar(16)   NOT NULL COMMENT 'Orchestrator 厂商：claude / codex',
     `orchestratorModel`      varchar(128)  NOT NULL COMMENT 'Orchestrator 使用的模型名',
     `orchestratorProviderId` varchar(36)   NOT NULL COMMENT 'Orchestrator 引用的 platform_provider.id',
+    `orchestratorSessionId`  varchar(128)           DEFAULT NULL COMMENT 'Orchestrator SDK 会话 id；内部运行时字段，不暴露给前端',
     `projectName`            varchar(128)  NOT NULL COMMENT 'projectMeta.name',
     `projectGoal`            text                   DEFAULT NULL COMMENT 'projectMeta.goal；可空',
     `projectTechStack`       json                   DEFAULT NULL COMMENT 'projectMeta.techStack；JSON 字符串数组',

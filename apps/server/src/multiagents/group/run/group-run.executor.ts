@@ -7,7 +7,8 @@ import type {
     BlackboardTaskNode,
     BlackboardTaskStatus,
     ConverseGroupPayload,
-    GroupRouteKind
+    GroupRouteKind,
+    TaskItem
 } from '@agenthub/shared'
 import { BusinessException } from '../../../common/index.js'
 import type { Agent } from '../../entities/agent.entity.js'
@@ -407,6 +408,11 @@ export class GroupRunExecutor implements OnModuleInit {
         ): Promise<void> => {
             statusById.set(taskId, status)
             await this.blackboard.setTaskStatus(group.id, taskId, status)
+            await this.groupMessages.updateTaskListTaskStatus(
+                group.id,
+                taskId,
+                this.toTaskItemStatus(status)
+            )
             await this.runStream.publish(runId, {
                 type: 'task_status',
                 runId,
@@ -435,6 +441,7 @@ export class GroupRunExecutor implements OnModuleInit {
                 const child = nodeById.get(id)
                 if (!child) continue
                 await this.blackboard.setTaskStatus(group.id, id, 'blocked')
+                await this.groupMessages.updateTaskListTaskStatus(group.id, id, 'blocked')
                 await this.runStream.publish(runId, {
                     type: 'task_status',
                     runId,
@@ -580,6 +587,14 @@ export class GroupRunExecutor implements OnModuleInit {
     private maxParallelTasks(): number {
         const raw = Number(this.config.get<string>('GROUP_MAX_PARALLEL_TASKS', '3'))
         return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 3
+    }
+
+    private toTaskItemStatus(status: BlackboardTaskStatus): TaskItem['status'] {
+        if (status === 'doing') return 'in-progress'
+        if (status === 'done') return 'done'
+        if (status === 'failed') return 'failed'
+        if (status === 'blocked') return 'blocked'
+        return 'pending'
     }
 
     private async runMemberTurns(

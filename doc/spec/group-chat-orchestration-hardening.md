@@ -46,7 +46,7 @@ type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 
 ```
 
 - `GroupRunEvent` 的 `task_status` 事件随之可携带 `status: 'blocked'`（`packages/shared/src/group-chat.ts`，类型自动收窄，无需额外字段）。
-- `TaskItem`（`chat.ts`，task-list 气泡用）是**独立 union**，本轮**不扩** `blocked`——阻塞状态只体现在黑板面板与 `task_status` 事件流，不进 task-list 气泡。
+- `TaskItem`（`chat.ts`，task-list 气泡用）现在同步 `failed` / `blocked`，避免群运行结束刷新后任务卡片退回为待办态。
 
 ### 服务端内部类型（不跨端）
 
@@ -128,7 +128,7 @@ await allSettled(inFlight)
 - **协调仅"上报 + 停下问用户"**：不自动派生配合任务、不自动通知 consumers；用户裁决后需重新发起。
 - **`direct_single` 路径**：单 @ 直派的冲突只走 dispatch 内的 system 提示，不经 `orchestrator.report` 的"需你决策"块（仅 orchestrate / multi 路径汇报）。
 - **汇报为模板拼接**：`orchestrator.report` 不调 LLM 做综合总结。
-- **task-list 气泡不显示 `blocked`**：`TaskItem` 独立 union 未扩；阻塞仅见于黑板面板与 `task_status` 事件流。
+- **task-list 气泡显示终态**：`TaskItem` 已扩展 `failed` / `blocked`，服务端会在任务状态变化时同步更新展示层 payload。
 - **乐观锁基线**：版本快照取自派发入口；真正并发同文件编辑主要由 git worktree 合并冲突兜住，乐观锁为二级防线。
 - **并发上限为全局值**：`GROUP_MAX_PARALLEL_TASKS` 不区分 vendor/provider 限流；高并发下仍可能触发上游 provider 限流。
 

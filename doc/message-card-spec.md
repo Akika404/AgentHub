@@ -179,7 +179,7 @@ interface TextMessage extends BaseMessage {
 interface TaskItem {
   id: string
   title: string
-  status: 'in-progress' | 'pending' | 'done'
+  status: 'in-progress' | 'pending' | 'done' | 'failed' | 'blocked'
 }
 
 interface TaskListMessage extends BaseMessage {

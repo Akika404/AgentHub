@@ -48,7 +48,7 @@ export interface SenderInfo {
 export interface TaskItem {
   id: string
   title: string
-  status: 'in-progress' | 'pending' | 'done'
+  status: 'in-progress' | 'pending' | 'done' | 'failed' | 'blocked'
 }
 
 export interface OptionItem {

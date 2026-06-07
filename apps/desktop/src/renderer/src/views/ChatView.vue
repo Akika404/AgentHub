@@ -102,6 +102,7 @@ const turnStreams = new Map<string, AgentConverseStream>()
 const groupStreams = new Map<string, GroupRunStream>()
 const runMessageIds = new Map<string, string>()
 const runMessageSessionKeys = new Map<string, string>()
+const groupRunTasks = new Map<string, BlackboardTaskNode[]>()
 const notifiedTurnIds = new Set<string>()
 const notifiedGroupRunIds = new Set<string>()
 let activeLoadId = 0
@@ -916,6 +917,10 @@ function groupRunMemberChatKey(groupId: string, runId: string, agentId: string):
   return `${groupSessionKey(groupId)}:run:${runId}:member-chat:${agentId}`
 }
 
+function groupRunTaskStateKey(groupId: string, runId: string): string {
+  return `${groupSessionKey(groupId)}:run:${runId}:tasks`
+}
+
 function groupTaskStatusLabel(status: BlackboardTaskNode['status']): string {
   const labels: Record<BlackboardTaskNode['status'], string> = {
     pending: '待分配',
@@ -928,10 +933,15 @@ function groupTaskStatusLabel(status: BlackboardTaskNode['status']): string {
   return labels[status]
 }
 
-function groupTaskPlanText(tasks: BlackboardTaskNode[]): string {
+function groupTaskAssignee(group: GroupChatView, agentId: string | null): string {
+  if (!agentId) return '待分配'
+  return group.members.find((member) => member.agentId === agentId)?.name ?? agentId
+}
+
+function groupTaskPlanText(group: GroupChatView, tasks: BlackboardTaskNode[]): string {
   return tasks
     .map((task, index) => {
-      const assignee = task.agentId ?? '待分配'
+      const assignee = groupTaskAssignee(group, task.agentId)
       const objective = task.objective.trim()
       const suffix = objective ? `\n   ${objective}` : ''
       return `${index + 1}. [${groupTaskStatusLabel(task.status)}] ${task.name} -> ${assignee}${suffix}`
@@ -939,9 +949,9 @@ function groupTaskPlanText(tasks: BlackboardTaskNode[]): string {
     .join('\n')
 }
 
-function groupTaskTodos(tasks: BlackboardTaskNode[]): AgentTodoItem[] {
+function groupTaskTodos(group: GroupChatView, tasks: BlackboardTaskNode[]): AgentTodoItem[] {
   return tasks.map((task) => ({
-    text: `${task.name}${task.agentId ? ` -> ${task.agentId}` : ''}`,
+    text: `${task.name} -> ${groupTaskAssignee(group, task.agentId)}`,
     status:
       task.status === 'done' ? 'completed' : task.status === 'doing' ? 'in_progress' : 'pending'
   }))
@@ -985,13 +995,30 @@ function ensureGroupMemberChatRunMessage(
 function updateGroupPlanMessage(
   group: GroupChatView,
   runId: string,
-  tasks: BlackboardTaskNode[]
+  tasks: BlackboardTaskNode[],
+  options: { startWaitingStep?: boolean } = {}
 ): void {
+  groupRunTasks.set(groupRunTaskStateKey(group.id, runId), tasks)
   const runKey = ensureGroupOrchestratorRunMessage(group, runId)
-  completeActiveRunStep(runKey)
-  upsertPlanStep(runKey, groupTaskPlanText(tasks))
-  upsertTodoStep(runKey, groupTaskTodos(tasks))
-  startRunStep(runKey, 'thinking', '等待成员执行', 'thinking')
+  if (options.startWaitingStep) completeActiveRunStep(runKey)
+  upsertPlanStep(runKey, groupTaskPlanText(group, tasks))
+  upsertTodoStep(runKey, groupTaskTodos(group, tasks))
+  if (options.startWaitingStep) startRunStep(runKey, 'thinking', '等待成员执行', 'thinking')
+}
+
+function updateGroupPlanTaskStatus(
+  group: GroupChatView,
+  event: Extract<GroupRunEvent, { type: 'task_status' }>
+): void {
+  const key = groupRunTaskStateKey(group.id, event.runId)
+  const tasks = groupRunTasks.get(key)
+  if (!tasks) return
+  const next = tasks.map((task) =>
+    task.id === event.taskId
+      ? { ...task, status: event.status, agentId: event.agentId ?? task.agentId }
+      : task
+  )
+  updateGroupPlanMessage(group, event.runId, next)
 }
 
 function finishGroupRunMessages(groupId: string, runId: string, success: boolean): void {
@@ -1000,6 +1027,7 @@ function finishGroupRunMessages(groupId: string, runId: string, success: boolean
     if (!key.startsWith(prefix)) continue
     finishAgentRun(key, success)
   }
+  groupRunTasks.delete(groupRunTaskStateKey(groupId, runId))
 }
 
 function dropGroupRunMessageRefs(groupId: string, runId: string): void {
@@ -1009,6 +1037,7 @@ function dropGroupRunMessageRefs(groupId: string, runId: string): void {
     runMessageIds.delete(key)
     runMessageSessionKeys.delete(key)
   }
+  groupRunTasks.delete(groupRunTaskStateKey(groupId, runId))
 }
 
 async function loadWorkspace(): Promise<void> {
@@ -1628,22 +1657,25 @@ function buildGroupRunHandlers(
       if (activeSessionKey.value === key) handleGroupRuntimeEvent(event)
 
       if (event.type === 'orchestrator_plan') {
-        updateGroupPlanMessage(group, runId, event.tasks)
-      } else if (event.type === 'task_status' && event.agentId) {
-        const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
-        if (!completedMemberKeys.has(memberKey)) {
-          ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
-          if (event.status === 'doing') {
-            startRunStep(memberKey, 'thinking', '执行任务中', 'thinking')
-          } else if (event.status === 'ready') {
-            startRunStep(memberKey, 'thinking', '等待执行', 'thinking')
-          } else if (event.status === 'done' || event.status === 'failed') {
-            finishAgentRun(memberKey, event.status === 'done')
-            completedMemberKeys.add(memberKey)
-          } else if (event.status === 'blocked') {
-            // 上游失败导致本任务从未派发：收尾该成员运行卡片，避免 UI 一直转圈
-            finishAgentRun(memberKey, false)
-            completedMemberKeys.add(memberKey)
+        updateGroupPlanMessage(group, runId, event.tasks, { startWaitingStep: true })
+      } else if (event.type === 'task_status') {
+        updateGroupPlanTaskStatus(group, event)
+        if (event.agentId) {
+          const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
+          if (!completedMemberKeys.has(memberKey)) {
+            ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+            if (event.status === 'doing') {
+              startRunStep(memberKey, 'thinking', '执行任务中', 'thinking')
+            } else if (event.status === 'ready') {
+              startRunStep(memberKey, 'thinking', '等待执行', 'thinking')
+            } else if (event.status === 'done' || event.status === 'failed') {
+              finishAgentRun(memberKey, event.status === 'done')
+              completedMemberKeys.add(memberKey)
+            } else if (event.status === 'blocked') {
+              // 上游失败导致本任务从未派发：收尾该成员运行卡片，避免 UI 一直转圈
+              finishAgentRun(memberKey, false)
+              completedMemberKeys.add(memberKey)
+            }
           }
         }
       } else if (event.type === 'member_turn_event') {

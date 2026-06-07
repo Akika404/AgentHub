@@ -37,10 +37,30 @@ defineProps<{ message: TaskListMessage }>()
               <span class="material-symbols-outlined text-md">check</span>
             </span>
             <span
+              v-else-if="task.status === 'failed'"
+              class="w-[18px] h-[18px] rounded-full bg-danger flex items-center justify-center text-white"
+            >
+              <span class="material-symbols-outlined text-md">close</span>
+            </span>
+            <span
+              v-else-if="task.status === 'blocked'"
+              class="w-[18px] h-[18px] rounded-full bg-warning flex items-center justify-center text-white"
+            >
+              <span class="material-symbols-outlined text-md">pause</span>
+            </span>
+            <span
               v-else
               class="w-[18px] h-[18px] rounded-full border-[2px] border-surface-border bg-white flex items-center justify-center"
             ></span>
-            <span class="text-md">{{ task.title }}</span>
+            <span
+              class="text-md"
+              :class="{
+                'text-text-muted line-through': task.status === 'done',
+                'text-danger': task.status === 'failed',
+                'text-warning': task.status === 'blocked'
+              }"
+              >{{ task.title }}</span
+            >
           </li>
         </ul>
       </div>

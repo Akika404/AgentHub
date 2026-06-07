@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common'
-import type { BlackboardTaskNode, GroupRouteKind } from '@agenthub/shared'
+import type { BlackboardTaskNode, GroupRouteKind, ProjectStatus } from '@agenthub/shared'
 import {
     createAgent,
+    type AgentAdapter,
     type AgentAdapterConfig,
     type AgentOutputSchema
 } from '../../adapter/index.js'
@@ -46,13 +47,33 @@ export interface PlanMemberTurn {
     instruction: string
 }
 
+export interface OrchestratorDecisionUpdate {
+    content: string
+    rationale?: string | null
+    scope?: string | null
+}
+
+export interface OrchestratorContextUpdates {
+    projectName?: string
+    projectGoal?: string | null
+    projectTechStack?: string[]
+    projectStatus?: ProjectStatus
+    decisions?: OrchestratorDecisionUpdate[]
+}
+
 export interface OrchestratorPlan {
     /** 空数组表示只需要 Orchestrator 回复，不应创建黑板任务或派发成员。 */
     tasks: PlanTask[]
     /** 给用户的开场说明（可空） */
     note?: string
+    /** SDK 实际产出的用户可见回复；用于保留澄清反问的完整自然语言正文。 */
+    displayText?: string
     /** 真实成员轻量聊天 turn；不写黑板 task，不走 worktree/report/diff。 */
     memberTurns?: PlanMemberTurn[]
+    /** 从对话中沉淀出的项目状态/用户选择，由服务端写回 projectMeta/blackboard。 */
+    contextUpdates?: OrchestratorContextUpdates
+    /** 本轮结束后的 Orchestrator SDK 会话 id；内部字段，不暴露给前端。 */
+    orchestratorSessionId?: string | null
 }
 
 export interface PlanRequest {
@@ -73,6 +94,7 @@ interface OrchestratorRunResult {
     success: boolean
     error?: string
     structuredOutput?: unknown
+    sessionId?: string | null
 }
 
 /**
@@ -85,6 +107,8 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrato
 - 问候、感谢、闲聊、状态询问、澄清讨论等无需成员执行工具或产出文件的消息，只返回空 tasks，并用 note 以 Orchestrator 身份回复；不要为这类消息创建任务。
 - 不允许代替成员 Agent 发言；只有真实派发给成员并完成成员 turn 后，才能出现成员身份的消息。
 - 只有当用户要求创建/修改文件、实现功能、产出文档、执行命令、检查工作区或完成可交付事项时，才创建 tasks。
+- 用户要求“探索/检查/读取/查看工作区”、或在你说明要探索/执行后继续催促“那你探索啊/继续/开始做”时，必须创建成员 task；你自己不要尝试读取文件、调用工具或把它当成澄清/noop。
+- 用户要求成员回答一个需要角色判断、方案建议、信息整理或问题解答的问题时，如果无需工具/文件，使用 memberTurns；如果需要读取文件、检查工作区或形成可交付回答，使用 tasks。
 - 如果用户咨询某个成员角色适合回答的问题，或明确要求成员本人打招呼/介绍/表达观点，但无需工具或产出文件，应返回 tasks: [] 并创建 memberTurns，让成员真实轻量回复；不要创建黑板任务。
 - 面向黑板协作，不臆造未提供的事实。
 - 只能指派给给定的成员 Agent（用其 agentId）。
@@ -93,7 +117,9 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrato
 - 非任务消息形如：{"tasks":[],"note":"给用户的直接回复"}。
 - 成员轻量聊天形如：{"tasks":[],"note":"我请大家分别说一句。","memberTurns":[{"agentId":"<成员agentId>","instruction":"请以你的角色向大家打个招呼，用一句话介绍自己。"}]}。
 - tasks 和 memberTurns 不要同时出现；需要实际产出时用 tasks，需要真实成员轻量发言时用 memberTurns。
-- 简单任务用单个 task；复杂任务拆成多个 task：deps 表达**真实依赖**——无依赖的任务会并行执行，有依赖的任务等其依赖完成后才执行。请按真实先后关系填 deps，互不依赖的任务 deps 留空以便并行。`
+- 简单任务用单个 task；复杂任务拆成多个 task：deps 表达**真实依赖**——无依赖的任务会并行执行，有依赖的任务等其依赖完成后才执行。请按真实先后关系填 deps，互不依赖的任务 deps 留空以便并行。
+- 你拥有连续会话上下文；当用户给出项目目标、需求澄清、技术选择、交互形式、范围裁剪等明确事实时，在 contextUpdates 中同步沉淀，便于服务端写入 projectMeta/黑板。
+- contextUpdates 只写用户已明确表达或你已确认的事实，不要把猜测、待确认问题或成员临时观点写成已确认决策。`
 
 /**
  * LlmOrchestratorPlanner — 用群配置的 vendor/model + 内置编排 prompt 跑一轮 LLM 产计划。
@@ -139,6 +165,9 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                 outputPreview: result.text.slice(0, 1000)
             })
         }
+        parsed.orchestratorSessionId = result.sessionId ?? null
+        const displayText = this.resolveDisplayText(result.text)
+        if (displayText) parsed.displayText = displayText
         this.debug.log('group.orchestrator_planner.parsed', {
             groupId: req.group.id,
             userId: req.userId,
@@ -169,9 +198,9 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             reasoningEffort: "minimal",
             systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
             allowedTools: [],
-            permissionMode: 'plan'
+            permissionMode: 'default'
         }
-        const adapter = createAgent(req.group.orchestratorVendor, config)
+        const adapter = this.createOrchestratorAdapter(req, config)
         const prompt = this.buildPrompt(req)
         this.debug.log('group.orchestrator_planner.prompt', {
             groupId: req.group.id,
@@ -179,6 +208,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             vendor: req.group.orchestratorVendor,
             model: req.group.orchestratorModel,
             providerId: req.group.orchestratorProviderId,
+            resumedSdkSessionId: req.group.orchestratorSessionId ?? null,
             workingDirectory: config.workingDirectory,
             systemPrompt: ORCHESTRATOR_SYSTEM_PROMPT,
             prompt
@@ -193,7 +223,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         if (first.success) return first
 
         const fallback = await this.sendPlanRequest(
-            createAgent(req.group.orchestratorVendor, config),
+            this.createOrchestratorAdapter(req, config),
             prompt
         )
         this.debug.log('group.orchestrator_planner.output', {
@@ -204,6 +234,14 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         })
         if (fallback.success) return fallback
         throw new Error(fallback.error ?? first.error ?? 'Orchestrator turn failed')
+    }
+
+    private createOrchestratorAdapter(req: PlanRequest, config: AgentAdapterConfig): AgentAdapter {
+        const adapter = createAgent(req.group.orchestratorVendor, config)
+        if (req.group.orchestratorSessionId) {
+            adapter.resumeWith(req.group.orchestratorSessionId)
+        }
+        return adapter
     }
 
     private async sendPlanRequest(
@@ -228,10 +266,36 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             }
         }
         return {
-            text: (finalFromDone ?? parts.join('')).trim(),
+            text: this.combineTextParts(parts, finalFromDone),
             success,
             error,
-            structuredOutput
+            structuredOutput,
+            sessionId: adapter.sessionId
+        }
+    }
+
+    private combineTextParts(parts: string[], finalFromDone: string | null): string {
+        const merged = parts.map((part) => part.trim()).filter((part) => part.length > 0)
+        const finalText = finalFromDone?.trim()
+        if (finalText && !merged.includes(finalText)) {
+            merged.push(finalText)
+        }
+        return merged.join('\n\n').trim()
+    }
+
+    private resolveDisplayText(text: string): string | undefined {
+        const trimmed = text.trim()
+        if (!trimmed || this.looksLikePlanJson(trimmed)) return undefined
+        return trimmed
+    }
+
+    private looksLikePlanJson(text: string): boolean {
+        if (!text.startsWith('{') || !text.endsWith('}')) return false
+        try {
+            const parsed = JSON.parse(text) as { tasks?: unknown }
+            return Array.isArray(parsed.tasks)
+        } catch {
+            return false
         }
     }
 
@@ -277,6 +341,35 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
                         additionalProperties: false
                     }
                 },
+                contextUpdates: {
+                    type: 'object',
+                    properties: {
+                        projectName: { type: 'string' },
+                        projectGoal: { type: ['string', 'null'] },
+                        projectTechStack: {
+                            type: 'array',
+                            items: { type: 'string' }
+                        },
+                        projectStatus: {
+                            type: 'string',
+                            enum: ['planning', 'designing', 'development', 'done']
+                        },
+                        decisions: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    content: { type: 'string' },
+                                    rationale: { type: ['string', 'null'] },
+                                    scope: { type: ['string', 'null'] }
+                                },
+                                required: ['content'],
+                                additionalProperties: false
+                            }
+                        }
+                    },
+                    additionalProperties: false
+                },
                 note: { type: 'string' }
             },
             required: ['tasks'],
@@ -299,7 +392,8 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             `路由来源：${req.routeKind}`,
             `用户显式提及的成员 agentId：${mentioned}`,
             `用户消息：${req.userText}`,
-            '请按结构化输出 schema 返回计划；如果用户只是问候、闲聊、询问状态或澄清讨论，请返回空 tasks，并用 note 以 Orchestrator 身份直接回复。不要代替成员发言；如果需要真实成员轻量回答但无需工具/文件产出，请返回 memberTurns；只有需要实际产出/修改时才创建 tasks。'
+            '请按结构化输出 schema 返回计划；如果用户只是问候、闲聊、询问状态或澄清讨论，请返回空 tasks，并用 note 以 Orchestrator 身份直接回复。不要代替成员发言；如果需要真实成员轻量回答但无需工具/文件产出，请返回 memberTurns；只有需要实际产出/修改时才创建 tasks。用户要求探索/检查/读取工作区、或在你说要探索/执行后催促继续时，必须创建成员 task，不要自己尝试工具，也不要返回空 tasks。',
+            '如本轮用户明确给出了项目目标、需求澄清、产品形式、技术选择或其它已确认选择，请在 contextUpdates 中同步沉淀：projectGoal/projectName/projectTechStack/projectStatus 写入 projectMeta，decisions 写入黑板决策。不要把未确认猜测写入 contextUpdates。'
         ].join('\n\n')
     }
 
@@ -350,11 +444,87 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             if (rawTasks.length > 0) return null
             if (!note?.trim() && memberTurns.length === 0) return null
         }
+        const contextUpdates = this.parseContextUpdates(
+            (obj as { contextUpdates?: unknown }).contextUpdates
+        )
+        if (contextUpdates === null) {
+            return null
+        }
+
         return {
             tasks,
             note,
-            ...(memberTurns.length > 0 ? { memberTurns } : {})
+            ...(memberTurns.length > 0 ? { memberTurns } : {}),
+            ...(contextUpdates ? { contextUpdates } : {})
         }
+    }
+
+    private parseContextUpdates(raw: unknown): OrchestratorContextUpdates | null | undefined {
+        if (raw === undefined) return undefined
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
+        const rec = raw as Record<string, unknown>
+        const updates: OrchestratorContextUpdates = {}
+
+        if (rec.projectName !== undefined) {
+            if (typeof rec.projectName !== 'string') return null
+            const v = rec.projectName.trim()
+            if (v) updates.projectName = v
+        }
+        if (rec.projectGoal !== undefined) {
+            if (rec.projectGoal !== null && typeof rec.projectGoal !== 'string') return null
+            const v = typeof rec.projectGoal === 'string' ? rec.projectGoal.trim() : null
+            updates.projectGoal = v || null
+        }
+        if (rec.projectTechStack !== undefined) {
+            if (!Array.isArray(rec.projectTechStack)) return null
+            updates.projectTechStack = rec.projectTechStack
+                .filter((x): x is string => typeof x === 'string')
+                .map((x) => x.trim())
+                .filter((x) => x.length > 0)
+        }
+        if (rec.projectStatus !== undefined) {
+            if (
+                rec.projectStatus !== 'planning' &&
+                rec.projectStatus !== 'designing' &&
+                rec.projectStatus !== 'development' &&
+                rec.projectStatus !== 'done'
+            ) {
+                return null
+            }
+            updates.projectStatus = rec.projectStatus
+        }
+        if (rec.decisions !== undefined) {
+            if (!Array.isArray(rec.decisions)) return null
+            const decisions: OrchestratorDecisionUpdate[] = []
+            for (const item of rec.decisions) {
+                if (typeof item !== 'object' || item === null) return null
+                const d = item as Record<string, unknown>
+                if (typeof d.content !== 'string') return null
+                const content = d.content.trim()
+                if (!content) continue
+                if (
+                    d.rationale !== undefined &&
+                    d.rationale !== null &&
+                    typeof d.rationale !== 'string'
+                ) {
+                    return null
+                }
+                if (d.scope !== undefined && d.scope !== null && typeof d.scope !== 'string') {
+                    return null
+                }
+                decisions.push({
+                    content,
+                    rationale:
+                        typeof d.rationale === 'string' && d.rationale.trim()
+                            ? d.rationale.trim()
+                            : null,
+                    scope: typeof d.scope === 'string' && d.scope.trim() ? d.scope.trim() : null
+                })
+            }
+            if (decisions.length > 0) updates.decisions = decisions
+        }
+
+        return Object.keys(updates).length > 0 ? updates : undefined
     }
 
     private parseMemberTurns(raw: unknown, memberIds: Set<string>): PlanMemberTurn[] | null {

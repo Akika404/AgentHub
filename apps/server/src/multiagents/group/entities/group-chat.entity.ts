@@ -47,6 +47,10 @@ export class GroupChat {
     @Column({ type: 'varchar', length: 36 })
     orchestratorProviderId!: string
 
+    /** Orchestrator SDK 会话 id；内部运行时字段，不暴露给前端 */
+    @Column({ type: 'varchar', length: 128, nullable: true })
+    orchestratorSessionId!: string | null
+
     // —— projectMeta（挂在群上，不另建表）——
     @Column({ type: 'varchar', length: 128 })
     projectName!: string
