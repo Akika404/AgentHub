@@ -85,7 +85,7 @@ export interface DispatchResult {
     /** 存在时表示遇冲突需停下问用户；executor 据此把任务计 failed 并阻塞下游。 */
     escalation?: DispatchEscalation
     /** 存在时表示成员主动挂起等待用户答复；executor 据此把任务计 waiting_input（不放行下游、不阻塞下游）。 */
-    suspended?: { question: string; questions?: AgentQuestion[] }
+    suspended?: { question: string; questions?: AgentQuestion[]; hasQuestionCard?: boolean }
 }
 
 const REPORT_INSTRUCTION = `
@@ -275,7 +275,7 @@ export class DispatchService {
                 summary: question,
                 suspended: {
                     question,
-                    ...(questions.length > 0 ? { questions } : {})
+                    ...(questions.length > 0 ? { questions, hasQuestionCard: true } : {})
                 }
             }
             this.debug.log('group.dispatch.suspended', {

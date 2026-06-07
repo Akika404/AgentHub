@@ -580,7 +580,8 @@ export class GroupRunExecutor implements OnModuleInit {
         const recordSuspended = async (
             node: BlackboardTaskNode,
             question: string,
-            agentId: string | null
+            agentId: string | null,
+            hasQuestionCard = false
         ): Promise<void> => {
             suspended = true
             await setStatus(node.id, 'waiting_input', agentId)
@@ -589,7 +590,8 @@ export class GroupRunExecutor implements OnModuleInit {
                 summary: question,
                 success: false,
                 status: 'waiting_input',
-                question
+                question,
+                ...(hasQuestionCard ? { hasQuestionCard } : {})
             })
             this.debug.log('group.run.orchestrated.task_suspended', {
                 groupId: group.id,
@@ -605,7 +607,12 @@ export class GroupRunExecutor implements OnModuleInit {
             agentId: string | null
         ): Promise<void> => {
             if (result.suspended) {
-                await recordSuspended(node, result.suspended.question, agentId)
+                await recordSuspended(
+                    node,
+                    result.suspended.question,
+                    agentId,
+                    result.suspended.hasQuestionCard === true
+                )
             } else if (result.success) {
                 await setStatus(node.id, 'done', agentId)
                 outcomesById.set(node.id, {
