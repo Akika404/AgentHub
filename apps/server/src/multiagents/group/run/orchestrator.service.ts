@@ -15,6 +15,11 @@ import {
     type OrchestratorContextUpdates,
     type PlanMemberTurn
 } from './orchestrator-planner.js'
+import {
+    ORCHESTRATOR_FINAL_REVIEWER,
+    type OrchestratorFinalReviewer,
+    type OrchestratorFinalReviewResult
+} from './orchestrator-final-reviewer.js'
 import type { DispatchEscalation } from './dispatch.service.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
@@ -26,6 +31,12 @@ export interface OrchestratorPlanParams {
     routeKind: GroupRouteKind
     mentionedAgentIds: string[]
     members: Array<{ member: GroupChatMember; agent: Agent }>
+    /**
+     * Internal continuation checks ask the Orchestrator whether more downstream
+     * work remains. A noop answer there should not appear as an extra chat
+     * message before the final aggregate report.
+     */
+    suppressNoopMessage?: boolean
 }
 
 export interface OrchestratorPlanResult {
@@ -46,6 +57,13 @@ export interface TaskOutcome {
     question?: string
     /** true 表示成员已经发出可提交的提问卡片，不需要 Orchestrator 再重复提示。 */
     hasQuestionCard?: boolean
+}
+
+export interface OrchestratorReportResult {
+    text: string
+    shouldContinue: boolean
+    followUpInstruction?: string
+    review?: OrchestratorFinalReviewResult
 }
 
 export function buildOrchestratorReportText(outcomes: TaskOutcome[]): string | null {
@@ -83,9 +101,7 @@ export function buildOrchestratorReportText(outcomes: TaskOutcome[]): string | n
             parts.push(`- ${o.name}：${o.question ?? o.summary}`)
         }
         parts.push(
-            waiting.length > 1
-                ? '请 @对应成员 回复对应问题以继续。'
-                : '直接回复即可让其继续。'
+            waiting.length > 1 ? '请 @对应成员 回复对应问题以继续。' : '直接回复即可让其继续。'
         )
     }
     if (escalated.length > 0) {
@@ -108,6 +124,8 @@ export class OrchestratorService {
     constructor(
         @Inject(ORCHESTRATOR_PLANNER)
         private readonly planner: OrchestratorPlanner,
+        @Inject(ORCHESTRATOR_FINAL_REVIEWER)
+        private readonly finalReviewer: OrchestratorFinalReviewer,
         @InjectRepository(GroupChat)
         private readonly groupRepo: Repository<GroupChat>,
         private readonly blackboard: BlackboardService,
@@ -118,7 +136,15 @@ export class OrchestratorService {
 
     /** 生成计划；有任务则写 task_graph + 发 task-list，非任务则只回复文本。 */
     async plan(params: OrchestratorPlanParams): Promise<OrchestratorPlanResult> {
-        const { group, userId, runId, routeKind, mentionedAgentIds, members } = params
+        const {
+            group,
+            userId,
+            runId,
+            routeKind,
+            mentionedAgentIds,
+            members,
+            suppressNoopMessage = false
+        } = params
 
         const state = await this.blackboard.getState(group.id)
         const context: OrchestratorContext = {
@@ -163,12 +189,14 @@ export class OrchestratorService {
 
         if (plan.tasks.length === 0) {
             const text = plan.displayText?.trim() || plan.note?.trim() || '收到。'
-            await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
-            await this.runStream.publish(runId, {
-                type: 'orchestrator_report',
-                runId,
-                text
-            })
+            if (!suppressNoopMessage) {
+                await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
+                await this.runStream.publish(runId, {
+                    type: 'orchestrator_report',
+                    runId,
+                    text
+                })
+            }
             this.debug.log('group.orchestrator.plan.noop', {
                 groupId: group.id,
                 runId,
@@ -176,7 +204,8 @@ export class OrchestratorService {
                 mentionedAgentIds,
                 note: plan.note,
                 displayText: plan.displayText ?? null,
-                memberTurns: plan.memberTurns ?? []
+                memberTurns: plan.memberTurns ?? [],
+                suppressNoopMessage
             })
             return {
                 nodes: [],
@@ -247,7 +276,10 @@ export class OrchestratorService {
     ): Promise<void> {
         const updates = plan.contextUpdates
         let groupChanged = false
-        if (plan.orchestratorSessionId && group.orchestratorSessionId !== plan.orchestratorSessionId) {
+        if (
+            plan.orchestratorSessionId &&
+            group.orchestratorSessionId !== plan.orchestratorSessionId
+        ) {
             group.orchestratorSessionId = plan.orchestratorSessionId
             groupChanged = true
         }
@@ -325,15 +357,103 @@ export class OrchestratorService {
         return 'pending'
     }
 
-    /** 聚合各成员产出，生成 text 汇报消息发到 presentation_log + 推 orchestrator_report。 */
+    /** 聚合各成员产出，优先调用 Orchestrator LLM 验收/确认后再汇报。 */
     async report(
         group: GroupChat,
         userId: string,
         runId: string,
-        outcomes: TaskOutcome[]
-    ): Promise<string> {
-        const text = buildOrchestratorReportText(outcomes)
-        if (text === null) {
+        outcomes: TaskOutcome[],
+        options: {
+            originalUserText?: string
+            reviewFinal?: boolean
+            emitIncompleteReview?: boolean
+        } = {}
+    ): Promise<OrchestratorReportResult> {
+        const fallbackText = buildOrchestratorReportText(outcomes)
+        const reviewSubject =
+            options.originalUserText?.trim() || this.buildFallbackReviewSubject(outcomes)
+        const canRunFinalReview = outcomes.length > 0
+        const canContinueFromReview =
+            options.reviewFinal === true && outcomes.every((o) => o.status === 'done')
+
+        if (canRunFinalReview) {
+            try {
+                const review = await this.finalReviewer.review({
+                    group,
+                    userId,
+                    runId,
+                    originalUserText: reviewSubject,
+                    outcomes
+                })
+                await this.persistReviewerSessionId(group, review)
+                if (!review.complete && canContinueFromReview) {
+                    const followUpInstruction =
+                        review.followUpInstruction ??
+                        this.buildFallbackFollowUpInstruction(reviewSubject, review)
+                    if (options.emitIncompleteReview === true) {
+                        await this.groupMessages.appendText(
+                            group.id,
+                            userId,
+                            'orchestrator',
+                            review.summary
+                        )
+                        await this.runStream.publish(runId, {
+                            type: 'orchestrator_report',
+                            runId,
+                            text: review.summary
+                        })
+                    }
+                    this.debug.log('group.orchestrator.report.review_incomplete', {
+                        groupId: group.id,
+                        runId,
+                        userId,
+                        outcomes,
+                        review,
+                        followUpInstruction
+                    })
+                    return {
+                        text: '',
+                        shouldContinue: true,
+                        followUpInstruction,
+                        review
+                    }
+                }
+                await this.groupMessages.appendText(
+                    group.id,
+                    userId,
+                    'orchestrator',
+                    review.summary
+                )
+                await this.runStream.publish(runId, {
+                    type: 'orchestrator_report',
+                    runId,
+                    text: review.summary
+                })
+                this.debug.log('group.orchestrator.report.review_confirmed', {
+                    groupId: group.id,
+                    runId,
+                    userId,
+                    outcomes,
+                    review,
+                    canContinueFromReview
+                })
+                return {
+                    text: review.summary,
+                    shouldContinue: false,
+                    review
+                }
+            } catch (err) {
+                this.debug.log('group.orchestrator.report.review_failed', {
+                    groupId: group.id,
+                    runId,
+                    userId,
+                    outcomes,
+                    error: err instanceof Error ? err.message : String(err)
+                })
+            }
+        }
+
+        if (fallbackText === null) {
             this.debug.log('group.orchestrator.report.skipped', {
                 groupId: group.id,
                 runId,
@@ -341,17 +461,62 @@ export class OrchestratorService {
                 reason: 'interactive_waiting_question_card',
                 outcomes
             })
-            return ''
+            return { text: '', shouldContinue: false }
         }
-        await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
-        await this.runStream.publish(runId, { type: 'orchestrator_report', runId, text })
-        this.debug.log('group.orchestrator.report', {
+
+        await this.groupMessages.appendText(group.id, userId, 'orchestrator', fallbackText)
+        await this.runStream.publish(runId, {
+            type: 'orchestrator_report',
+            runId,
+            text: fallbackText
+        })
+        this.debug.log('group.orchestrator.report.fallback', {
             groupId: group.id,
             runId,
             userId,
             outcomes,
-            text
+            text: fallbackText
         })
-        return text
+        return { text: fallbackText, shouldContinue: false }
+    }
+
+    private async persistReviewerSessionId(
+        group: GroupChat,
+        review: OrchestratorFinalReviewResult
+    ): Promise<void> {
+        if (
+            !review.orchestratorSessionId ||
+            group.orchestratorSessionId === review.orchestratorSessionId
+        ) {
+            return
+        }
+        group.orchestratorSessionId = review.orchestratorSessionId
+        await this.groupRepo.save(group)
+    }
+
+    private buildFallbackFollowUpInstruction(
+        originalUserText: string,
+        review: OrchestratorFinalReviewResult
+    ): string {
+        const gaps =
+            review.gaps.length > 0
+                ? review.gaps.map((gap) => `- ${gap}`).join('\n')
+                : '- 产物未完全满足原始需求'
+        return [
+            '【最终验收未通过，需要继续派发任务】',
+            `原始用户需求：${originalUserText}`,
+            `验收说明：${review.summary}`,
+            `缺口：\n${gaps}`,
+            '请根据这些缺口继续创建成员 tasks，直到产物真正满足原始需求。'
+        ].join('\n')
+    }
+
+    private buildFallbackReviewSubject(outcomes: TaskOutcome[]): string {
+        if (outcomes.length === 0) return '请确认本轮群聊任务执行状态并向用户汇报。'
+        return [
+            '请确认本轮群聊任务执行状态并向用户汇报。',
+            '本次调用未携带原始用户需求，请以成员任务结果、黑板摘要和产物预览作为判断依据。',
+            outcomes.map((o) => `- [${o.status}] ${o.name}：${o.summary}`).join('\n')
+        ].join('\n')
     }
 }

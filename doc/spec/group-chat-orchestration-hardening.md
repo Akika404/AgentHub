@@ -32,7 +32,7 @@ MVP 闭环跑通后，复盘发现 4 处与设计文档 P0 目标背离或存在
 
 - **自动再编排**：上报后由 Orchestrator LLM 自动派生配合任务（设计 §6.5 完整形态）；本轮停下问用户。
 - 语义冲突检测、Contract Watcher / Preflight、MemoryManager、`context_trace`、正式 ACL / 审批流。
-- Orchestrator 汇报仍为模板拼接，不调 LLM 做综合性总结。
+- Orchestrator 汇报默认调用最终审查 LLM 做综合确认；模板拼接仅作为审查器失败时的兜底。
 
 ---
 
@@ -127,7 +127,7 @@ await allSettled(inFlight)
 
 - **协调仅"上报 + 停下问用户"**：不自动派生配合任务、不自动通知 consumers；用户裁决后需重新发起。
 - **`direct_single` 路径**：单 @ 直派的冲突只走 dispatch 内的 system 提示，不经 `orchestrator.report` 的"需你决策"块（仅 orchestrate / multi 路径汇报）。
-- **汇报为模板拼接**：`orchestrator.report` 不调 LLM 做综合总结。
+- **汇报审查**：`orchestrator.report` 默认调用最终审查 LLM 做综合确认，失败时才退回模板拼接。
 - **task-list 气泡显示终态**：`TaskItem` 已扩展 `failed` / `blocked`，服务端会在任务状态变化时同步更新展示层 payload。
 - **乐观锁基线**：版本快照取自派发入口；真正并发同文件编辑主要由 git worktree 合并冲突兜住，乐观锁为二级防线。
 - **并发上限为全局值**：`GROUP_MAX_PARALLEL_TASKS` 不区分 vendor/provider 限流；高并发下仍可能触发上游 provider 限流。

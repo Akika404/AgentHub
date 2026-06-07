@@ -39,6 +39,7 @@ interface MemberPair {
 interface RunPhaseResult {
     success: boolean
     suspended: boolean
+    outcomes?: TaskOutcome[]
 }
 
 /** 强制续接成员同一 SDK 会话（用于把用户答复喂回挂起任务）。 */
@@ -55,8 +56,9 @@ const RESUME_CONTINUITY: ContinuityResult = {
  * converse 入口抢群活跃轮锁、写 presentation_log、路由、建 GroupRun，立即返回 runId 并
  * 游离后台执行 runGroup（不 await，与 HTTP 解耦，沿用单聊 turn 范式）。runGroup 按
  * routeKind 串行派发：direct_single 先走 ContinuityResolver；能确定 A/B/C 才直派，
- * 判不了则升级给 Orchestrator。orchestrate/multi 交 Orchestrator 出计划后逐个
- * dispatch；失败即如实汇报并停止后续。
+ * 判不了则升级给 Orchestrator。orchestrate/multi 交 Orchestrator 出计划后按 DAG
+ * dispatch；若一阶段全部完成，会把阶段产出摘要交回 Orchestrator 做有限续编排，
+ * 避免"先产品规划、再前端实现"这类多阶段需求在规划完成后提前收尾。
  */
 @Injectable()
 export class GroupRunExecutor implements OnModuleInit {
@@ -221,7 +223,8 @@ export class GroupRunExecutor implements OnModuleInit {
                     resume.graphNodes,
                     byAgent,
                     abort.signal,
-                    { node: resume.node, answerText: userText }
+                    { node: resume.node, answerText: userText },
+                    { originalUserText: userText }
                 )
             } else if (routeKind === 'direct_single') {
                 phase = await this.runDirectSingle(
@@ -304,15 +307,16 @@ export class GroupRunExecutor implements OnModuleInit {
         userId: string,
         mentionedAgentIds: string[],
         byAgent: Map<string, MemberPair>
-    ): Promise<{ node: BlackboardTaskNode; graphNodes: BlackboardTaskNode[] } | 'ambiguous' | null> {
+    ): Promise<
+        { node: BlackboardTaskNode; graphNodes: BlackboardTaskNode[] } | 'ambiguous' | null
+    > {
         const waiting = await this.blackboard.listWaitingTasks(group.id)
         if (waiting.length === 0) return null
 
         let target: (typeof waiting)[number] | null = null
         if (waiting.length === 1) {
             const only = waiting[0]
-            const mentionsOnly =
-                !!only.agentId && mentionedAgentIds.includes(only.agentId)
+            const mentionsOnly = !!only.agentId && mentionedAgentIds.includes(only.agentId)
             if (mentionedAgentIds.length === 0 || mentionsOnly) target = only
         } else {
             target =
@@ -457,30 +461,162 @@ export class GroupRunExecutor implements OnModuleInit {
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal
     ): Promise<RunPhaseResult> {
-        const { nodes, memberTurns } = await this.orchestrator.plan({
-            group,
-            userId,
-            runId,
-            userText,
-            routeKind,
-            mentionedAgentIds,
-            members
-        })
-        this.debug.log('group.run.orchestrated.nodes', {
-            groupId: group.id,
-            runId,
-            routeKind,
-            mentionedAgentIds,
-            userText,
-            nodes,
-            memberTurns
-        })
-        if (memberTurns.length > 0) {
-            return this.runMemberTurns(group, userId, runId, memberTurns, byAgent, signal)
-        }
-        if (nodes.length === 0) return { success: true, suspended: false }
+        const allOutcomes: TaskOutcome[] = []
+        const maxStages = this.maxOrchestrationStages()
+        let stage = 0
+        let reviewContinuationAttempts = 0
+        let nextUserText = userText
+        let nextRouteKind = routeKind
+        let nextMentionedAgentIds = mentionedAgentIds
 
-        return this.drive(group, userId, runId, nodes, byAgent, signal)
+        while (!signal.aborted && stage < maxStages) {
+            const continuation = stage > 0
+            const { nodes, memberTurns } = await this.orchestrator.plan({
+                group,
+                userId,
+                runId,
+                userText: nextUserText,
+                routeKind: nextRouteKind,
+                mentionedAgentIds: nextMentionedAgentIds,
+                members,
+                suppressNoopMessage: continuation
+            })
+            this.debug.log('group.run.orchestrated.nodes', {
+                groupId: group.id,
+                runId,
+                routeKind: nextRouteKind,
+                mentionedAgentIds: nextMentionedAgentIds,
+                userText: nextUserText,
+                stage,
+                continuation,
+                nodes,
+                memberTurns
+            })
+
+            if (memberTurns.length > 0) {
+                const memberPhase = await this.runMemberTurns(
+                    group,
+                    userId,
+                    runId,
+                    memberTurns,
+                    byAgent,
+                    signal
+                )
+                const report = await this.reportIfNeeded(group, userId, runId, allOutcomes, {
+                    originalUserText: userText,
+                    reviewFinal: allOutcomes.length > 0,
+                    emitIncompleteReview: true
+                })
+                return {
+                    success:
+                        memberPhase.success &&
+                        !signal.aborted &&
+                        !report?.shouldContinue &&
+                        allOutcomes.every((o) => o.status === 'done'),
+                    suspended: memberPhase.suspended,
+                    outcomes: allOutcomes
+                }
+            }
+
+            if (nodes.length === 0) {
+                const canAttemptReviewFollowUp =
+                    reviewContinuationAttempts < maxStages && stage < maxStages
+                const report = await this.reportIfNeeded(group, userId, runId, allOutcomes, {
+                    originalUserText: userText,
+                    reviewFinal: allOutcomes.length > 0,
+                    emitIncompleteReview: !canAttemptReviewFollowUp
+                })
+                if (
+                    report?.shouldContinue &&
+                    report.followUpInstruction &&
+                    canAttemptReviewFollowUp
+                ) {
+                    reviewContinuationAttempts += 1
+                    nextUserText = this.buildFinalReviewContinuationPrompt(
+                        userText,
+                        report.followUpInstruction,
+                        allOutcomes
+                    )
+                    nextRouteKind = 'orchestrate'
+                    nextMentionedAgentIds = []
+                    this.debug.log('group.run.orchestrated.review_follow_up', {
+                        groupId: group.id,
+                        runId,
+                        stage,
+                        reviewContinuationAttempts,
+                        followUpInstruction: report.followUpInstruction,
+                        review: report.review ?? null
+                    })
+                    continue
+                }
+                return {
+                    success:
+                        !signal.aborted &&
+                        !report?.shouldContinue &&
+                        allOutcomes.every((o) => o.status === 'done'),
+                    suspended: false,
+                    outcomes: allOutcomes
+                }
+            }
+
+            const stagePhase = await this.drive(
+                group,
+                userId,
+                runId,
+                nodes,
+                byAgent,
+                signal,
+                undefined,
+                {
+                    report: false
+                }
+            )
+            allOutcomes.push(...(stagePhase.outcomes ?? []))
+            if (!stagePhase.success || stagePhase.suspended) {
+                await this.reportIfNeeded(group, userId, runId, allOutcomes, {
+                    originalUserText: userText,
+                    reviewFinal: false
+                })
+                return {
+                    ...stagePhase,
+                    outcomes: allOutcomes
+                }
+            }
+
+            stage += 1
+            if (stage >= maxStages) {
+                this.debug.log('group.run.orchestrated.max_stages_reached', {
+                    groupId: group.id,
+                    runId,
+                    maxStages,
+                    outcomes: allOutcomes
+                })
+                break
+            }
+            nextUserText = this.buildContinuationPrompt(
+                userText,
+                stage,
+                stagePhase.outcomes ?? [],
+                allOutcomes
+            )
+            nextRouteKind = 'orchestrate'
+            nextMentionedAgentIds = []
+        }
+
+        const report = await this.reportIfNeeded(group, userId, runId, allOutcomes, {
+            originalUserText: userText,
+            reviewFinal: allOutcomes.length > 0,
+            emitIncompleteReview: true
+        })
+        return {
+            success:
+                !signal.aborted &&
+                !report?.shouldContinue &&
+                allOutcomes.length > 0 &&
+                allOutcomes.every((o) => o.status === 'done'),
+            suspended: false,
+            outcomes: allOutcomes
+        }
     }
 
     /**
@@ -502,7 +638,8 @@ export class GroupRunExecutor implements OnModuleInit {
         nodes: BlackboardTaskNode[],
         byAgent: Map<string, MemberPair>,
         signal: AbortSignal,
-        resume?: { node: BlackboardTaskNode; answerText: string }
+        resume?: { node: BlackboardTaskNode; answerText: string },
+        options: { report?: boolean; originalUserText?: string } = {}
     ): Promise<RunPhaseResult> {
         const maxParallel = this.maxParallelTasks()
         const statusById = new Map<string, BlackboardTaskStatus>(nodes.map((n) => [n.id, n.status]))
@@ -697,10 +834,13 @@ export class GroupRunExecutor implements OnModuleInit {
         const outcomes = nodes
             .map((n) => outcomesById.get(n.id))
             .filter((o): o is TaskOutcome => o !== undefined)
-        await this.orchestrator.report(group, userId, runId, outcomes)
+        if (options.report !== false) {
+            await this.orchestrator.report(group, userId, runId, outcomes, {
+                originalUserText: options.originalUserText
+            })
+        }
         // 图中只要还有 waiting_input（含本轮新挂起或同图其它未答复任务）→ 本轮按"等待"收尾。
-        const anyWaiting =
-            suspended || [...statusById.values()].some((s) => s === 'waiting_input')
+        const anyWaiting = suspended || [...statusById.values()].some((s) => s === 'waiting_input')
         this.debug.log('group.run.orchestrated.scheduled', {
             groupId: group.id,
             runId,
@@ -715,7 +855,8 @@ export class GroupRunExecutor implements OnModuleInit {
                 !anyWaiting &&
                 outcomes.length > 0 &&
                 outcomes.every((o) => o.status === 'done'),
-            suspended: anyWaiting && !signal.aborted
+            suspended: anyWaiting && !signal.aborted,
+            outcomes
         }
     }
 
@@ -782,6 +923,67 @@ export class GroupRunExecutor implements OnModuleInit {
         return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 3
     }
 
+    private maxOrchestrationStages(): number {
+        const raw = Number(this.config.get<string>('GROUP_MAX_ORCHESTRATION_STAGES', '4'))
+        return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 4
+    }
+
+    private async reportIfNeeded(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        outcomes: TaskOutcome[],
+        options: {
+            originalUserText?: string
+            reviewFinal?: boolean
+            emitIncompleteReview?: boolean
+        } = {}
+    ): Promise<Awaited<ReturnType<OrchestratorService['report']>> | null> {
+        if (outcomes.length === 0) return null
+        return this.orchestrator.report(group, userId, runId, outcomes, options)
+    }
+
+    private buildContinuationPrompt(
+        originalUserText: string,
+        completedStage: number,
+        stageOutcomes: TaskOutcome[],
+        allOutcomes: TaskOutcome[]
+    ): string {
+        const render = (outcomes: TaskOutcome[]): string =>
+            outcomes.length === 0
+                ? '- (无)'
+                : outcomes.map((o) => `- [${o.status}] ${o.name}：${o.summary}`).join('\n')
+        return [
+            '【内部续编排检查】',
+            `原始用户需求：${originalUserText}`,
+            `刚完成的阶段序号：${completedStage}`,
+            `刚完成的阶段结果：\n${render(stageOutcomes)}`,
+            `本轮已完成/已处理的全部任务：\n${render(allOutcomes)}`,
+            '',
+            '请结合黑板摘要、已完成任务和成员能力判断原始用户需求是否已经真正交付。',
+            '如果原始需求需要创建/修改文件、实现功能、产出文档或执行检查，而刚完成的阶段只是需求梳理、PRD、方案、设计确认或调研，请继续创建下游成员 tasks，通常应派给能实际交付的成员（例如前端工程师）。',
+            '只为尚未完成的后续工作创建 tasks，避免重复已经完成的任务；若原始需求已完全满足，返回 tasks:[]。'
+        ].join('\n')
+    }
+
+    private buildFinalReviewContinuationPrompt(
+        originalUserText: string,
+        followUpInstruction: string,
+        allOutcomes: TaskOutcome[]
+    ): string {
+        const outcomes = allOutcomes
+            .map((o) => `- [${o.status}] ${o.name}：${o.summary}`)
+            .join('\n')
+        return [
+            '【最终验收未通过，继续完成缺口】',
+            `原始用户需求：${originalUserText}`,
+            `验收提出的后续指令：${followUpInstruction}`,
+            `本轮已完成/已处理的任务：\n${outcomes || '- (无)'}`,
+            '',
+            '请根据验收缺口继续创建成员 tasks。不要重复已经完成且验收通过的工作。'
+        ].join('\n')
+    }
+
     private toTaskItemStatus(status: BlackboardTaskStatus): TaskItem['status'] {
         if (status === 'doing' || status === 'waiting_input') return 'in-progress'
         if (status === 'done') return 'done'
@@ -811,7 +1013,11 @@ export class GroupRunExecutor implements OnModuleInit {
                     runId,
                     turn
                 })
-                await this.groupMessages.appendSystem(group.id, userId, `成员 ${turn.agentId} 不在本群。`)
+                await this.groupMessages.appendSystem(
+                    group.id,
+                    userId,
+                    `成员 ${turn.agentId} 不在本群。`
+                )
                 success = false
                 break
             }

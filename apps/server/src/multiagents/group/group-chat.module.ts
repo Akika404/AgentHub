@@ -36,6 +36,10 @@ import { DispatchService } from './run/dispatch.service.js'
 import { MemberChatService } from './run/member-chat.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
 import { LlmOrchestratorPlanner, ORCHESTRATOR_PLANNER } from './run/orchestrator-planner.js'
+import {
+    LlmOrchestratorFinalReviewer,
+    ORCHESTRATOR_FINAL_REVIEWER
+} from './run/orchestrator-final-reviewer.js'
 import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
 
 /**
@@ -87,8 +91,13 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         MemberChatService,
         GroupRunExecutor,
         LlmOrchestratorPlanner,
+        LlmOrchestratorFinalReviewer,
         GroupDebugLogger,
         { provide: ORCHESTRATOR_PLANNER, useExisting: LlmOrchestratorPlanner },
+        {
+            provide: ORCHESTRATOR_FINAL_REVIEWER,
+            useExisting: LlmOrchestratorFinalReviewer
+        },
         // 复用单聊的无状态服务（按本模块的 repo 作用域重新提供）
         AgentPolicyService,
         AgentWorkspaceService,

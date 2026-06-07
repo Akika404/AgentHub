@@ -358,18 +358,20 @@ src/multiagents/group/
 
 - 一次群运行 = 一条 Redis Stream（`GroupRunStream`，按单聊 `TurnStream` 范式），成员 turn 事件经 `member_turn_event` 透传，天然多端围观；活跃指针 `SET NX` 做「群」级跨实例互斥（已有活跃轮 → 返回冲突，引导用 `activeRunId` 围观）。
 - 成员干活复用单聊适配层（`createAgent` + `agentToConfig`）和 `scope=group` 的成员内部 `AgentSession`，`workingDirectory` 指向该任务的 git worktree；私有 L1 落 `agent_message` / `agent_message_step`，但不会进入 `/agent-chats` 单聊列表。轻量成员聊天（例如打招呼、给一句观点）走 `memberTurns`，真实调用成员 Agent，但不创建黑板 task、不建 worktree、不做 report/diff。
+- 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。
+- 最终汇报默认先调用 Orchestrator 最终审查器，读取黑板摘要与可安全预览的文本/HTML 产物，对照原始需求和任务状态确认完成、失败、阻塞或等待输入；只有审查器调用失败时才退回模板拼接。全成功但审查发现缺口时，会继续派发后续任务，直到审查通过或达到续编排上限。
 - 共享工作区：创建群聊时可传 `workspaceDir`，服务端优先使用该目录作为共享 git 仓库；未传时分配到 `GROUP_WORKSPACE_ROOT/<groupId>/repo`。成员 worktree / SDK home 仍放在 `GROUP_WORKSPACE_ROOT/<groupId>/` 下。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
-- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，用于默认共享仓库、worktree、成员 SDK home）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
+- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，用于默认共享仓库、worktree、成员 SDK home）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
 - Debug 日志：`GroupDebugLogger` 会输出结构化 JSON，覆盖用户输入、路由结果、Orchestrator prompt/输出/任务分配、黑板快照、ContextAssembler trace、每个成员 Agent 收到的 prompt、memory 检索/保留/丢弃、turn 事件、report、git diff、黑板更新与 hot buffer。日志会递归脱敏 `apiKey` / `token` / `secret` / `password` 等字段。
 
 ### Orchestrator Planner
 
-`OrchestratorPlanner` 可注入（`ORCHESTRATOR_PLANNER` 令牌）。默认使用 `LlmOrchestratorPlanner`，按群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划；Orchestrator 自身会把 Claude Code/Codex SDK 会话 id 持久化到内部字段 `group_chat.orchestratorSessionId`，后续群运行用 `resumeWith()` 恢复同一编排会话，因此可接住「上一轮追问、下一轮短答」这类连续对话。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。Planner 还可返回 `contextUpdates`，服务端会把已确认的项目目标/技术栈/阶段写回 `projectMeta`，把明确的用户选择写成已批准黑板决策。LLM 调用失败或输出非法时如实返回上游错误，不静默降级成规则分派。测试场景可覆盖该 token 注入假 Planner。
+`OrchestratorPlanner` 可注入（`ORCHESTRATOR_PLANNER` 令牌）。默认使用 `LlmOrchestratorPlanner`，按群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划；Orchestrator 自身会把 Claude Code/Codex SDK 会话 id 持久化到内部字段 `group_chat.orchestratorSessionId`，后续群运行用 `resumeWith()` 恢复同一编排会话，因此可接住「上一轮追问、下一轮短答」这类连续对话。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。续编排检查中的 `tasks: []` 只表示后续工作已结束，不会额外发 Orchestrator 文本，最终由最终审查器验收并统一收尾。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。Planner 还可返回 `contextUpdates`，服务端会把已确认的项目目标/技术栈/阶段写回 `projectMeta`，把明确的用户选择写成已批准黑板决策。LLM 调用失败或输出非法时如实返回上游错误，不静默降级成规则分派。测试场景可覆盖该 token 注入假 Planner / 假最终审查器。
 
 ### 数据库与测试
 
 - 10 张表（`group_chat` / `group_chat_member` / `group_message` / `group_run` / `blackboard_artifact` / `blackboard_decision` / `blackboard_contract` / `blackboard_task` / `blackboard_event` / `agent_memory_item`），dev 环境 TypeORM `synchronize` 自动建表，按 `userId` / `groupChatId` 隔离。
-- 单元测试：`pnpm -F @agenthub/server test`（`tsx + node:test`），覆盖 BlackboardService 乐观锁/supersede/契约保护、AgentMemoryService 去重/scope、ContextAssembler 冲突丢弃/裁剪/情况 A、MessageRouter 路由表、ContinuityResolver A/B/C 共 20 条。
+- 单元测试：`pnpm -F @agenthub/server test`（`tsx + node:test`），覆盖群聊编排的多阶段续编排与最终审查缺口继续派发路径；其它模块测试可继续按相同模式补充。
 
 ### 已知限制（本轮 MVP）
 

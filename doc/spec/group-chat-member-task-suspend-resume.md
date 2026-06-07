@@ -88,7 +88,7 @@ continuity（`adapter.resumeWith(sdkSessionId)`）把用户回复作为 `objecti
 - **挂起期间发新需求**：单挂起任务时，无 `@` 的下一条会被当作答复（auto-resume 取舍）；逃生口是
   `@` 其它成员 / Orchestrator。
 - **多挂起消歧**靠 `@mention`；无 `@` 时只提示不猜测。
-- Orchestrator 汇报仍为模板拼接，不调 LLM 综合。
+- Orchestrator 汇报默认调用最终审查 LLM 做综合确认；模板拼接仅作为审查器失败时的兜底。
 
 ## Test（验证）
 - 纯逻辑：`run/task-scheduler.spec.ts` —— 挂起上游不释放/不阻塞下游、恢复（done）后释放、旁系不受影响。
