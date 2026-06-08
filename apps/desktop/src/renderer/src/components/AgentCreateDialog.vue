@@ -160,7 +160,7 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
   if (!form.platformProviderId) return '请选择 PlatformProvider'
   if (!form.model) return '请选择模型'
-  if (!form.workingDirectory.trim()) return '请输入 Agent 目录'
+  if (!form.workingDirectory.trim()) return '请输入工作目录'
 
   const payload: CreateAgentPayload | UpdateAgentPayload = {
     name: form.name.trim(),
@@ -426,14 +426,14 @@ async function onSubmit(): Promise<void> {
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-text-main mb-1.5">Agent 目录</label>
+        <label class="block text-sm font-medium text-text-main mb-1.5">工作目录</label>
         <div class="flex gap-2">
           <BaseInput
             v-model="form.workingDirectory"
             class="min-w-0 flex-1"
             mono
             type="text"
-            placeholder="/path/to/agent-home"
+            placeholder="/path/to/workspace"
           />
           <BaseButton
             class="shrink-0 whitespace-nowrap"
@@ -446,7 +446,7 @@ async function onSubmit(): Promise<void> {
           </BaseButton>
         </div>
         <p class="mt-1 text-xs text-text-muted">
-          Agent Home；新聊天默认会在这里创建 TaskN，skills 会放在 {{ vendorConfigName }}/skills。
+          必须位于当前用户的 agent_workspace；Agent Home 由后端分配到 agent_home，skills 会放在 {{ vendorConfigName }}/skills。
         </p>
       </div>
 
@@ -520,8 +520,8 @@ async function onSubmit(): Promise<void> {
         <p class="mt-1 text-xs text-text-muted">
           {{
             isEdit
-              ? `保存时导入到 Agent 目录的 ${vendorConfigName}/skills。`
-              : `创建时复制到 Agent 目录的 ${vendorConfigName}/skills。`
+              ? `保存时导入到 Agent Home 的 ${vendorConfigName}/skills。`
+              : `创建时复制到 Agent Home 的 ${vendorConfigName}/skills。`
           }}
         </p>
       </div>
@@ -555,8 +555,9 @@ async function onSubmit(): Promise<void> {
 
   <ServerDirectoryPicker
     :open="directoryPickerTarget !== null"
-    :title="directoryPickerTarget === 'skills' ? '选择服务器 Skill 目录' : '选择服务器 Agent 目录'"
+    :title="directoryPickerTarget === 'skills' ? '选择服务器 Skill 目录' : '选择服务器工作目录'"
     :mode="directoryPickerTarget === 'skills' ? 'multiple' : 'single'"
+    :preferred-kind="directoryPickerTarget === 'skills' ? 'skills' : 'agent_workspace'"
     :initial-path="directoryPickerTarget === 'agent' ? form.workingDirectory : ''"
     :initial-paths="
       directoryPickerTarget === 'skills' ? parseList(form.skillSourceDirectories) : []

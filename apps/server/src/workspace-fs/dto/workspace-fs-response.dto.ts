@@ -2,7 +2,8 @@ import { ApiProperty } from '@nestjs/swagger'
 import type {
     ServerDirectoryEntry,
     ServerDirectoryListing,
-    ServerDirectoryRoot
+    ServerDirectoryRoot,
+    ServerDirectoryRootKind
 } from '@agenthub/shared'
 
 export class ServerDirectoryRootDto implements ServerDirectoryRoot {
@@ -14,6 +15,13 @@ export class ServerDirectoryRootDto implements ServerDirectoryRoot {
 
     @ApiProperty({ description: '根目录选择器展示名' })
     label!: string
+
+    @ApiProperty({
+        enum: ['skills', 'agent_home', 'agent_workspace'],
+        required: false,
+        description: '根目录用途'
+    })
+    kind?: ServerDirectoryRootKind
 }
 
 export class ServerDirectoryEntryDto implements ServerDirectoryEntry {

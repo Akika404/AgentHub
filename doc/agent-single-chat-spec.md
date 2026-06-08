@@ -9,8 +9,8 @@
 单 Agent 聊天不再等同于 Agent 本身。用户点击聊天页左侧搜索框旁的 `+`，选择“创建聊天”，在弹窗中选择已有 Agent，并为这次聊天设置：
 
 - 标题（可选；为空时客户端显示 Agent 名称 + 创建时间）。
-- 工作目录（可选；不填时后端在 Agent Home 下创建递增 `TaskN`）。
-- Skill 文件夹（可选；导入到本聊天工作目录的 vendor skills 目录）。
+- 工作目录（可选；不填时后端分配到当前用户 `agent_workspace/chat-<sessionId>`）。
+- Skill 文件夹（可选；必须来自当前用户 `skills`，导入到本聊天工作目录的 vendor skills 目录）。
 - MCP Servers JSON（可选，仅支持 Claude；与 Agent 原配置浅合并，同名 server 以聊天配置覆盖）。
 
 新建聊天不支持设置 system prompt；运行时沿用 Agent 自身的 system prompt。一个 Agent 可以创建多个单 Agent 聊天，它们拥有独立的 SDK 句柄、工作目录、消息历史和运行时 busy 锁。
@@ -66,7 +66,7 @@
 interface CreateAgentChatPayload {
   agentId: string
   title?: string
-  workingDirectory: string
+  workingDirectory?: string
   skillSourceDirectories?: string[]
   mcpServers?: Record<string, unknown>
 }
@@ -110,8 +110,8 @@ interface AgentChatView {
 
 1. 校验 Agent 存在且属于当前用户。
 2. 校验 vendor 能力：Codex 接受 skills，但仍不接受 mcpServers。
-3. 规范化并创建 `workingDirectory`；未提供时分配 `<agentHomeDirectory>/TaskN`，且禁止与 Agent Home 相同。
-4. 创建 `sessionHomeDirectory = <agentHomeDirectory>/.agenthub/chats/<chatId>`。
+3. 规范化并创建 `workingDirectory`；显式传入时必须位于当前用户 `agent_workspace`，未提供时分配到 `agent_workspace/chat-<sessionId>`。
+4. 创建 `sessionHomeDirectory = <AGENTHUB_USER_SPACE_ROOT>/<userId>/session/<chatId>`。
 5. 将 Agent Home 下当前 vendor 的 `.claude` / `.codex` 配置合并到工作目录，目标已有文件/skill 优先；再导入本聊天指定 skill 文件夹。
 6. 计算有效 skills：Agent 原 skills 与导入 skill 名称去重合并；Agent 原值为 `all` 时保持 `all`。
 7. 计算有效 MCP：Agent 原 `mcpServers` 与聊天配置浅合并。
@@ -154,7 +154,7 @@ interface AgentChatView {
 ## 桌面端流程
 
 - `ChatList` 的 `+` 弹出菜单，包含“创建聊天”和禁用占位“创建群聊”。
-- 创建聊天弹窗加载已有 Agent，选择 Agent 后默认填入 Agent 的默认工作目录。
+- 创建聊天弹窗加载已有 Agent；工作目录可留空，由后端自动分配到当前用户 `agent_workspace`。
 - 聊天列表加载 `/agent-chats`，每条 `AgentChatView` 映射为 `ChatSummary`；若存在 `activeTurnId`，列表项显示运行标志，并为该 turn 建立后台订阅。
 - 发送消息：先 `POST converse` 拿到 `turnId`，再订阅 `turns/:turnId/events`；切换聊天不会取消订阅，卸载页面只「detach」（取消订阅，不中止 turn）。
 - 后台订阅按 chat 维护，事件复用与发送一致的 handler 渲染「进行中」的运行折叠条；当前打开聊天同步右侧 runtime，非当前聊天只更新对应 message cache 与列表运行态。若本地缓存里已有该聊天未完成的临时 `agent-run` 消息，会优先复用它，避免切走/切回后出现两张 Agent 运行卡；复用时会先把该临时卡重置为初始运行态，再用 Redis backlog 重建步骤，避免重复追加旧步骤。流结束后会重新加载 DB 历史，用后端权威消息覆盖本地临时态，并发出桌面通知；如果订阅结束但尚未收到 Agent `done`，前端会刷新 `activeTurnId` 并在该 turn 仍活跃时自动重新订阅。

@@ -4,9 +4,6 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { BusinessException } from '../../common/index.js'
 import type { AgentVendor } from '../adapter/index.js'
-import type { Agent } from '../entities/agent.entity.js'
-
-const DEFAULT_TASK_DIRECTORY_PREFIX = 'Task'
 
 @Injectable()
 export class AgentWorkspaceService {
@@ -71,22 +68,6 @@ export class AgentWorkspaceService {
 
     vendorSkillsRoot(baseDirectory: string, vendor: AgentVendor): string {
         return join(this.vendorConfigRoot(baseDirectory, vendor), 'skills')
-    }
-
-    async resolveChatWorkingDirectory(
-        agent: Agent,
-        rawWorkingDirectory: string | undefined
-    ): Promise<string> {
-        const trimmed = rawWorkingDirectory?.trim() ?? ''
-        const workingDirectory = trimmed
-            ? this.normalizeDirectoryPath(trimmed)
-            : await this.allocateDefaultTaskDirectory(agent.agentHomeDirectory)
-        this.assertDifferentDirectories(
-            workingDirectory,
-            agent.agentHomeDirectory,
-            'Chat workingDirectory cannot be the same as Agent home directory'
-        )
-        return workingDirectory
     }
 
     async syncVendorConfigToWorkingDirectory(
@@ -158,36 +139,6 @@ export class AgentWorkspaceService {
             }
         }
         return importedNames
-    }
-
-    private async allocateDefaultTaskDirectory(agentHomeDirectory: string): Promise<string> {
-        for (let i = 1; i <= 10000; i++) {
-            const candidate = resolve(
-                join(agentHomeDirectory, `${DEFAULT_TASK_DIRECTORY_PREFIX}${i}`)
-            )
-            try {
-                await mkdir(candidate, { recursive: false })
-                return candidate
-            } catch (err) {
-                if (this.errCode(err) === 'EEXIST') continue
-                throw BusinessException.badRequest(
-                    `Failed to allocate default chat working directory: ${this.errMsg(err)}`,
-                    { agentHomeDirectory, candidate }
-                )
-            }
-        }
-        throw BusinessException.badRequest(
-            `Cannot allocate a default chat working directory under ${agentHomeDirectory}`
-        )
-    }
-
-    private assertDifferentDirectories(a: string, b: string, message: string): void {
-        if (resolve(a) === resolve(b)) {
-            throw BusinessException.badRequest(message, {
-                workingDirectory: a,
-                agentHomeDirectory: b
-            })
-        }
     }
 
     private async copyMissingSkillDirectories(
@@ -307,11 +258,5 @@ export class AgentWorkspaceService {
 
     private errMsg(err: unknown): string {
         return err instanceof Error ? err.message : String(err)
-    }
-
-    private errCode(err: unknown): string | undefined {
-        return typeof err === 'object' && err !== null && 'code' in err
-            ? String((err as { code?: unknown }).code)
-            : undefined
     }
 }

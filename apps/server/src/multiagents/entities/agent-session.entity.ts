@@ -49,7 +49,7 @@ export class AgentSession {
     @Column({ type: 'varchar', length: 128, nullable: true })
     title!: string | null
 
-    /** 本聊天实际工作目录；创建聊天时可省略，由后端分配 AgentHome/TaskN */
+    /** 本聊天实际工作目录；创建聊天时可省略，由后端分配到用户 agent_workspace */
     @Column({ type: 'varchar', length: 1024 })
     workingDirectory!: string
 

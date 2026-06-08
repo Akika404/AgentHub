@@ -75,7 +75,7 @@ export class CreateAgentDto {
     @IsNotEmpty()
     workingDirectory!: string
 
-    /** Agent 私有持久目录；不传时默认等于 workingDirectory */
+    /** Agent 私有持久目录；不传时后端分配到当前用户 agent_home/<agentId> */
     @IsOptional()
     @IsString()
     @IsNotEmpty()

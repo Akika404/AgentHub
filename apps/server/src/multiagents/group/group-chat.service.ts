@@ -26,6 +26,7 @@ import { AgentMemoryItemEntity } from './memory/entities/agent-memory-item.entit
 import { GroupWorkspaceService } from './group-workspace.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { toGroupChatView } from './mappers/group-chat.mapper.js'
+import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
 
 /**
  * GroupChatService — 群聊的创建/管理与共享工作区编排。
@@ -44,6 +45,7 @@ export class GroupChatService {
         @InjectRepository(Agent)
         private readonly agentRepo: Repository<Agent>,
         private readonly workspace: GroupWorkspaceService,
+        private readonly userWorkspace: UserWorkspaceService,
         private readonly policy: AgentPolicyService,
         private readonly providers: PlatformProviderService,
         private readonly runStream: GroupRunStream,
@@ -71,7 +73,6 @@ export class GroupChatService {
         const projectName = projectMeta?.name?.trim()
         if (!projectName) throw BusinessException.badRequest('projectMeta.name cannot be empty')
 
-        const requestedWorkspaceDir = payload.workspaceDir?.trim() || null
         const group = this.groupRepo.create({
             userId,
             title,
@@ -89,10 +90,15 @@ export class GroupChatService {
 
         // 创建共享 git 工作区（优先用户指定目录；未指定则后端分配）；失败则回滚群记录
         try {
-            saved.workspaceDir = await this.workspace.createWorkspace(
-                saved.id,
-                requestedWorkspaceDir
-            )
+            const requestedWorkspaceDir = payload.workspaceDir?.trim()
+                ? await this.userWorkspace.assertPathInRoot(
+                      userId,
+                      'agent_workspace',
+                      payload.workspaceDir,
+                      'Group workspaceDir'
+                  )
+                : await this.userWorkspace.allocateGroupWorkspaceDirectory(userId, saved.id)
+            saved.workspaceDir = await this.workspace.createWorkspace(saved.id, requestedWorkspaceDir)
             await this.groupRepo.save(saved)
         } catch (err) {
             await this.groupRepo.delete({ id: saved.id, userId })

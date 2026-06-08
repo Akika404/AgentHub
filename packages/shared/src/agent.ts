@@ -238,10 +238,12 @@ export interface CreateAgentPayload {
   vendor: AgentVendor
   platformProviderId: string
   model: string
+  /** Optional Agent-private home; omitted values are allocated under the user's agent_home. */
   agentHomeDirectory?: string
+  /** Agent default workspace; must be under the current user's agent_workspace. */
   workingDirectory: string
   systemPrompt?: string
-  /** Server-side skill directories to copy into this Agent's vendor skills directory. */
+  /** Server-side skill directories under the current user's skills root. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[]
   mcpServers?: Record<string, unknown>
@@ -262,9 +264,10 @@ export interface UpdateAgentPayload {
   vendor?: AgentVendor
   platformProviderId?: string
   model?: string
+  /** Agent default workspace; must be under the current user's agent_workspace. */
   workingDirectory?: string
   systemPrompt?: string | null
-  /** Server-side skill directories to copy into this Agent's vendor skills directory. */
+  /** Server-side skill directories under the current user's skills root. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[] | null
   mcpServers?: Record<string, unknown> | null
@@ -280,9 +283,9 @@ export interface UpdateAgentPayload {
 export interface CreateAgentChatPayload {
   agentId: string
   title?: string
-  /** Omit to let the server create AgentHome/TaskN. */
+  /** Must be under the current user's agent_workspace; omit to allocate chat-<sessionId>. */
   workingDirectory?: string
-  /** Server-side skill directories copied into this chat's working directory vendor skills folder. */
+  /** Server-side skill directories under the current user's skills root. */
   skillSourceDirectories?: string[]
   /** MCP servers shallow-merged with the Agent-level config. */
   mcpServers?: Record<string, unknown>

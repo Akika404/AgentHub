@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
+import { randomUUID } from 'node:crypto'
 import { Repository } from 'typeorm'
 import { getCapabilities } from '../adapter/index.js'
 import { CreateAgentDto } from '../dto/create-agent.dto.js'
@@ -14,6 +15,7 @@ import { AgentPolicyService } from './agent-policy.service.js'
 import { AgentWorkspaceService } from '../workspace/agent-workspace.service.js'
 import { AgentRuntimeService } from '../runtime/agent-runtime.service.js'
 import { AgentMessageHistoryService } from '../messages/agent-message-history.service.js'
+import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
 
 @Injectable()
 export class AgentConfigService {
@@ -25,6 +27,7 @@ export class AgentConfigService {
         private readonly providerService: PlatformProviderService,
         private readonly policy: AgentPolicyService,
         private readonly workspace: AgentWorkspaceService,
+        private readonly userWorkspace: UserWorkspaceService,
         private readonly runtime: AgentRuntimeService,
         private readonly messages: AgentMessageHistoryService
     ) {}
@@ -41,20 +44,36 @@ export class AgentConfigService {
         this.policy.assertVendorProviderCompatible(dto.vendor, provider.type)
         this.policy.assertModelInList(dto.model, provider.modelList)
 
-        const workingDirectory = this.workspace.normalizeDirectoryPath(dto.workingDirectory)
-        const agentHomeDirectory = this.workspace.normalizeDirectoryPath(
-            dto.agentHomeDirectory ?? dto.workingDirectory
+        const agentId = randomUUID()
+        const workingDirectory = await this.userWorkspace.assertPathInRoot(
+            userId,
+            'agent_workspace',
+            dto.workingDirectory,
+            'Agent workingDirectory'
+        )
+        const agentHomeDirectory = dto.agentHomeDirectory
+            ? await this.userWorkspace.assertPathInRoot(
+                  userId,
+                  'agent_home',
+                  dto.agentHomeDirectory,
+                  'Agent home directory'
+              )
+            : await this.userWorkspace.allocateAgentHomeDirectory(userId, agentId)
+        const skillSourceDirectories = await this.userWorkspace.assertSkillSourceDirectories(
+            userId,
+            dto.skillSourceDirectories ?? []
         )
         await this.workspace.ensureRuntimeDirectories(dto.vendor, workingDirectory, agentHomeDirectory)
         const importedSkillNames = caps.supportsSkills
             ? await this.workspace.importSkillSourceDirectories(
-                  dto.skillSourceDirectories ?? [],
+                  skillSourceDirectories,
                   this.workspace.vendorSkillsRoot(agentHomeDirectory, dto.vendor)
               )
             : []
         const skills = this.policy.mergeSkills(dto.skills, importedSkillNames)
 
         const agent = this.agentRepo.create({
+            id: agentId,
             userId,
             name: dto.name,
             avatar: dto.avatar ?? null,
@@ -99,8 +118,24 @@ export class AgentConfigService {
         const model = dto.model ?? agent.model
         const workingDirectory =
             dto.workingDirectory !== undefined
-                ? this.workspace.normalizeDirectoryPath(dto.workingDirectory)
-                : agent.workingDirectory
+                ? await this.userWorkspace.assertPathInRoot(
+                      userId,
+                      'agent_workspace',
+                      dto.workingDirectory,
+                      'Agent workingDirectory'
+                  )
+                : await this.userWorkspace.assertPathInRoot(
+                      userId,
+                      'agent_workspace',
+                      agent.workingDirectory,
+                      'Agent workingDirectory'
+                  )
+        const agentHomeDirectory = await this.userWorkspace.assertPathInRoot(
+            userId,
+            'agent_home',
+            agent.agentHomeDirectory,
+            'Agent home directory'
+        )
         const systemPrompt = caps.supportsSystemPrompt
             ? this.policy.normalizeNullableText(dto.systemPrompt, agent.systemPrompt)
             : null
@@ -127,13 +162,16 @@ export class AgentConfigService {
         const provider = await this.providerService.resolveRuntimeConfig(userId, platformProviderId)
         this.policy.assertVendorProviderCompatible(vendor, provider.type)
         this.policy.assertModelInList(model, provider.modelList)
+        const skillSourceDirectories = dto.skillSourceDirectories
+            ? await this.userWorkspace.assertSkillSourceDirectories(userId, dto.skillSourceDirectories)
+            : []
 
-        await this.workspace.ensureRuntimeDirectories(vendor, workingDirectory, agent.agentHomeDirectory)
+        await this.workspace.ensureRuntimeDirectories(vendor, workingDirectory, agentHomeDirectory)
         const importedSkillNames =
             caps.supportsSkills && dto.skillSourceDirectories
                 ? await this.workspace.importSkillSourceDirectories(
-                      dto.skillSourceDirectories,
-                      this.workspace.vendorSkillsRoot(agent.agentHomeDirectory, vendor)
+                      skillSourceDirectories,
+                      this.workspace.vendorSkillsRoot(agentHomeDirectory, vendor)
                   )
                 : []
         const skills = caps.supportsSkills
@@ -152,6 +190,7 @@ export class AgentConfigService {
         agent.vendor = vendor
         agent.platformProviderId = platformProviderId
         agent.model = model
+        agent.agentHomeDirectory = agentHomeDirectory
         agent.workingDirectory = workingDirectory
         agent.systemPrompt = systemPrompt
         agent.skills = skills

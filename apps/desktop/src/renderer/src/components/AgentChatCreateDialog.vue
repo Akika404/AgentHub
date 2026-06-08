@@ -224,7 +224,7 @@ async function onSubmit(): Promise<void> {
             class="min-w-0 flex-1"
             mono
             type="text"
-            placeholder="留空自动创建 AgentHome/TaskN"
+            placeholder="留空自动分配到 agent_workspace/chat-<sessionId>"
           />
           <BaseButton
             class="shrink-0 whitespace-nowrap"
@@ -237,7 +237,7 @@ async function onSubmit(): Promise<void> {
           </BaseButton>
         </div>
         <p class="mt-1 text-xs text-text-muted">
-          不能与 Agent Home 相同；留空时后端会选择下一个 Task 序号。
+          必须位于当前用户的 agent_workspace；留空时后端自动分配。
         </p>
       </div>
 
@@ -316,6 +316,7 @@ async function onSubmit(): Promise<void> {
     :open="directoryPickerTarget !== null"
     :title="directoryPickerTarget === 'skills' ? '选择服务器 Skill 目录' : '选择服务器工作目录'"
     :mode="directoryPickerTarget === 'skills' ? 'multiple' : 'single'"
+    :preferred-kind="directoryPickerTarget === 'skills' ? 'skills' : 'agent_workspace'"
     :initial-path="directoryPickerTarget === 'working' ? form.workingDirectory : ''"
     :initial-paths="
       directoryPickerTarget === 'skills' ? parseList(form.skillSourceDirectories) : []

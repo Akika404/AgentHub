@@ -55,7 +55,7 @@ export class GroupChatController {
     @ApiOperation({
         summary: '创建群聊',
         description:
-            '选择成员 Agent + 配置独立 Orchestrator（vendor/model/provider）+ 项目元信息。workspaceDir 优先使用用户指定目录，未指定时后端分配，并初始化为 git 仓库。'
+            '选择成员 Agent + 配置独立 Orchestrator（vendor/model/provider）+ 项目元信息。workspaceDir 必须位于当前用户 agent_workspace，未指定时后端分配，并初始化为 git 仓库。'
     })
     @ApiEnvelope(GroupChatViewDto, { status: 201 })
     create(@CurrentUser() user: User, @Body() dto: CreateGroupChatDto): Promise<GroupChatView> {

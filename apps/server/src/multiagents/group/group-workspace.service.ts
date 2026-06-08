@@ -30,8 +30,8 @@ export interface GroupChangedFile {
  * GroupWorkspaceService — 群聊共享 git 工作区的生命周期管理。
  *
  * 目录布局：
- *   <repo>                           共享仓库（传入 workspaceDir 时为用户目录；
- *                                    未传时为 GROUP_WORKSPACE_ROOT/<groupId>/repo）
+ *   <repo>                           共享仓库（当前普通用户链路始终传入已校验的用户 workspaceDir；
+ *                                    未传时仅使用 GROUP_WORKSPACE_ROOT 作为兼容 fallback）
  *   <repo>/.agenthub/groups/<groupId>/worktrees/<id>
  *                                    每个派发任务的隔离 worktree（分支 task/<id>）
  *   <repo>/.agenthub/groups/<groupId>/members/<agentId>/home
@@ -79,7 +79,7 @@ export class GroupWorkspaceService {
 
     /**
      * 建群：创建/复用共享仓库目录、`git init`、配置提交身份，并确保有 HEAD。
-     * 传入 workspaceDir 时优先使用用户指定目录；否则使用服务默认分配目录。
+     * 普通用户链路会传入已按 userId 校验或分配的 workspaceDir。
      */
     async createWorkspace(groupId: string, workspaceDir?: string | null): Promise<string> {
         const repo = this.repoDir(groupId, workspaceDir)

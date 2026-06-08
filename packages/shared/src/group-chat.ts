@@ -87,7 +87,7 @@ export interface CreateGroupChatPayload {
   memberAgentIds: string[]
   orchestrator: OrchestratorConfigInput
   projectMeta: ProjectMetaInput
-  /** omit to let the server allocate the shared workspace directory */
+  /** Must be under the current user's agent_workspace; omit to let the server allocate it. */
   workspaceDir?: string
 }
 

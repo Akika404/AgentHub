@@ -1,15 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import { access, mkdir, readdir, realpath, stat } from 'node:fs/promises'
+import { access, readdir, realpath, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { homedir } from 'node:os'
-import { basename, delimiter, isAbsolute, join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import type {
     ServerDirectoryEntry,
     ServerDirectoryListing,
     ServerDirectoryRoot
 } from '@agenthub/shared'
 import { BusinessException } from '../common/index.js'
+import { UserWorkspaceService } from '../user-workspace/user-workspace.service.js'
 
 interface ResolvedRoot extends ServerDirectoryRoot {
     path: string
@@ -19,25 +18,32 @@ interface ResolvedRoot extends ServerDirectoryRoot {
 export class WorkspaceFsService {
     private readonly logger = new Logger(WorkspaceFsService.name)
 
-    constructor(private readonly config: ConfigService) {}
+    constructor(private readonly userWorkspace: UserWorkspaceService) {}
 
-    async roots(): Promise<ServerDirectoryRoot[]> {
-        return this.resolveRoots()
+    async roots(userId: string): Promise<ServerDirectoryRoot[]> {
+        return this.resolveRoots(userId)
     }
 
-    async listDirectories(rawPath?: string): Promise<ServerDirectoryListing> {
-        const roots = await this.resolveRoots()
+    async listDirectories(userId: string, rawPath?: string): Promise<ServerDirectoryListing> {
+        const roots = await this.resolveRoots(userId)
         if (roots.length === 0) {
             throw BusinessException.badRequest('No server workspace roots are available')
         }
 
         const requested = rawPath?.trim()
-        const requestedPath = requested ? this.normalizePath(requested) : roots[0].path
+        const requestedPath = requested
+            ? await this.userWorkspace.assertPathInRoot(
+                  userId,
+                  this.findRequestedKind(requested, roots),
+                  requested,
+                  'Directory'
+              )
+            : roots[0].path
         await this.assertReadableDirectory(requestedPath)
         const path = await realpath(requestedPath)
         const root = this.findContainingRoot(path, roots)
         if (!root) {
-            throw BusinessException.forbidden('Directory is outside configured server roots', {
+            throw BusinessException.forbidden('Directory is outside current user workspace roots', {
                 path,
                 roots: roots.map((r) => r.path)
             })
@@ -52,71 +58,41 @@ export class WorkspaceFsService {
         }
     }
 
-    private async resolveRoots(): Promise<ResolvedRoot[]> {
-        const rawRoots = this.configuredRootPaths()
+    private async resolveRoots(userId: string): Promise<ResolvedRoot[]> {
+        const rawRoots = await this.userWorkspace.browsableRoots(userId)
         const roots: ResolvedRoot[] = []
         const seen = new Set<string>()
 
-        for (const raw of rawRoots) {
-            const path = this.normalizePath(raw)
-
+        for (const root of rawRoots) {
             try {
-                await mkdir(path, { recursive: true })
-                await this.assertReadableDirectory(path)
-                const realRoot = await realpath(path)
+                await this.assertReadableDirectory(root.path)
+                const realRoot = await realpath(root.path)
                 if (seen.has(realRoot)) continue
                 seen.add(realRoot)
                 roots.push({
                     id: realRoot,
                     path: realRoot,
-                    label: this.rootLabel(realRoot)
+                    label: root.label,
+                    kind: root.kind
                 })
             } catch (err) {
-                this.logger.warn(`Workspace root unavailable (${path}): ${this.errMsg(err)}`)
+                this.logger.warn(
+                    `Workspace root unavailable (${root.path}): ${this.errMsg(err)}`
+                )
             }
         }
 
         return roots
     }
 
-    private configuredRootPaths(): string[] {
-        const configured = this.config.get<string>('AGENTHUB_WORKSPACE_ROOTS')?.trim()
-        if (configured) {
-            return configured
-                .split(delimiter)
-                .map((item) => item.trim())
-                .filter(Boolean)
-        }
-
-        const groupRoot =
-            this.config.get<string>('GROUP_WORKSPACE_ROOT')?.trim() ||
-            join(homedir(), '.agenthub', 'groups')
-        return [homedir(), groupRoot]
-    }
-
-    private normalizePath(path: string): string {
-        const trimmed = path.trim()
-        if (!trimmed) throw BusinessException.badRequest('Directory path cannot be empty')
-        if (trimmed === '~') return homedir()
-        if (trimmed.startsWith('~/')) return resolve(homedir(), trimmed.slice(2))
-        return resolve(trimmed)
-    }
-
     private findContainingRoot(path: string, roots: ResolvedRoot[]): ResolvedRoot | null {
-        const normalized = resolve(path)
-        const sorted = [...roots].sort((a, b) => b.path.length - a.path.length)
-        return sorted.find((root) => this.isInsideRoot(normalized, root.path)) ?? null
-    }
-
-    private isInsideRoot(path: string, root: string): boolean {
-        const rel = relative(root, path)
-        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+        return this.userWorkspace.findContainingRoot(resolve(path), roots)
     }
 
     private parentInsideRoot(path: string, root: ResolvedRoot): string | null {
         if (resolve(path) === root.path) return null
         const parent = resolve(path, '..')
-        return this.isInsideRoot(parent, root.path) ? parent : null
+        return this.userWorkspace.isInsideRoot(parent, root.path) ? parent : null
     }
 
     private async assertReadableDirectory(path: string): Promise<void> {
@@ -175,11 +151,17 @@ export class WorkspaceFsService {
         }
     }
 
-    private rootLabel(path: string): string {
-        const home = homedir()
-        if (path === home) return 'Home'
-        const name = basename(path)
-        return name || path
+    private findRequestedKind(
+        rawPath: string,
+        roots: ResolvedRoot[]
+    ): NonNullable<ServerDirectoryRoot['kind']> {
+        const normalized = this.userWorkspace.normalizeUserPath(rawPath)
+        const root = this.findContainingRoot(normalized, roots)
+        if (root?.kind) return root.kind
+        throw BusinessException.forbidden('Directory is outside current user workspace roots', {
+            path: normalized,
+            roots: roots.map((r) => r.path)
+        })
     }
 
     private errMsg(err: unknown): string {

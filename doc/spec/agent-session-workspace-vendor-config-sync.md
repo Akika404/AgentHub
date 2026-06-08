@@ -11,15 +11,13 @@ AgentHub 需要统一 Claude Agent SDK 与 Codex SDK 的 skills / MCP 等 vendor
 - Agent Home：Agent 的持久配置源目录，保存 vendor 模板配置，例如 `.claude`、`.codex`。
 - Session Working Directory：每次单 Agent 聊天实际运行的工作目录，SDK 的 `cwd` 指向这里，vendor 配置在创建聊天时从 Agent Home 合并进这里。
 
-新建聊天时，用户可以指定工作目录；若不指定，后端在 Agent Home 下创建递增任务目录：
+新建聊天时，用户可以指定工作目录；若不指定，后端在当前用户 `agent_workspace` 下创建唯一会话目录：
 
 ```text
-<agentHomeDirectory>/Task1
-<agentHomeDirectory>/Task2
-<agentHomeDirectory>/Task3
+<AGENTHUB_USER_SPACE_ROOT>/<userId>/agent_workspace/chat-<sessionId>
 ```
 
-工作目录不能与 Agent Home 相同，避免运行时文件、用户代码和 Agent 模板配置互相污染。
+工作目录必须位于当前用户 `agent_workspace`，Agent Home 必须位于当前用户 `agent_home`，避免运行时文件、用户代码和 Agent 模板配置互相污染。
 
 ## Model
 
@@ -42,35 +40,35 @@ AgentHub 需要统一 Claude Agent SDK 与 Codex SDK 的 skills / MCP 等 vendor
 
 | Method | Path | 说明 |
 |--------|------|------|
-| `POST` | `/agents` | 创建 Agent 配置。`agentHomeDirectory` 不传时默认等于 `workingDirectory`，并按 vendor 初始化 Agent Home 下的配置目录。 |
+| `POST` | `/agents` | 创建 Agent 配置。`agentHomeDirectory` 不传时分配到当前用户 `agent_home/<agentId>`，并按 vendor 初始化 Agent Home 下的配置目录。 |
 | `PATCH` | `/agents/:agentId` | 更新 Agent 配置。可导入 skills 到 Agent Home 的 vendor skills 目录。 |
-| `POST` | `/agent-chats` | 创建单 Agent 聊天。`workingDirectory` 由必填调整为可选；为空时后端分配 `<agentHomeDirectory>/TaskN`。 |
+| `POST` | `/agent-chats` | 创建单 Agent 聊天。`workingDirectory` 由必填调整为可选；为空时后端分配当前用户 `agent_workspace/chat-<sessionId>`。 |
 
 `CreateAgentChatDto.workingDirectory` 调整为可选字段：
 
-- 传入非空路径：使用该路径，但必须不等于 Agent Home。
-- 不传或空字符串：后端自动创建递增 `TaskN` 工作目录。
+- 传入非空路径：使用该路径，但必须位于当前用户 `agent_workspace`。
+- 不传或空字符串：后端自动创建 `agent_workspace/chat-<sessionId>` 工作目录。
 
 ## Runtime Flow
 
 ### 创建 Agent
 
 1. 校验 vendor、Provider、model、skills / MCP 能力。
-2. 规范化 `workingDirectory`。
-3. 规范化 `agentHomeDirectory`；不传时兼容现有行为，默认使用 `workingDirectory`。
+2. 规范化并校验 `workingDirectory` 必须位于当前用户 `agent_workspace`。
+3. 规范化并校验 `agentHomeDirectory` 必须位于当前用户 `agent_home`；不传时分配到 `agent_home/<agentId>`。
 4. 创建必要目录：
    - Agent Home 根目录。
    - Agent 默认 Working Directory。
    - 当前 vendor 的 Agent Home 配置目录，例如 `.claude/skills` 或 `.codex/skills`。
-5. 将用户上传 / 指定的 skill source 导入当前 vendor 的 Agent Home skills 目录。
+5. 将用户指定的 skill source 导入当前 vendor 的 Agent Home skills 目录；skill source 必须位于当前用户 `skills`。
 6. 保存 Agent 配置。
 
 ### 创建聊天
 
 1. 加载 Agent。
-2. 若请求指定 `workingDirectory`，规范化后校验它不等于 `agent.agentHomeDirectory`。
-3. 若请求未指定 `workingDirectory`，扫描 Agent Home 下的 `TaskN`，选择第一个不存在的序号并创建。
-4. 创建会话私有 `sessionHomeDirectory`，用于 SDK 状态隔离。
+2. 若请求指定 `workingDirectory`，规范化后校验它位于当前用户 `agent_workspace`。
+3. 若请求未指定 `workingDirectory`，分配到当前用户 `agent_workspace/chat-<sessionId>`。
+4. 创建会话私有 `sessionHomeDirectory = session/<sessionId>`，用于 SDK 状态隔离。
 5. 将 Agent Home 下当前 vendor 配置目录合并进 Working Directory：
    - Claude：`<agentHomeDirectory>/.claude` -> `<workingDirectory>/.claude`
    - Codex：`<agentHomeDirectory>/.codex` -> `<workingDirectory>/.codex`
@@ -93,14 +91,14 @@ AgentHub 需要统一 Claude Agent SDK 与 Codex SDK 的 skills / MCP 等 vendor
 - 服务端 typecheck 通过。
 - 共享类型与服务端 DTO 保持一致，`CreateAgentChatPayload.workingDirectory` 改为可选。
 - 创建 Codex Agent 时允许传入 `skillSourceDirectories` 和 `skills`。
-- 创建聊天且不传 `workingDirectory` 时，会自动创建 `Task1`；若已存在则创建 `Task2`。
-- 创建聊天时指定 `workingDirectory === agentHomeDirectory` 会返回 bad request。
+- 创建聊天且不传 `workingDirectory` 时，会自动创建当前用户 `agent_workspace/chat-<sessionId>`。
+- 创建聊天时指定当前用户 `agent_workspace` 外的 `workingDirectory` 会返回 forbidden。
 - 当工作目录已有同名 skill 时，Agent Home 同名 skill 不覆盖工作目录版本。
-- 桌面端创建聊天表单允许工作目录留空，并提示将使用默认 Task 目录。
+- 桌面端创建聊天表单允许工作目录留空，并提示将自动分配到当前用户 `agent_workspace`。
 
 ## Known Limits
 
 - Codex MCP 本期仍不支持；需要后续明确 Codex SDK MCP 配置格式后再做转换。
-- Agent 创建时 `agentHomeDirectory` 不传仍默认等于 `workingDirectory`，这是为了兼容现有 API 与前端表单；新建聊天时会禁止工作目录等于 Agent Home。
+- Agent 创建时 `agentHomeDirectory` 不传会分配到当前用户 `agent_home/<agentId>`；历史旧数据不在本次变更中迁移。
 - Vendor 配置同步只在创建聊天时执行；已有聊天不会自动追踪 Agent Home 后续变化。
 - 合并策略只做目标优先的目录级复制，不做深层三方合并。

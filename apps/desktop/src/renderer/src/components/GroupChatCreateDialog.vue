@@ -335,6 +335,7 @@ function onWorkspacePicked(paths: string[]): void {
     :open="workspacePickerOpen"
     title="选择服务器共享工作区"
     mode="single"
+    preferred-kind="agent_workspace"
     :initial-path="form.workspaceDir"
     @confirm="onWorkspacePicked"
     @close="closeWorkspacePicker"

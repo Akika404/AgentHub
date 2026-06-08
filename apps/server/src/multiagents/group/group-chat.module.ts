@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { UserModule } from '../../user/user.module.js'
+import { UserWorkspaceModule } from '../../user-workspace/user-workspace.module.js'
 import { PlatformProviderModule } from '../../platform-provider/platform-provider.module.js'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
@@ -75,6 +76,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
             AgentMessageStep
         ]),
         UserModule,
+        UserWorkspaceModule,
         PlatformProviderModule
     ],
     controllers: [GroupChatController],

@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import type {
   ServerDirectoryEntry,
   ServerDirectoryListing,
-  ServerDirectoryRoot
+  ServerDirectoryRoot,
+  ServerDirectoryRootKind
 } from '@agenthub/shared'
 import { ApiError, workspaceFsApi } from '../api'
 import Modal from './Modal.vue'
@@ -18,12 +19,14 @@ const props = withDefaults(
     mode?: 'single' | 'multiple'
     initialPath?: string
     initialPaths?: string[]
+    preferredKind?: ServerDirectoryRootKind
   }>(),
   {
     title: '选择服务器目录',
     mode: 'single',
     initialPath: '',
-    initialPaths: () => []
+    initialPaths: () => [],
+    preferredKind: undefined
   }
 )
 
@@ -76,6 +79,7 @@ async function initialize(): Promise<void> {
       selectedPaths.value[0] ||
       roots.value.find((root) => props.initialPaths.some((path) => path.startsWith(root.path)))
         ?.path ||
+      roots.value.find((root) => root.kind === props.preferredKind)?.path ||
       roots.value[0].path
     applyListing(await workspaceFsApi.directories(initial))
   } catch (err) {

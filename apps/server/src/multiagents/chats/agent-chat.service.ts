@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { randomUUID } from 'node:crypto'
-import { join, resolve } from 'node:path'
 import { In, Repository } from 'typeorm'
 import { getCapabilities, type AgentEvent } from '../adapter/index.js'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
@@ -17,6 +16,7 @@ import { AgentPolicyService } from '../agents/agent-policy.service.js'
 import { AgentWorkspaceService } from '../workspace/agent-workspace.service.js'
 import { AgentRuntimeService } from '../runtime/agent-runtime.service.js'
 import { AgentMessageHistoryService } from '../messages/agent-message-history.service.js'
+import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
 
 @Injectable()
 export class AgentChatService {
@@ -30,6 +30,7 @@ export class AgentChatService {
         private readonly agents: AgentConfigService,
         private readonly policy: AgentPolicyService,
         private readonly workspace: AgentWorkspaceService,
+        private readonly userWorkspace: UserWorkspaceService,
         private readonly runtime: AgentRuntimeService,
         private readonly messages: AgentMessageHistoryService
     ) {}
@@ -38,16 +39,31 @@ export class AgentChatService {
         const agent = await this.agents.loadAgent(userId, dto.agentId)
         this.policy.assertChatConfigSupported(agent.vendor, dto)
 
-        await this.workspace.ensureAgentHomeDirectory(agent.vendor, agent.agentHomeDirectory)
-        const workingDirectory = await this.workspace.resolveChatWorkingDirectory(
-            agent,
-            dto.workingDirectory
-        )
         const sessionId = randomUUID()
-        const sessionHomeDirectory = resolve(
-            join(agent.agentHomeDirectory, '.agenthub', 'chats', sessionId)
+        const agentHomeDirectory = await this.userWorkspace.assertPathInRoot(
+            userId,
+            'agent_home',
+            agent.agentHomeDirectory,
+            'Agent home directory'
+        )
+        const workingDirectory = dto.workingDirectory?.trim()
+            ? await this.userWorkspace.assertPathInRoot(
+                  userId,
+                  'agent_workspace',
+                  dto.workingDirectory,
+                  'Chat workingDirectory'
+              )
+            : await this.userWorkspace.allocateChatWorkspaceDirectory(userId, sessionId)
+        const sessionHomeDirectory = await this.userWorkspace.allocateSessionHomeDirectory(
+            userId,
+            sessionId
+        )
+        const skillSourceDirectories = await this.userWorkspace.assertSkillSourceDirectories(
+            userId,
+            dto.skillSourceDirectories ?? []
         )
 
+        await this.workspace.ensureAgentHomeDirectory(agent.vendor, agentHomeDirectory)
         await this.workspace.ensureChatRuntimeDirectories(
             agent.vendor,
             workingDirectory,
@@ -55,12 +71,12 @@ export class AgentChatService {
         )
         await this.workspace.syncVendorConfigToWorkingDirectory(
             agent.vendor,
-            agent.agentHomeDirectory,
+            agentHomeDirectory,
             workingDirectory
         )
         const importedSkillNames = getCapabilities(agent.vendor).supportsSkills
             ? await this.workspace.importSkillSourceDirectories(
-                  dto.skillSourceDirectories ?? [],
+                  skillSourceDirectories,
                   this.workspace.vendorSkillsRoot(workingDirectory, agent.vendor)
               )
             : []

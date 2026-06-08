@@ -21,7 +21,8 @@ apps/server/
     │   ├── health.controller.ts  # GET /api/health
     │   └── health.service.ts     # 同时探测 MySQL & Redis
     ├── multiagents/              # 用户虚拟员工管理：Agent 配置 + 聊天会话 + 后台 turn runtime（详见下文「多 Agent 管理模块」）
-    ├── workspace-fs/             # 服务端目录浏览：为桌面端选择 Agent/群聊工作区与 skill 目录
+    ├── user-workspace/           # 按用户隔离的服务器文件空间：skills/session/agent_home/agent_workspace
+    ├── workspace-fs/             # 服务端目录浏览：为桌面端选择当前用户自己的 Agent/群聊工作区与 skill 目录
     ├── user/                     # 用户管理 + JWT 认证基座（详见下文「用户管理模块」）
     └── platform-provider/        # 用户自建模型平台（Provider）管理（详见下文「Provider 管理模块」）
 ```
@@ -55,10 +56,11 @@ pnpm -F @agenthub/server typecheck
 - `MYSQL_*` / `REDIS_*` — 数据库与 Redis 连接；`MYSQL_TIMEZONE` 默认 `+08:00`（东八区），如果 MySQL 会话时间为 UTC 可设为 `Z`。
 - `JWT_SECRET` — JWT 签名密钥，**生产环境务必改成强随机值**。
 - `JWT_EXPIRES_IN` — token 有效期，如 `7d` / `12h`（`ms` 包格式）。
-- `AGENTHUB_WORKSPACE_ROOTS` — 允许桌面端浏览/选择的服务器目录根，使用系统 path delimiter 分隔（Linux/macOS 为 `:`，Windows 为 `;`）。未配置时默认暴露后端进程用户的 home 与 `GROUP_WORKSPACE_ROOT` / `~/.agenthub/groups`。
-- `GROUP_WORKSPACE_ROOT` — 未显式传入群聊 `workspaceDir` 时的默认群聊工作区根，默认 `~/.agenthub/groups`。
+- `AGENTHUB_USER_SPACE_ROOT` — 多用户文件空间总根，默认 `~/.agenthub/users`。后端会为每个用户创建 `<root>/<userId>/skills`、`session`、`agent_home`、`agent_workspace`，所有 Agent Home、单聊/群聊工作区、session home、skill 来源目录都必须落在当前用户自己的空间内。
+- `AGENTHUB_WORKSPACE_ROOTS` — 旧版全局目录浏览配置；当前普通用户目录浏览不再使用它，保留仅作兼容说明。
+- `GROUP_WORKSPACE_ROOT` — 旧版群聊默认工作区根；当前新建群聊未传 `workspaceDir` 时会分配到当前用户 `agent_workspace/group-<groupId>`，普通用户链路不再使用全局默认根。
 
-> 远端部署时，Agent Home、单聊工作目录、群聊共享工作区、`skillSourceDirectories` 都是**后端服务器路径**。桌面端的目录选择器通过 `/api/workspace-fs/*` 浏览 `AGENTHUB_WORKSPACE_ROOTS` 内的服务器目录；若要导入 skill，skill 文件夹必须已经存在于服务器上。
+> 远端部署时，Agent Home、单聊工作目录、群聊共享工作区、`skillSourceDirectories` 都是**后端服务器路径**。桌面端目录选择器通过 `/api/workspace-fs/*` 只能浏览当前登录用户自己的 `skills` / `agent_home` / `agent_workspace`；若要导入 skill，skill 文件夹必须已经存在于当前用户的 `skills` 目录下。
 
 ## 健康检查
 
@@ -290,24 +292,24 @@ src/multiagents/
 | POST       | `/api/agent-chats/:chatId/clear`                | 清空聊天句柄和 UI 消息历史                                                             |
 | DELETE     | `/api/agent-chats/:chatId`                      | 删除聊天                                                                               |
 
-Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入。创建聊天时 `workingDirectory` 可选；留空时后端会在 Agent Home 下自动分配递增 `TaskN`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
+Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入。创建 Agent 时，`workingDirectory` 必须位于当前用户 `agent_workspace`，`agentHomeDirectory` 必须位于当前用户 `agent_home`；未传 Agent Home 时后端分配到 `agent_home/<agentId>`。创建聊天时 `workingDirectory` 可选；留空时后端分配到当前用户 `agent_workspace/chat-<sessionId>`，会话私有 home 固定在 `session/<sessionId>`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；skill 来源必须位于当前用户 `skills`。MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
 
 ## 服务端目录浏览模块（`src/workspace-fs/`）
 
-桌面端连接远端后端时，不能使用 Electron 本机目录弹窗选择 Agent 工作区。`workspace-fs` 模块提供受 JWT 保护的服务器目录浏览 API，只返回配置根目录内的一级子目录，用于选择 Agent Home、单聊工作目录、群聊共享工作区与 skill source folders。
+桌面端连接远端后端时，不能使用 Electron 本机目录弹窗选择 Agent 工作区。`workspace-fs` 模块提供受 JWT 保护的服务器目录浏览 API，只返回当前登录用户文件空间内的一级子目录，用于选择 Agent Home、单聊工作目录、群聊共享工作区与 skill source folders。
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
 | 方法 | 路径                                                 | 功能                                                           |
 | ---- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| GET  | `/api/workspace-fs/roots`                            | 列出当前后端允许浏览的服务器目录根                             |
+| GET  | `/api/workspace-fs/roots`                            | 列出当前用户允许浏览的服务器目录根                             |
 | GET  | `/api/workspace-fs/directories?path=<absolute path>` | 列出某个服务器目录下的一级子目录；`path` 省略时返回第一个 root |
 
 安全边界：
 
-- 可浏览根目录由 `AGENTHUB_WORKSPACE_ROOTS` 控制；生产环境建议只配置专门的项目/工作区根，例如 `/srv/agenthub/workspaces:/srv/agenthub/skills`。
+- 可浏览根目录由 `AGENTHUB_USER_SPACE_ROOT` 派生，当前用户只能看到自己的 `skills`、`agent_home`、`agent_workspace`。
 - 后端会对请求路径和 root 做 `realpath()` 后再校验归属，避免 `..` 与符号链接越界。
-- API 只浏览目录，不提供上传、删除、重命名。新目录仍可在前端手动输入路径，由创建 Agent/聊天/群聊时的既有后端流程负责创建。
+- API 只浏览目录，不提供上传、删除、重命名。新目录仍可在前端手动输入路径，但创建 Agent/聊天/群聊时会再次校验必须位于当前用户对应目录内。
 
 一轮对话（turn）启动后即在服务端游离运行，与发起请求解耦：发起端切走/关窗/断连只取消订阅，turn 继续跑到结束；任意端可订阅 `turns/:turnId/events` 回放+实时追尾同一轮，实现多端围观；`AgentChatView.activeTurnId` 暴露当前活跃轮，桌面端会在聊天列表加载/刷新后订阅所有活跃轮，并在列表显示运行标志。相关环境变量：`AGENT_RECLAIM_ON_BOOT`（默认开，进程重启清理残留活跃指针；多实例部署应设 `false`）和 `AGENT_TURN_TIMEOUT_MS`（默认 30 分钟，超时会 abort 当前 turn 并向订阅端发送 `error` + `done`，释放活跃指针）。
 
@@ -382,8 +384,8 @@ src/multiagents/group/
 - 成员 task 成功返回后，会先经过 Orchestrator 的隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。
 - 最终汇报默认先调用 Orchestrator 最终审查器，读取黑板摘要与可安全预览的文本/HTML 产物，对照原始需求和任务状态确认完成、失败、阻塞或等待输入；只有审查器调用失败时才退回模板拼接。全成功但审查发现缺口时，会继续派发后续任务，直到审查通过或达到续编排上限。
-- 共享工作区：创建群聊时可传 `workspaceDir`，服务端优先使用该目录作为共享 git 仓库；未传时分配到 `GROUP_WORKSPACE_ROOT/<groupId>/repo`。成员 task worktree、成员 SDK home、Orchestrator SDK home 都挂在共享仓库下的 `.agenthub/groups/<groupId>/`，因此 `.codex` / `.claude` 等运行态会出现在群聊项目工作区目录树内。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
-- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，仅用于未显式传入 `workspaceDir` 时分配默认共享仓库）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
+- 共享工作区：创建群聊时可传 `workspaceDir`，但必须位于当前用户 `agent_workspace`；未传时分配到当前用户 `agent_workspace/group-<groupId>`。成员 task worktree、成员 SDK home、Orchestrator SDK home 都挂在共享仓库下的 `.agenthub/groups/<groupId>/`，因此 `.codex` / `.claude` 等运行态会出现在群聊项目工作区目录树内。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
+- 环境变量：`AGENTHUB_USER_SPACE_ROOT`（用户文件空间总根）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
 - Debug 日志：`GroupDebugLogger` 会输出结构化 JSON，覆盖用户输入、路由结果、Orchestrator prompt/输出/任务分配、黑板快照、ContextAssembler trace、每个成员 Agent 收到的 prompt、memory 检索/保留/丢弃、turn 事件、report、git diff、黑板更新与 hot buffer。日志会递归脱敏 `apiKey` / `token` / `secret` / `password` 等字段。
 
 ### Orchestrator Planner

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { UserModule } from '../user/user.module.js'
+import { UserWorkspaceModule } from '../user-workspace/user-workspace.module.js'
 import { PlatformProviderModule } from '../platform-provider/platform-provider.module.js'
 import { AgentChatsController } from './agent-chats.controller.js'
 import { AgentsController } from './agents.controller.js'
@@ -36,6 +37,7 @@ import { GroupChatMember } from './group/entities/group-chat-member.entity.js'
             GroupChatMember
         ]),
         UserModule,
+        UserWorkspaceModule,
         PlatformProviderModule
     ],
     controllers: [AgentsController, AgentChatsController],

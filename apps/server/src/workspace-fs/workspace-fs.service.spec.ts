@@ -5,34 +5,55 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { ConfigService } from '@nestjs/config'
 import { ErrorCode } from '../common/index.js'
+import { UserWorkspaceService } from '../user-workspace/user-workspace.service.js'
 import { WorkspaceFsService } from './workspace-fs.service.js'
 
-test('WorkspaceFsService lists directories under configured roots', async () => {
+function serviceFor(root: string): WorkspaceFsService {
+    return new WorkspaceFsService(
+        new UserWorkspaceService(new ConfigService({ AGENTHUB_USER_SPACE_ROOT: root }))
+    )
+}
+
+test('WorkspaceFsService lists only the authenticated user workspace roots', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agenthub-workspace-fs-'))
-    await mkdir(join(root, 'project-a'))
-    await mkdir(join(root, 'project-b'))
-    const service = new WorkspaceFsService(new ConfigService({ AGENTHUB_WORKSPACE_ROOTS: root }))
+    const service = serviceFor(root)
 
-    const roots = await service.roots()
+    const roots = await service.roots('user-a')
     const realRoot = await realpath(root)
-    assert.equal(roots.length, 1)
-    assert.equal(roots[0].path, realRoot)
+    assert.deepEqual(
+        roots.map((entry) => entry.kind),
+        ['skills', 'agent_home', 'agent_workspace']
+    )
+    assert.ok(roots.every((entry) => entry.path.startsWith(join(realRoot, 'user-a'))))
+})
 
-    const listing = await service.listDirectories(root)
-    assert.equal(listing.path, realRoot)
+test('WorkspaceFsService lists directories inside the current user agent workspace', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agenthub-workspace-fs-'))
+    const service = serviceFor(root)
+    const roots = await service.roots('user-a')
+    const workspaceRoot = roots.find((entry) => entry.kind === 'agent_workspace')
+    assert.ok(workspaceRoot)
+    await mkdir(join(workspaceRoot.path, 'project-a'))
+    await mkdir(join(workspaceRoot.path, 'project-b'))
+
+    const listing = await service.listDirectories('user-a', workspaceRoot.path)
+    assert.equal(listing.path, workspaceRoot.path)
+    assert.equal(listing.root.kind, 'agent_workspace')
     assert.deepEqual(
         listing.entries.map((entry) => entry.name),
         ['project-a', 'project-b']
     )
 })
 
-test('WorkspaceFsService rejects paths outside configured roots', async () => {
+test('WorkspaceFsService rejects another user workspace path', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agenthub-workspace-fs-'))
-    const outside = await mkdtemp(join(tmpdir(), 'agenthub-workspace-outside-'))
-    const service = new WorkspaceFsService(new ConfigService({ AGENTHUB_WORKSPACE_ROOTS: root }))
+    const service = serviceFor(root)
+    const userBRoots = await service.roots('user-b')
+    const userBWorkspace = userBRoots.find((entry) => entry.kind === 'agent_workspace')
+    assert.ok(userBWorkspace)
 
     await assert.rejects(
-        () => service.listDirectories(outside),
+        () => service.listDirectories('user-a', userBWorkspace.path),
         (err: unknown) =>
             typeof err === 'object' &&
             err !== null &&

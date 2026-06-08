@@ -87,7 +87,7 @@ export class CreateGroupChatDto implements CreateGroupChatPayload {
 
     @ApiPropertyOptional({
         type: String,
-        description: '共享 git 工作区目录；传入时优先使用，未传时后端分配'
+        description: '共享 git 工作区目录；传入时必须位于当前用户 agent_workspace，未传时后端分配'
     })
     @IsOptional()
     @IsString()

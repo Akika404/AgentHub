@@ -16,7 +16,7 @@ export class CreateAgentChatDto {
     @IsString()
     workingDirectory?: string
 
-    /** 本聊天要导入的服务器 Skill 文件夹路径。是否支持取决于 vendor 能力。 */
+    /** 本聊天要导入的服务器 Skill 文件夹路径；必须位于当前用户 skills。 */
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
