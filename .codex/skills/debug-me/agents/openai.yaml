@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug Me"
+  short_description: "Debug AgentHub issues quickly"
+  default_prompt: "Use $debug-me to investigate and fix the current AgentHub bug."
