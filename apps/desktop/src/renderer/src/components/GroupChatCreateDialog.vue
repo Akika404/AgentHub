@@ -50,6 +50,7 @@ const form = reactive({
 
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const selectingWorkspaceDirectory = ref(false)
 
 const compatibleProviders = computed(() =>
   providers.value.filter((p) => isVendorProviderCompatible(form.orchestratorVendor, p.type))
@@ -169,6 +170,21 @@ async function onSubmit(): Promise<void> {
     submitting.value = false
   }
 }
+
+async function chooseWorkspaceDirectory(): Promise<void> {
+  if (selectingWorkspaceDirectory.value) return
+  selectingWorkspaceDirectory.value = true
+  try {
+    const directory = await window.api.selectDirectory()
+    if (directory) {
+      form.workspaceDir = directory
+    }
+  } catch {
+    submitError.value = '选择共享工作区目录失败'
+  } finally {
+    selectingWorkspaceDirectory.value = false
+  }
+}
 </script>
 
 <template>
@@ -286,12 +302,25 @@ async function onSubmit(): Promise<void> {
         <label class="block text-sm font-medium text-text-main mb-1.5">
           共享工作区目录 <span class="font-normal text-text-muted">（可选）</span>
         </label>
-        <BaseInput
-          v-model="form.workspaceDir"
-          mono
-          type="text"
-          placeholder="留空时后端自动分配并 git init"
-        />
+        <div class="flex gap-2">
+          <BaseInput
+            v-model="form.workspaceDir"
+            class="min-w-0 flex-1"
+            mono
+            type="text"
+            placeholder="留空时后端自动分配并 git init"
+          />
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            :disabled="selectingWorkspaceDirectory"
+            @click="chooseWorkspaceDirectory"
+          >
+            <span class="material-symbols-outlined text-xl">folder_open</span>
+            {{ selectingWorkspaceDirectory ? '选择中...' : '选择目录' }}
+          </BaseButton>
+        </div>
       </div>
 
       <p v-if="visibleError" class="text-sm text-danger">{{ visibleError }}</p>
