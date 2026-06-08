@@ -36,6 +36,17 @@ const isInitialThinking = computed(
     visibleSteps.value[0]?.status === 'active' &&
     visibleSteps.value[0]?.label === '思考中'
 )
+const isOrchestratorComposing = computed(
+  () =>
+    props.message.sender.role === 'orchestrator' &&
+    !hasText.value &&
+    !hasPlan.value &&
+    props.message.status === 'thinking' &&
+    visibleSteps.value.length === 1 &&
+    visibleSteps.value[0]?.type === 'thinking' &&
+    visibleSteps.value[0]?.status === 'active' &&
+    visibleSteps.value[0]?.label === 'Orchestrator 编排中'
+)
 const showRunPanel = computed(
   () => visibleSteps.value.length > 0 && (expanded.value || (!hasText.value && !hasPlan.value))
 )
@@ -95,7 +106,19 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
 </script>
 
 <template>
-  <div class="flex space-x-3">
+  <div v-if="isOrchestratorComposing" class="flex justify-center" role="status" aria-live="polite">
+    <div
+      class="orchestrator-status-shell relative isolate inline-flex w-64 max-w-full items-center justify-center gap-2 overflow-hidden rounded-full border border-surface-border/70 bg-surface-hover/70 px-5 py-1.5 text-sm text-text-muted backdrop-blur-sm"
+    >
+      <span
+        class="relative z-10 h-3.5 w-3.5 flex-shrink-0 animate-spin rounded-full border-2 border-text-muted/25 border-t-text-muted motion-reduce:animate-none"
+        aria-hidden="true"
+      ></span>
+      <span class="relative z-10 truncate font-medium">Orchestrator 编排中</span>
+    </div>
+  </div>
+
+  <div v-else class="flex space-x-3">
     <SenderAvatar :sender="message.sender" />
     <div class="flex flex-col max-w-[80%]">
       <div class="flex items-center space-x-2 mb-1 ml-1">
@@ -281,6 +304,25 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
 </template>
 
 <style scoped>
+.orchestrator-status-shell::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 32%,
+    rgba(255, 255, 255, 0.58) 46%,
+    rgba(255, 255, 255, 0.28) 52%,
+    transparent 66%,
+    transparent 100%
+  );
+  animation: orchestrator-status-sheen 2800ms ease-in-out infinite;
+  pointer-events: none;
+  transform: translateX(-120%);
+}
+
 .agent-thinking-dot {
   animation: agent-thinking-bounce 840ms ease-in-out infinite;
 }
@@ -319,7 +361,24 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
   }
 }
 
+@keyframes orchestrator-status-sheen {
+  0%,
+  38% {
+    transform: translateX(-120%);
+  }
+
+  78%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .orchestrator-status-shell::after {
+    animation: none;
+    opacity: 0;
+  }
+
   .agent-thinking-dot {
     animation: none;
   }
