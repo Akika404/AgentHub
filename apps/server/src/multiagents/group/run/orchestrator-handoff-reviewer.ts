@@ -114,7 +114,11 @@ export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffRe
             req.userId,
             req.group.orchestratorProviderId
         )
-        const home = this.workspace.memberHomeDir(req.group.id, 'orchestrator')
+        const home = this.workspace.memberHomeDir(
+            req.group.id,
+            'orchestrator',
+            req.group.workspaceDir
+        )
         await this.agentWorkspace.ensureAgentHomeDirectory(req.group.orchestratorVendor, home)
 
         const config: AgentAdapterConfig = {

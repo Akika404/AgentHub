@@ -1,13 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { execFile } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { BusinessException } from '../../common/index.js'
 
 const execFileAsync = promisify(execFile)
+
+const MANAGED_GIT_EXCLUDE_HEADER = '# AgentHub group runtime'
+const MANAGED_GIT_EXCLUDE_PATTERNS = [
+    '/ACTIVE',
+    '/.agenthub/',
+    '/.codex/',
+    '/.claude/',
+    '/.agents/'
+]
 
 /** 一个任务 worktree 合并回主分支前识别出的改动文件 */
 export interface GroupChangedFile {
@@ -20,13 +29,15 @@ export interface GroupChangedFile {
 /**
  * GroupWorkspaceService — 群聊共享 git 工作区的生命周期管理。
  *
- * 目录布局（GROUP_WORKSPACE_ROOT 默认 ~/.agenthub/groups）：
- *   <root>/<groupId>/repo            默认共享仓库（未传 workspaceDir 时）
- *   <root>/<groupId>/worktrees/<id>  每个派发任务的隔离 worktree（分支 task/<id>）
+ * 目录布局：
+ *   <repo>                           共享仓库（传入 workspaceDir 时为用户目录；
+ *                                    未传时为 GROUP_WORKSPACE_ROOT/<groupId>/repo）
+ *   <repo>/.agenthub/groups/<groupId>/worktrees/<id>
+ *                                    每个派发任务的隔离 worktree（分支 task/<id>）
+ *   <repo>/.agenthub/groups/<groupId>/members/<agentId>/home
+ *                                    成员 SDK home（.codex/.claude 等运行态）
  *
- * 若建群传入 workspaceDir，则该目录作为共享仓库；worktrees / members 仍放在
- * <root>/<groupId>/ 下。删除群聊时不删除任何目录，只把共享仓库根的 ACTIVE 标记
- * 写成 false。
+ * 删除群聊时不删除任何目录，只把共享仓库根的 ACTIVE 标记写成 false。
  *
  * 本 spec 串行执行，worktree 仅需保证生命周期正确（创建 → 合并 → 清理），
  * 不处理并发冲突（留第二份 spec）。
@@ -48,13 +59,18 @@ export class GroupWorkspaceService {
         return custom ? resolve(custom) : join(this.root, groupId, 'repo')
     }
 
-    /** 某成员在本群复用的会话私有 home（SDK 状态隔离、vendor 配置发现目录基底）。 */
-    memberHomeDir(groupId: string, agentId: string): string {
-        return join(this.root, groupId, 'members', agentId, 'home')
+    /** 本群在共享仓库下的 AgentHub 运行态根，包含 worktrees / members / orchestrator home。 */
+    groupRuntimeDir(groupId: string, workspaceDir?: string | null): string {
+        return join(this.repoDir(groupId, workspaceDir), '.agenthub', 'groups', groupId)
     }
 
-    private worktreeDir(groupId: string, taskId: string): string {
-        return join(this.root, groupId, 'worktrees', taskId)
+    /** 某成员在本群复用的会话私有 home（SDK 状态隔离、vendor 配置发现目录基底）。 */
+    memberHomeDir(groupId: string, agentId: string, workspaceDir?: string | null): string {
+        return join(this.groupRuntimeDir(groupId, workspaceDir), 'members', agentId, 'home')
+    }
+
+    private worktreeDir(groupId: string, taskId: string, workspaceDir?: string | null): string {
+        return join(this.groupRuntimeDir(groupId, workspaceDir), 'worktrees', taskId)
     }
 
     private branchName(taskId: string): string {
@@ -71,6 +87,7 @@ export class GroupWorkspaceService {
             await mkdir(repo, { recursive: true })
             const isGit = await this.isGitRepositoryRoot(repo)
             if (!isGit) await this.git(repo, ['init', '-b', 'main'])
+            await this.ensureManagedPathsIgnored(repo)
             await this.git(repo, ['config', 'user.email', 'agenthub@local'])
             await this.git(repo, ['config', 'user.name', 'AgentHub'])
             await this.ensureInitialCommit(repo)
@@ -98,10 +115,13 @@ export class GroupWorkspaceService {
         workspaceDir?: string | null
     ): Promise<string> {
         const repo = this.repoDir(groupId, workspaceDir)
-        const wt = this.worktreeDir(groupId, taskId)
+        const wt = this.worktreeDir(groupId, taskId, workspaceDir)
         const branch = this.branchName(taskId)
         try {
-            await mkdir(join(this.root, groupId, 'worktrees'), { recursive: true })
+            await this.ensureManagedPathsIgnored(repo)
+            await mkdir(join(this.groupRuntimeDir(groupId, workspaceDir), 'worktrees'), {
+                recursive: true
+            })
             if (await this.worktreeRegistered(repo, wt)) return wt
             if (await this.branchExists(repo, branch)) {
                 await this.git(repo, ['worktree', 'add', wt, branch])
@@ -148,8 +168,12 @@ export class GroupWorkspaceService {
      * 收口前识别该任务 worktree 的改动：`git add -A` 后提交，并返回改动文件清单
      * （喂给黑板产出物更新）。无改动则返回空数组、不提交。
      */
-    async diffArtifacts(groupId: string, taskId: string): Promise<GroupChangedFile[]> {
-        const wt = this.worktreeDir(groupId, taskId)
+    async diffArtifacts(
+        groupId: string,
+        taskId: string,
+        workspaceDir?: string | null
+    ): Promise<GroupChangedFile[]> {
+        const wt = this.worktreeDir(groupId, taskId, workspaceDir)
         try {
             await this.git(wt, ['add', '-A'])
             const staged = (await this.git(wt, ['diff', '--cached', '--name-status'])).trim()
@@ -172,7 +196,7 @@ export class GroupWorkspaceService {
         workspaceDir?: string | null
     ): Promise<void> {
         const repo = this.repoDir(groupId, workspaceDir)
-        const wt = this.worktreeDir(groupId, taskId)
+        const wt = this.worktreeDir(groupId, taskId, workspaceDir)
         const branch = this.branchName(taskId)
         try {
             const baseBranch = (await this.git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim()
@@ -217,6 +241,34 @@ export class GroupWorkspaceService {
         }
         await this.git(repo, ['add', '-A'])
         await this.git(repo, ['commit', '--allow-empty', '-m', 'chore: init group workspace'])
+    }
+
+    private async ensureManagedPathsIgnored(repo: string): Promise<void> {
+        const rawPath = (await this.git(repo, ['rev-parse', '--git-path', 'info/exclude'])).trim()
+        const excludeFile = isAbsolute(rawPath) ? rawPath : resolve(repo, rawPath)
+        await mkdir(dirname(excludeFile), { recursive: true })
+
+        let current = ''
+        try {
+            current = await readFile(excludeFile, 'utf8')
+        } catch {
+            current = ''
+        }
+
+        const existing = new Set(
+            current
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean)
+        )
+        const missing = MANAGED_GIT_EXCLUDE_PATTERNS.filter((pattern) => !existing.has(pattern))
+        if (missing.length === 0) return
+
+        const additions = existing.has(MANAGED_GIT_EXCLUDE_HEADER)
+            ? missing
+            : [MANAGED_GIT_EXCLUDE_HEADER, ...missing]
+        const prefix = current.length > 0 && !current.endsWith('\n') ? '\n' : ''
+        await writeFile(excludeFile, `${current}${prefix}${additions.join('\n')}\n`, 'utf8')
     }
 
     private async hasHead(repo: string): Promise<boolean> {

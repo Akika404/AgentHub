@@ -32,7 +32,7 @@ export class GroupChat {
     @Column({ type: 'varchar', length: 16, default: 'active' })
     status!: GroupChatStatus
 
-    /** 共享 git 工作区根（产出物真相源 + worktree 基底） */
+    /** 共享 git 工作区根（产出物真相源；成员 worktree / SDK home 挂在其下） */
     @Column({ type: 'varchar', length: 1024 })
     workspaceDir!: string
 

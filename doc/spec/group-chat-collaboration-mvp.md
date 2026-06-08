@@ -78,7 +78,7 @@ interface GroupChatView {
   id: string
   title: string
   status: 'active' | 'archived'
-  workspaceDir: string // 共享 git 工作区根
+  workspaceDir: string // 共享 git 工作区根；Agent runtime dirs 挂在其下
   orchestrator: OrchestratorConfigView // 独立内置角色配置
   members: GroupMemberView[]
   projectMeta: ProjectMeta
@@ -235,7 +235,7 @@ interface AgentMemoryItem {
 ### 流程一：建群
 
 1. 校验所有成员 Agent 属于当前用户；校验 Orchestrator 的 provider/vendor/model 合法。
-2. 规范化共享工作区目录 `workspaceDir`：若用户传入则优先使用该目录，否则后端分配；执行/校验 `git init`（作为产出物真相源与 worktree 基底）。
+2. 规范化共享工作区目录 `workspaceDir`：若用户传入则优先使用该目录，否则后端分配；执行/校验 `git init`（作为产出物真相源），成员 worktree / SDK home 挂在该目录的 `.agenthub/groups/<groupId>/` 下。
 3. 落库 `group_chat` + `group_chat_member`；初始化黑板（空 artifacts/decisions/contracts + projectMeta）。
 4. 不创建任何成员 SDK 会话（懒加载）。
 

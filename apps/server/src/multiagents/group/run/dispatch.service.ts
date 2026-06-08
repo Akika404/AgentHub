@@ -297,7 +297,11 @@ export class DispatchService {
         const escalations: DispatchEscalation[] = []
         if (!fatal) {
             try {
-                const changed = await this.workspace.diffArtifacts(group.id, taskId)
+                const changed = await this.workspace.diffArtifacts(
+                    group.id,
+                    taskId,
+                    group.workspaceDir
+                )
                 this.debug.log('group.dispatch.git_diff', {
                     groupId: group.id,
                     runId,
@@ -674,7 +678,7 @@ export class DispatchService {
         agent: Agent,
         worktree: string
     ): Promise<AgentSession> {
-        const home = resolve(this.workspace.memberHomeDir(group.id, agent.id))
+        const home = resolve(this.workspace.memberHomeDir(group.id, agent.id, group.workspaceDir))
         let session: AgentSession | null = null
         if (member.agentSessionId) {
             session = await this.sessionRepo.findOne({ where: { id: member.agentSessionId } })
@@ -708,6 +712,7 @@ export class DispatchService {
         }
         session.scope = 'group'
         session.workingDirectory = worktree
+        session.sessionHomeDirectory = home
         await this.sessionRepo.save(session)
 
         await this.agentWorkspace.ensureAgentHomeDirectory(agent.vendor, agent.agentHomeDirectory)

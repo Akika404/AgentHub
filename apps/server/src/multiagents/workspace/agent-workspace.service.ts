@@ -50,11 +50,9 @@ export class AgentWorkspaceService {
         try {
             await mkdir(workingDirectory, { recursive: true })
             await mkdir(sessionHomeDirectory, { recursive: true })
-            if (vendor === 'claude') {
-                await mkdir(this.vendorConfigRoot(sessionHomeDirectory, vendor), {
-                    recursive: true
-                })
-            }
+            await mkdir(this.vendorConfigRoot(sessionHomeDirectory, vendor), {
+                recursive: true
+            })
         } catch (err) {
             throw BusinessException.badRequest(
                 `Failed to prepare chat directories: ${this.errMsg(err)}`,

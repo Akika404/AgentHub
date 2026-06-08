@@ -68,7 +68,7 @@ export interface GroupChatView {
   id: string
   title: string
   status: GroupChatStatus
-  /** shared git workspace root (source of truth + worktree base) */
+  /** shared git workspace root (source of truth; Agent runtime dirs live under it) */
   workspaceDir: string
   orchestrator: OrchestratorConfigView
   members: GroupMemberView[]

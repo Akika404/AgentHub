@@ -302,7 +302,7 @@ export class MemberChatService {
         agent: Agent
     ): Promise<AgentSession> {
         const workingDirectory = resolve(this.workspace.repoDir(group.id, group.workspaceDir))
-        const home = resolve(this.workspace.memberHomeDir(group.id, agent.id))
+        const home = resolve(this.workspace.memberHomeDir(group.id, agent.id, group.workspaceDir))
         let session: AgentSession | null = null
         if (member.agentSessionId) {
             session = await this.sessionRepo.findOne({ where: { id: member.agentSessionId } })
@@ -336,10 +336,16 @@ export class MemberChatService {
         }
         session.scope = 'group'
         session.workingDirectory = workingDirectory
+        session.sessionHomeDirectory = home
         await this.sessionRepo.save(session)
 
         await this.agentWorkspace.ensureAgentHomeDirectory(agent.vendor, agent.agentHomeDirectory)
         await this.agentWorkspace.ensureChatRuntimeDirectories(agent.vendor, workingDirectory, home)
+        await this.agentWorkspace.syncVendorConfigToWorkingDirectory(
+            agent.vendor,
+            agent.agentHomeDirectory,
+            workingDirectory
+        )
         this.debug.log('group.member_chat.session_prepared', {
             groupId: group.id,
             agentId: agent.id,

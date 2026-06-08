@@ -207,7 +207,11 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             req.userId,
             req.group.orchestratorProviderId
         )
-        const home = this.workspace.memberHomeDir(req.group.id, 'orchestrator')
+        const home = this.workspace.memberHomeDir(
+            req.group.id,
+            'orchestrator',
+            req.group.workspaceDir
+        )
         await this.agentWorkspace.ensureAgentHomeDirectory(req.group.orchestratorVendor, home)
 
         // Orchestrator 只产 JSON 计划，不该读写真实仓库：禁用全部工具、plan 权限模式、

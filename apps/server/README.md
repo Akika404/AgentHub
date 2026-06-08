@@ -361,8 +361,8 @@ src/multiagents/group/
 - 成员 task 成功返回后，会先经过 Orchestrator 的隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。
 - 最终汇报默认先调用 Orchestrator 最终审查器，读取黑板摘要与可安全预览的文本/HTML 产物，对照原始需求和任务状态确认完成、失败、阻塞或等待输入；只有审查器调用失败时才退回模板拼接。全成功但审查发现缺口时，会继续派发后续任务，直到审查通过或达到续编排上限。
-- 共享工作区：创建群聊时可传 `workspaceDir`，服务端优先使用该目录作为共享 git 仓库；未传时分配到 `GROUP_WORKSPACE_ROOT/<groupId>/repo`。成员 worktree / SDK home 仍放在 `GROUP_WORKSPACE_ROOT/<groupId>/` 下。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
-- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，用于默认共享仓库、worktree、成员 SDK home）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
+- 共享工作区：创建群聊时可传 `workspaceDir`，服务端优先使用该目录作为共享 git 仓库；未传时分配到 `GROUP_WORKSPACE_ROOT/<groupId>/repo`。成员 task worktree、成员 SDK home、Orchestrator SDK home 都挂在共享仓库下的 `.agenthub/groups/<groupId>/`，因此 `.codex` / `.claude` 等运行态会出现在群聊项目工作区目录树内。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
+- 环境变量：`GROUP_WORKSPACE_ROOT`（默认 `~/.agenthub/groups`，仅用于未显式传入 `workspaceDir` 时分配默认共享仓库）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
 - Debug 日志：`GroupDebugLogger` 会输出结构化 JSON，覆盖用户输入、路由结果、Orchestrator prompt/输出/任务分配、黑板快照、ContextAssembler trace、每个成员 Agent 收到的 prompt、memory 检索/保留/丢弃、turn 事件、report、git diff、黑板更新与 hot buffer。日志会递归脱敏 `apiKey` / `token` / `secret` / `password` 等字段。
 
 ### Orchestrator Planner
