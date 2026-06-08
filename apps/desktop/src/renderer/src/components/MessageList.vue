@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import type { AgentQuestionMessage, OptionItem, OptionsMessage } from '../api'
 import { isAgentRunMessage, type ChatDisplayMessage } from '../types/chatDisplay'
+import type { MentionTarget } from '../types/mentions'
 import SystemMessageView from './messages/SystemMessage.vue'
 import TextMessageView from './messages/TextMessage.vue'
 import TaskListMessageView from './messages/TaskListMessage.vue'
@@ -14,6 +15,8 @@ import BaseSkeleton from './ui/BaseSkeleton.vue'
 const props = defineProps<{
   messages: ChatDisplayMessage[]
   loading?: boolean
+  mentionTargets?: MentionTarget[]
+  mentionDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -26,6 +29,7 @@ const emit = defineEmits<{
   (e: 'pin-message', message: ChatDisplayMessage): void
   (e: 'copy-message', message: ChatDisplayMessage): void
   (e: 'reply-message', message: ChatDisplayMessage): void
+  (e: 'mention-sender', senderId: string): void
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -65,12 +69,33 @@ const menuY = ref(0)
 const menuTarget = ref<ChatDisplayMessage | null>(null)
 const menuItems = ref<MenuItem[]>([])
 
+function senderIdFor(message: ChatDisplayMessage): string | null {
+  return 'sender' in message ? message.sender.id : null
+}
+
+function mentionTargetFor(message: ChatDisplayMessage): MentionTarget | null {
+  const senderId = senderIdFor(message)
+  if (!senderId) return null
+  return props.mentionTargets?.find((target) => target.id === senderId) ?? null
+}
+
 function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
   event.preventDefault()
   menuTarget.value = message
   menuX.value = event.clientX
   menuY.value = event.clientY
+  const mentionTarget = mentionTargetFor(message)
   menuItems.value = [
+    ...(mentionTarget
+      ? [
+          {
+            id: 'mention',
+            label: `@${mentionTarget.label}`,
+            icon: 'alternate_email',
+            disabled: props.mentionDisabled
+          }
+        ]
+      : []),
     {
       id: 'pin',
       label: message.pinned ? '取消Pin' : 'Pin消息',
@@ -102,6 +127,10 @@ function onMenuSelect(id: string): void {
   if (id === 'pin') emit('pin-message', target)
   else if (id === 'copy') emit('copy-message', target)
   else if (id === 'reply') emit('reply-message', target)
+  else if (id === 'mention') {
+    const senderId = senderIdFor(target)
+    if (senderId) emit('mention-sender', senderId)
+  }
 }
 
 function scrollSignature(): string {

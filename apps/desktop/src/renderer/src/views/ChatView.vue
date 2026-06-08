@@ -34,6 +34,7 @@ import {
   type AgentRunStep,
   type ChatDisplayMessage
 } from '../types/chatDisplay'
+import type { MentionTarget } from '../types/mentions'
 import { agentInitials } from '../utils/avatar'
 import { formatTime } from '../utils/format'
 import ChatList from '../components/ChatList.vue'
@@ -130,6 +131,7 @@ const deleteChatError = ref<string | null>(null)
 
 const pendingReply = ref<MessageReplyRef | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
+const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
 const runtime = ref<AgentRuntimeState>(idleRuntime())
 
 const activeChat = computed(() =>
@@ -142,6 +144,10 @@ const activeGroup = computed(() =>
     ? (groupChats.value.find((group) => groupSessionKey(group.id) === activeSessionKey.value) ??
       null)
     : null
+)
+
+const activeMentionTargets = computed<MentionTarget[]>(
+  () => activeGroup.value?.members.map(groupMemberMentionTarget) ?? []
 )
 
 const streaming = computed(() =>
@@ -280,6 +286,18 @@ function previewForGroup(group: GroupChatView): string {
   const goal = group.projectMeta.goal?.trim()
   if (goal) return goal
   return `${group.members.length} 成员 · ${group.projectMeta.name}`
+}
+
+function groupMemberMentionTarget(member: GroupMemberView): MentionTarget {
+  const role = member.roleInGroup?.trim()
+  return {
+    id: member.agentId,
+    label: role || member.name,
+    name: role ? member.name : null,
+    avatar: member.avatar,
+    color: member.color,
+    description: role ? vendorLabel(member.vendor) : member.capabilitySummary
+  }
 }
 
 function isChatRunning(chatId: string): boolean {
@@ -2165,6 +2183,10 @@ function onReplyMessage(msg: ChatDisplayMessage): void {
   }
 }
 
+function onMentionSender(senderId: string): void {
+  messageInputRef.value?.insertMentionById(senderId)
+}
+
 function onCancelReply(): void {
   pendingReply.value = null
 }
@@ -2218,17 +2240,22 @@ onUnmounted(() => {
         ref="messageListRef"
         :messages="messages"
         :loading="messagesLoading"
+        :mention-targets="activeMentionTargets"
+        :mention-disabled="streaming"
         @select-option="onSelectOption"
         @reply-option="onReplyOption"
         @submit-question="onSubmitQuestion"
         @pin-message="onPinMessage"
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"
+        @mention-sender="onMentionSender"
       />
       <MessageInput
+        ref="messageInputRef"
         :reply-to="pendingReply"
         :disabled="streaming || !activeSessionKey"
         :streaming="streaming"
+        :mention-targets="activeMentionTargets"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
         @stop="stopCurrentTurn"
