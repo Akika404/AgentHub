@@ -33,5 +33,8 @@ export function toAgentChatMessageView(
     if (steps.length > 0) {
         view.steps = steps.map(toAgentRunStepView)
     }
+    if (message.replyTo) {
+        view.replyTo = message.replyTo
+    }
     return view
 }

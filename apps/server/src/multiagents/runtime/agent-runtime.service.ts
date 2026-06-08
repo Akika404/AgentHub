@@ -3,11 +3,8 @@ import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
-import {
-    createAgent,
-    type AgentEvent,
-    type AgentVendor
-} from '../adapter/index.js'
+import { createAgent, type AgentEvent, type AgentVendor } from '../adapter/index.js'
+import type { MessageReplyRef } from '@agenthub/shared'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
 import type { LiveAgent } from '../live-agent.js'
@@ -80,7 +77,11 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         this.registry.clear()
     }
 
-    async startTurn(session: AgentSession, prompt: string): Promise<{ turnId: string }> {
+    async startTurn(
+        session: AgentSession,
+        prompt: string,
+        replyTo: MessageReplyRef | null = null
+    ): Promise<{ turnId: string }> {
         const turnId = randomUUID()
         const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
         if (owned !== turnId) {
@@ -108,7 +109,15 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         this.runningTurns.set(turnId, { sessionId: session.id, abort })
 
         try {
-            await this.messages.saveMessage(session.userId, session.agentId, session.id, 'user', prompt)
+            // 落库存「干净原文 + 引用快照」，刷新后据 replyTo 重渲染引用气泡。
+            await this.messages.saveMessage(
+                session.userId,
+                session.agentId,
+                session.id,
+                'user',
+                prompt,
+                replyTo
+            )
         } catch (err) {
             live.busy = false
             live.abort = null
@@ -117,8 +126,32 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
             throw err
         }
 
-        void this.runTurn(session, live, prompt, abort, turnId)
+        // 发给 SDK 的 prompt 拼引用前言（按 messageId 取会话内原文，回退 client excerpt）；
+        // agent session 连续，引用仅做指代消歧，前言不落库。
+        const sdkPrompt = await this.buildQuotedPrompt(session, prompt, replyTo)
+        void this.runTurn(session, live, sdkPrompt, abort, turnId)
         return { turnId }
+    }
+
+    /** 单聊引用前言：被引用消息原文（服务端为准，回退 excerpt）作为 `>` 引用块拼到 prompt 前。 */
+    private async buildQuotedPrompt(
+        session: AgentSession,
+        prompt: string,
+        replyTo: MessageReplyRef | null
+    ): Promise<string> {
+        if (!replyTo?.messageId) return prompt
+        const resolved = await this.messages
+            .getMessageText(session.userId, session.id, replyTo.messageId)
+            .catch(() => null)
+        const quoted = (resolved ?? replyTo.excerpt ?? '').trim()
+        if (!quoted) return prompt
+        const sender = replyTo.senderName?.trim() || '未知'
+        return [
+            `> [引用 ${sender}]`,
+            ...quoted.split('\n').map((line) => `> ${line}`),
+            '',
+            prompt
+        ].join('\n')
     }
 
     async subscribeTurn(
@@ -132,7 +165,11 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         return this.turnStream.subscribe(chatId, turnId)
     }
 
-    async abortTurn(session: AgentSession, chatId: string, turnId: string): Promise<{ aborted: true }> {
+    async abortTurn(
+        session: AgentSession,
+        chatId: string,
+        turnId: string
+    ): Promise<{ aborted: true }> {
         if (!(await this.turnStream.isTurnInSession(session.id, turnId))) {
             throw BusinessException.notFound(`Turn ${turnId} does not belong to chat ${chatId}`)
         }
@@ -185,17 +222,15 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
                       timeout = setTimeout(() => {
                           timedOut = true
                           abort.abort()
-                          reject(
-                              new Error(`Agent turn timed out after ${this.turnTimeoutMs}ms`)
-                          )
+                          reject(new Error(`Agent turn timed out after ${this.turnTimeoutMs}ms`))
                       }, this.turnTimeoutMs)
                       timeout.unref?.()
                   })
                 : null
         try {
-            const iterator = live.adapter.send(prompt, { signal: abort.signal })[
-                Symbol.asyncIterator
-            ]()
+            const iterator = live.adapter
+                .send(prompt, { signal: abort.signal })
+                [Symbol.asyncIterator]()
             while (true) {
                 const next = timeoutPromise
                     ? await Promise.race([iterator.next(), timeoutPromise])

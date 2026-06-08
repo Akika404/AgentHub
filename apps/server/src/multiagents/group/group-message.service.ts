@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
-import type { AgentQuestion, GroupMessageView, GroupSenderRole, TaskItem } from '@agenthub/shared'
+import type {
+    AgentQuestion,
+    GroupMessageView,
+    GroupSenderRole,
+    MessageReplyRef,
+    TaskItem
+} from '@agenthub/shared'
 import { GroupMessage } from './entities/group-message.entity.js'
 import { toGroupMessageView } from './mappers/group-message.mapper.js'
 
@@ -30,7 +36,8 @@ export class GroupMessageService {
         userId: string,
         senderRole: GroupSenderRole,
         text: string,
-        senderAgentId: string | null = null
+        senderAgentId: string | null = null,
+        replyTo: MessageReplyRef | null = null
     ): Promise<GroupMessageView> {
         const saved = await this.messageRepo.save(
             this.messageRepo.create({
@@ -40,10 +47,22 @@ export class GroupMessageService {
                 senderRole,
                 senderAgentId,
                 text,
-                payload: null
+                payload: null,
+                replyTo
             })
         )
         return toGroupMessageView(saved)
+    }
+
+    /**
+     * 取某条展示层消息的纯文本原文（引用注入用，按 messageId + groupId 归属校验）。
+     * 仅 text/system/options 有正文；其它卡片返回 null，由调用方回退到 client 摘录。
+     */
+    async getMessageText(groupId: string, messageId: string): Promise<string | null> {
+        const row = await this.messageRepo.findOne({
+            where: { id: messageId, groupChatId: groupId }
+        })
+        return row?.text ?? null
     }
 
     async appendSystem(groupId: string, userId: string, text: string): Promise<GroupMessageView> {

@@ -9,6 +9,7 @@
  */
 import type { AgentVendor, AgentCapabilities, AgentEvent } from './agent.js'
 import type { BlackboardTaskNode, BlackboardTaskStatus, BlackboardUpdate } from './blackboard.js'
+import type { MessageReplyRef } from './chat.js'
 
 // —— Project meta (lives on the group chat, not a separate table) ——
 
@@ -117,6 +118,13 @@ export interface UpdateGroupChatPayload {
 export interface ConverseGroupPayload {
   text: string
   mentions?: string[]
+  /**
+   * When present, this message quotes an earlier presentation_log message. The
+   * server resolves the quoted message's full text by `messageId` and injects it
+   * (with a staleness caveat) into the dispatched member's task context; the
+   * reference is also persisted on the user message for re-rendering.
+   */
+  replyTo?: MessageReplyRef
 }
 
 export interface StartGroupRunResult {

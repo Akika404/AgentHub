@@ -1,10 +1,25 @@
 import type {
     AgentQuestion,
     GroupMessageView,
+    MessageReplyRef,
     OptionItem,
     TaskItem
 } from '@agenthub/shared'
 import type { GroupMessage } from '../entities/group-message.entity.js'
+
+/** 校验引用快照字段齐全（防御脏数据），不全则视为无引用 */
+function toReplyRef(ref: MessageReplyRef | null): MessageReplyRef | undefined {
+    if (!ref || typeof ref !== 'object') return undefined
+    const { messageId, senderName, excerpt } = ref
+    if (
+        typeof messageId !== 'string' ||
+        typeof senderName !== 'string' ||
+        typeof excerpt !== 'string'
+    ) {
+        return undefined
+    }
+    return { messageId, senderName, excerpt }
+}
 
 /** GroupMessage 实体 -> GroupMessageView（按 kind 还原结构化负载） */
 export function toGroupMessageView(message: GroupMessage): GroupMessageView {
@@ -51,7 +66,14 @@ export function toGroupMessageView(message: GroupMessage): GroupMessageView {
         case 'system':
             return { ...base, kind: 'system', text: message.text ?? '' }
         case 'text':
-        default:
-            return { ...base, kind: 'text', text: message.text ?? '' }
+        default: {
+            const replyTo = toReplyRef(message.replyTo)
+            return {
+                ...base,
+                kind: 'text',
+                text: message.text ?? '',
+                ...(replyTo ? { replyTo } : {})
+            }
+        }
     }
 }

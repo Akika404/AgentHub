@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { AgentEvent } from './adapter/index.js'
+import type { MessageReplyRef } from '@agenthub/shared'
 import { AgentConfigService } from './agents/agent-config.service.js'
 import { AgentChatService } from './chats/agent-chat.service.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
@@ -64,8 +65,13 @@ export class AgentManager {
         return this.chats.listChatMessages(userId, chatId)
     }
 
-    startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
-        return this.chats.startTurn(userId, chatId, prompt)
+    startTurn(
+        userId: string,
+        chatId: string,
+        prompt: string,
+        replyTo: MessageReplyRef | null = null
+    ): Promise<{ turnId: string }> {
+        return this.chats.startTurn(userId, chatId, prompt, replyTo)
     }
 
     subscribeTurn(

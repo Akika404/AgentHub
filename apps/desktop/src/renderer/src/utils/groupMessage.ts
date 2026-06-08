@@ -71,5 +71,11 @@ export function groupMessageToDisplay(
       answerText: view.answerText
     }
   }
-  return { ...base, kind: 'text', sender, text: view.text }
+  return {
+    ...base,
+    kind: 'text',
+    sender,
+    text: view.text,
+    ...(view.replyTo ? { replyTo: view.replyTo } : {})
+  }
 }

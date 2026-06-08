@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import type { MessageReplyRef } from '@agenthub/shared'
 import type { AgentEvent, AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { AgentMessage } from '../entities/agent-message.entity.js'
@@ -53,7 +54,8 @@ export class AgentMessageHistoryService {
         agentId: string,
         sessionId: string,
         role: AgentMessage['role'],
-        text: string
+        text: string,
+        replyTo: MessageReplyRef | null = null
     ): Promise<AgentMessage | null> {
         const trimmed = text.trim()
         if (!trimmed) return null
@@ -63,9 +65,25 @@ export class AgentMessageHistoryService {
                 agentId,
                 sessionId,
                 role,
-                text: trimmed
+                text: trimmed,
+                replyTo
             })
         )
+    }
+
+    /**
+     * 取本会话内某条消息的纯文本（引用注入用，按 id + userId + sessionId 归属校验）。
+     * 取不到（含跨会话/未持久化的 client 临时 id）返回 null，由调用方回退 client excerpt。
+     */
+    async getMessageText(
+        userId: string,
+        sessionId: string,
+        messageId: string
+    ): Promise<string | null> {
+        const row = await this.messageRepo.findOne({
+            where: { id: messageId, userId, sessionId }
+        })
+        return row?.text ?? null
     }
 
     async saveSteps(messageId: string, sessionId: string, drafts: StepDraft[]): Promise<void> {
@@ -89,11 +107,7 @@ export class AgentMessageHistoryService {
         await this.stepRepo.save(entities)
     }
 
-    collectStep(
-        ev: AgentEvent,
-        drafts: StepDraft[],
-        toolIndexById: Map<string, number>
-    ): void {
+    collectStep(ev: AgentEvent, drafts: StepDraft[], toolIndexById: Map<string, number>): void {
         switch (ev.type) {
             case 'thinking':
                 drafts.push({ type: 'thinking', text: ev.text })

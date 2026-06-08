@@ -8,6 +8,7 @@ import {
   type ApiResponse,
   type CreateAgentChatPayload,
   type CreateAgentPayload,
+  type MessageReplyRef,
   type StartTurnResult,
   type UpdateAgentChatPayload,
   type UpdateAgentPayload
@@ -140,9 +141,13 @@ function subscribeTurn(
 async function startConverseStream(
   chatId: string,
   prompt: string,
-  handlers: AgentConverseHandlers
+  handlers: AgentConverseHandlers,
+  replyTo?: MessageReplyRef
 ): Promise<AgentConverseStream> {
-  const { turnId } = await http.post<StartTurnResult>(`/agent-chats/${chatId}/converse`, { prompt })
+  const { turnId } = await http.post<StartTurnResult>(`/agent-chats/${chatId}/converse`, {
+    prompt,
+    ...(replyTo ? { replyTo } : {})
+  })
   return subscribeTurn(chatId, turnId, handlers)
 }
 

@@ -1,6 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator'
-import type { ConverseGroupPayload } from '@agenthub/shared'
+import {
+    IsArray,
+    IsNotEmpty,
+    IsObject,
+    IsOptional,
+    IsString,
+    ValidateNested
+} from 'class-validator'
+import { Type } from 'class-transformer'
+import type { ConverseGroupPayload, MessageReplyRef } from '@agenthub/shared'
+
+/** 被引用消息的引用信息（镜像 shared MessageReplyRef）。 */
+export class MessageReplyRefDto implements MessageReplyRef {
+    @ApiProperty({ type: String, description: '被引用消息的 id' })
+    @IsString()
+    @IsNotEmpty()
+    messageId!: string
+
+    @ApiProperty({ type: String, description: '被引用消息发送者展示名' })
+    @IsString()
+    senderName!: string
+
+    @ApiProperty({
+        type: String,
+        description: '被引用消息内容摘录（仅渲染用，注入以服务端原文为准）'
+    })
+    @IsString()
+    excerpt!: string
+}
 
 /** 用户在群里发一条消息，启动一次群运行。 */
 export class ConverseGroupDto implements ConverseGroupPayload {
@@ -18,4 +45,12 @@ export class ConverseGroupDto implements ConverseGroupPayload {
     @IsArray()
     @IsString({ each: true })
     mentions?: string[]
+
+    /** 引用的历史消息；服务端按 messageId 取原文注入目标成员上下文。 */
+    @ApiPropertyOptional({ type: MessageReplyRefDto, description: '引用的历史消息' })
+    @IsOptional()
+    @IsObject()
+    @ValidateNested()
+    @Type(() => MessageReplyRefDto)
+    replyTo?: MessageReplyRefDto
 }

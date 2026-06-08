@@ -3,6 +3,8 @@
  * Mirrors `apps/server/src/multiagents/dto/*` and `adapter/types.ts`.
  */
 
+import type { MessageReplyRef } from './chat.js'
+
 export type AgentVendor = 'claude' | 'codex'
 
 export type AgentChatStatus = 'active' | 'suspended' | 'cleared'
@@ -91,6 +93,8 @@ export interface AgentChatMessageView {
   createdAt: string
   /** 该消息产出过程中的有序运行步骤；仅 agent 消息可能非空 */
   steps?: AgentRunStepView[]
+  /** when present, this user message is a reply that quotes another message */
+  replyTo?: MessageReplyRef
 }
 
 /** Vendor capability matrix (asymmetric: codex lacks mcp). */

@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
-import type { GroupSenderRole } from '@agenthub/shared'
+import type { GroupSenderRole, MessageReplyRef } from '@agenthub/shared'
 
 /** 展示层消息卡片类型 */
 export type GroupMessageKind = 'text' | 'system' | 'task-list' | 'options' | 'agent-question'
@@ -37,9 +37,13 @@ export class GroupMessage {
     @Column({ type: 'text', nullable: true })
     text!: string | null
 
-    /** 结构化负载：task-list 的 {heading,tasks}；options 的 {options,answered,...} */
+    /** 结构化负载：task-list 的 {heading,tasks}；options 的 {options,answered,...}；agent-question 的 {taskId,questions,answered} */
     @Column({ type: 'json', nullable: true })
     payload!: Record<string, unknown> | null
+
+    /** 当本条消息是对另一条消息的引用时，存被引用消息快照 {messageId,senderName,excerpt}；否则 NULL */
+    @Column({ type: 'json', nullable: true })
+    replyTo!: MessageReplyRef | null
 
     @CreateDateColumn()
     createdAt!: Date

@@ -92,7 +92,7 @@ export class AgentChatsController {
         @Param('chatId') chatId: string,
         @Body() dto: ConverseDto
     ): Promise<{ turnId: string }> {
-        return this.manager.startTurn(user.id, chatId, dto.prompt)
+        return this.manager.startTurn(user.id, chatId, dto.prompt, dto.replyTo ?? null)
     }
 
     @Sse(':chatId/turns/:turnId/events')

@@ -170,6 +170,8 @@ interface GroupMessageBase {
 export interface GroupTextMessageView extends GroupMessageBase {
   kind: 'text'
   text: string
+  /** when present, this message is a reply that quotes another message */
+  replyTo?: MessageReplyRef
 }
 
 export interface GroupSystemMessageView extends GroupMessageBase {

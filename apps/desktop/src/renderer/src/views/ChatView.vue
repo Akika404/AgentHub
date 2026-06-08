@@ -146,9 +146,20 @@ const activeGroup = computed(() =>
     : null
 )
 
-const activeMentionTargets = computed<MentionTarget[]>(
-  () => activeGroup.value?.members.map(groupMemberMentionTarget) ?? []
-)
+const activeMentionTargets = computed<MentionTarget[]>(() => {
+  const group = activeGroup.value
+  if (!group) return []
+  // Orchestrator 作为内置可提及目标（id 'orchestrator' 与路由保留关键字一致）。
+  const orchestrator: MentionTarget = {
+    id: 'orchestrator',
+    label: 'Orchestrator',
+    name: null,
+    avatar: null,
+    color: null,
+    description: '编排器'
+  }
+  return [orchestrator, ...group.members.map(groupMemberMentionTarget)]
+})
 
 const streaming = computed(() =>
   activeSessionKey.value ? runningChatIds.value.has(activeSessionKey.value) : false
@@ -588,7 +599,8 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatD
     kind: 'text',
     timestamp: view.createdAt,
     sender: view.role === 'user' ? currentUserSender() : agentSender(chat),
-    text: view.text
+    text: view.text,
+    ...(view.replyTo ? { replyTo: view.replyTo } : {})
   }
 }
 
@@ -1994,7 +2006,7 @@ async function sendAgentMessage(payload: {
     kind: 'text',
     timestamp: new Date().toISOString(),
     sender: currentUserSender(),
-    text: prompt,
+    text: payload.text,
     ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
   }
 
@@ -2024,7 +2036,7 @@ async function sendAgentMessage(payload: {
   }
 
   try {
-    stream = await agentChatApi.converse(chatId, prompt, proxyHandlers)
+    stream = await agentChatApi.converse(chatId, prompt, proxyHandlers, payload.replyTo)
     handlers = buildConverseHandlers(chat, stream.turnId)
     turnStreams.set(key, stream)
     markChatActiveTurn(chatId, stream.turnId)
@@ -2098,7 +2110,11 @@ async function sendGroupMessage(payload: {
   try {
     stream = await groupChatApi.converse(
       groupId,
-      { text: prompt, ...(payload.mentions?.length ? { mentions: payload.mentions } : {}) },
+      {
+        text: prompt,
+        ...(payload.mentions?.length ? { mentions: payload.mentions } : {}),
+        ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
+      },
       proxyHandlers
     )
     handlers = buildGroupRunHandlers(group, stream.runId)
@@ -2227,6 +2243,10 @@ function onReplyMessage(msg: ChatDisplayMessage): void {
     messageId: msg.id,
     senderName: messageSenderName(msg),
     excerpt: messageExcerpt(msg)
+  }
+  // 群聊里引用 agent/orchestrator 消息默认 @其发送者（单聊无对应 mention 目标，自动 no-op）。
+  if ('sender' in msg && (msg.sender.role === 'agent' || msg.sender.role === 'orchestrator')) {
+    messageInputRef.value?.insertMentionById(msg.sender.id)
   }
 }
 

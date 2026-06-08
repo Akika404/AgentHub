@@ -50,6 +50,10 @@ const RESUME_CONTINUITY: ContinuityResult = {
     needsOrchestratorJudgement: false
 }
 
+/** 引用消息注入目标成员上下文时的免责提示（结论性事实以当前产出物/黑板为准）。 */
+const QUOTE_CAVEAT =
+    '注意：以上为用户引用的历史消息，仅代表引用当时的情况，可能与当前产出物/黑板事实不一致。请以当前产出物与黑板为准，必要时自行重新确认其可靠性。'
+
 /**
  * GroupRunExecutor — 编排一次群运行（一条用户消息）。
  *
@@ -143,7 +147,14 @@ export class GroupRunExecutor implements OnModuleInit {
         })
 
         try {
-            await this.groupMessages.appendText(group.id, userId, 'user', text)
+            await this.groupMessages.appendText(
+                group.id,
+                userId,
+                'user',
+                text,
+                null,
+                payload.replyTo ?? null
+            )
             await this.runRepo.save(
                 this.runRepo.create({
                     id: runId,
@@ -159,16 +170,47 @@ export class GroupRunExecutor implements OnModuleInit {
             throw err
         }
 
+        // 引用：按 messageId 取 presentation_log 完整原文（不信任 client excerpt），
+        // 拼成带免责提示的引用前言折进 userText，使其贯穿路由判定/编排/派发到目标成员上下文。
+        const userText = await this.buildQuotedUserText(group.id, text, payload.replyTo)
+
         void this.runGroup({
             group,
             userId,
             runId,
             routeKind: route.routeKind,
             mentionedAgentIds: route.mentionedAgentIds,
-            userText: text,
+            userText,
             members: membersWithAgents
         })
         return { runId }
+    }
+
+    /**
+     * 引用前言装配：用户引用某历史消息时，把被引用消息原文 + 免责提示作为前言拼到本条消息前。
+     * 原文以服务端 presentation_log 为准（按 messageId 取，归属于本群）；取不到时回退 client excerpt。
+     * 无引用则原样返回。
+     */
+    private async buildQuotedUserText(
+        groupId: string,
+        text: string,
+        replyTo: ConverseGroupPayload['replyTo']
+    ): Promise<string> {
+        if (!replyTo?.messageId) return text
+        const resolved = await this.groupMessages
+            .getMessageText(groupId, replyTo.messageId)
+            .catch(() => null)
+        const quoted = (resolved ?? replyTo.excerpt ?? '').trim()
+        if (!quoted) return text
+        const sender = replyTo.senderName?.trim() || '未知'
+        return [
+            `<quoted_message sender="${sender}">`,
+            quoted,
+            '</quoted_message>',
+            QUOTE_CAVEAT,
+            '',
+            text
+        ].join('\n')
     }
 
     async abortRun(userId: string, groupId: string, runId: string): Promise<{ aborted: true }> {

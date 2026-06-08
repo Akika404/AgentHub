@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { randomUUID } from 'node:crypto'
 import { In, Repository } from 'typeorm'
 import { getCapabilities, type AgentEvent } from '../adapter/index.js'
+import type { MessageReplyRef } from '@agenthub/shared'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
 import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
@@ -155,12 +156,17 @@ export class AgentChatService {
         return this.messages.listChatMessages(userId, session.id)
     }
 
-    async startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
+    async startTurn(
+        userId: string,
+        chatId: string,
+        prompt: string,
+        replyTo: MessageReplyRef | null = null
+    ): Promise<{ turnId: string }> {
         const { session } = await this.loadChat(userId, chatId)
         if (session.archivedAt) {
             throw BusinessException.forbidden('Archived chat is read-only')
         }
-        return this.runtime.startTurn(session, prompt)
+        return this.runtime.startTurn(session, prompt, replyTo)
     }
 
     async subscribeTurn(

@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm'
+import type { MessageReplyRef } from '@agenthub/shared'
 
 export type AgentMessageRole = 'user' | 'agent' | 'system'
 
@@ -30,6 +31,10 @@ export class AgentMessage {
 
     @Column({ type: 'text' })
     text!: string
+
+    /** 当本条 user 消息是对另一条消息的引用时，存被引用消息快照 {messageId,senderName,excerpt}；否则 NULL */
+    @Column({ type: 'json', nullable: true })
+    replyTo!: MessageReplyRef | null
 
     @CreateDateColumn()
     createdAt!: Date
