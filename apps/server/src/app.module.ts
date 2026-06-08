@@ -8,6 +8,7 @@ import { AgentsModule } from './multiagents/agents.module.js'
 import { GroupChatModule } from './multiagents/group/group-chat.module.js'
 import { UserModule } from './user/user.module.js'
 import { PlatformProviderModule } from './platform-provider/platform-provider.module.js'
+import { WorkspaceFsModule } from './workspace-fs/workspace-fs.module.js'
 
 @Module({
     imports: [
@@ -35,7 +36,8 @@ import { PlatformProviderModule } from './platform-provider/platform-provider.mo
         AgentsModule,
         GroupChatModule,
         UserModule,
-        PlatformProviderModule
+        PlatformProviderModule,
+        WorkspaceFsModule
     ],
     controllers: [HealthController],
     providers: [HealthService]

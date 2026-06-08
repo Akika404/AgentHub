@@ -13,6 +13,7 @@ export { authApi } from './auth'
 export { agentApi, agentChatApi } from './agents'
 export { groupChatApi } from './group-chats'
 export { providerApi } from './providers'
+export { workspaceFsApi } from './workspace-fs'
 export { ApiError } from './http'
 
 export type * from '@agenthub/shared'

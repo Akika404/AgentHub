@@ -18,6 +18,7 @@ import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
 import BaseButton from './ui/BaseButton.vue'
+import ServerDirectoryPicker from './ServerDirectoryPicker.vue'
 
 const props = withDefaults(
   defineProps<{ open: boolean; providers: PlatformProviderView[]; agent?: AgentView | null }>(),
@@ -60,8 +61,7 @@ const form = reactive({
 const error = ref<string | null>(null)
 const avatarError = ref<string | null>(null)
 const submitting = ref(false)
-const selectingAgentDirectory = ref(false)
-const selectingSkillDirectory = ref(false)
+const directoryPickerTarget = ref<'agent' | 'skills' | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const suspendDependentWatchers = ref(false)
 
@@ -247,33 +247,26 @@ function onAvatarFileChange(event: Event): void {
     })
 }
 
-async function chooseAgentDirectory(): Promise<void> {
-  if (selectingAgentDirectory.value) return
-  selectingAgentDirectory.value = true
-  try {
-    const directory = await window.api.selectDirectory()
-    if (directory) {
-      form.workingDirectory = directory
-    }
-  } catch {
-    error.value = '选择 Agent 目录失败'
-  } finally {
-    selectingAgentDirectory.value = false
-  }
+function chooseAgentDirectory(): void {
+  directoryPickerTarget.value = 'agent'
 }
 
-async function chooseSkillDirectory(): Promise<void> {
-  if (!caps.value.supportsSkills || selectingSkillDirectory.value) return
-  selectingSkillDirectory.value = true
-  try {
-    const directories = await window.api.selectDirectories()
-    if (directories.length > 0) {
-      form.skillSourceDirectories = appendListValues(form.skillSourceDirectories, directories)
-    }
-  } catch {
-    error.value = '选择 Skill 目录失败'
-  } finally {
-    selectingSkillDirectory.value = false
+function chooseSkillDirectory(): void {
+  if (!caps.value.supportsSkills) return
+  directoryPickerTarget.value = 'skills'
+}
+
+function closeDirectoryPicker(): void {
+  directoryPickerTarget.value = null
+}
+
+function onDirectoryPicked(paths: string[]): void {
+  if (directoryPickerTarget.value === 'agent') {
+    form.workingDirectory = paths[0] ?? form.workingDirectory
+    return
+  }
+  if (directoryPickerTarget.value === 'skills') {
+    form.skillSourceDirectories = appendListValues(form.skillSourceDirectories, paths)
   }
 }
 
@@ -446,11 +439,10 @@ async function onSubmit(): Promise<void> {
             class="shrink-0 whitespace-nowrap"
             variant="secondary"
             size="lg"
-            :disabled="selectingAgentDirectory"
             @click="chooseAgentDirectory"
           >
             <span class="material-symbols-outlined text-xl">folder_open</span>
-            {{ selectingAgentDirectory ? '选择中...' : '选择目录' }}
+            选择目录
           </BaseButton>
         </div>
         <p class="mt-1 text-xs text-text-muted">
@@ -518,11 +510,11 @@ async function onSubmit(): Promise<void> {
             class="shrink-0 whitespace-nowrap"
             variant="secondary"
             size="lg"
-            :disabled="!caps.supportsSkills || selectingSkillDirectory"
+            :disabled="!caps.supportsSkills"
             @click="chooseSkillDirectory"
           >
             <span class="material-symbols-outlined text-xl">folder_open</span>
-            {{ selectingSkillDirectory ? '选择中...' : '选择目录' }}
+            选择目录
           </BaseButton>
         </div>
         <p class="mt-1 text-xs text-text-muted">
@@ -560,4 +552,16 @@ async function onSubmit(): Promise<void> {
       </BaseButton>
     </template>
   </Modal>
+
+  <ServerDirectoryPicker
+    :open="directoryPickerTarget !== null"
+    :title="directoryPickerTarget === 'skills' ? '选择服务器 Skill 目录' : '选择服务器 Agent 目录'"
+    :mode="directoryPickerTarget === 'skills' ? 'multiple' : 'single'"
+    :initial-path="directoryPickerTarget === 'agent' ? form.workingDirectory : ''"
+    :initial-paths="
+      directoryPickerTarget === 'skills' ? parseList(form.skillSourceDirectories) : []
+    "
+    @confirm="onDirectoryPicked"
+    @close="closeDirectoryPicker"
+  />
 </template>

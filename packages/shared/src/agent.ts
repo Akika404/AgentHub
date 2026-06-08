@@ -241,7 +241,7 @@ export interface CreateAgentPayload {
   agentHomeDirectory?: string
   workingDirectory: string
   systemPrompt?: string
-  /** Local skill directories to copy into this Agent's vendor skills directory. */
+  /** Server-side skill directories to copy into this Agent's vendor skills directory. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[]
   mcpServers?: Record<string, unknown>
@@ -264,7 +264,7 @@ export interface UpdateAgentPayload {
   model?: string
   workingDirectory?: string
   systemPrompt?: string | null
-  /** Local skill directories to copy into this Agent's vendor skills directory. */
+  /** Server-side skill directories to copy into this Agent's vendor skills directory. */
   skillSourceDirectories?: string[]
   skills?: 'all' | string[] | null
   mcpServers?: Record<string, unknown> | null
@@ -282,7 +282,7 @@ export interface CreateAgentChatPayload {
   title?: string
   /** Omit to let the server create AgentHome/TaskN. */
   workingDirectory?: string
-  /** Local skill directories copied into this chat's working directory vendor skills folder. */
+  /** Server-side skill directories copied into this chat's working directory vendor skills folder. */
   skillSourceDirectories?: string[]
   /** MCP servers shallow-merged with the Agent-level config. */
   mcpServers?: Record<string, unknown>

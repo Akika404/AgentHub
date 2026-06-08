@@ -9,6 +9,7 @@ import BaseButton from './ui/BaseButton.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
+import ServerDirectoryPicker from './ServerDirectoryPicker.vue'
 import { vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{
@@ -32,6 +33,7 @@ const form = reactive({
 
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
+const directoryPickerTarget = ref<'working' | 'skills' | null>(null)
 
 const selectedAgent = computed(
   () => props.agents.find((agent) => agent.id === form.agentId) ?? null
@@ -81,6 +83,39 @@ function parseList(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function appendListValue(value: string, item: string): string {
+  const items = parseList(value)
+  if (!items.includes(item)) items.push(item)
+  return items.join(', ')
+}
+
+function appendListValues(value: string, nextItems: string[]): string {
+  return nextItems.reduce((current, item) => appendListValue(current, item), value)
+}
+
+function chooseWorkingDirectory(): void {
+  directoryPickerTarget.value = 'working'
+}
+
+function chooseSkillDirectories(): void {
+  if (!selectedAgent.value?.capabilities.supportsSkills) return
+  directoryPickerTarget.value = 'skills'
+}
+
+function closeDirectoryPicker(): void {
+  directoryPickerTarget.value = null
+}
+
+function onDirectoryPicked(paths: string[]): void {
+  if (directoryPickerTarget.value === 'working') {
+    form.workingDirectory = paths[0] ?? form.workingDirectory
+    return
+  }
+  if (directoryPickerTarget.value === 'skills') {
+    form.skillSourceDirectories = appendListValues(form.skillSourceDirectories, paths)
+  }
 }
 
 function buildPayload(): CreateAgentChatPayload | string {
@@ -183,12 +218,24 @@ async function onSubmit(): Promise<void> {
           工作目录
           <span class="font-normal text-text-muted">（可选）</span>
         </label>
-        <BaseInput
-          v-model="form.workingDirectory"
-          mono
-          type="text"
-          placeholder="留空自动创建 AgentHome/TaskN"
-        />
+        <div class="flex gap-2">
+          <BaseInput
+            v-model="form.workingDirectory"
+            class="min-w-0 flex-1"
+            mono
+            type="text"
+            placeholder="留空自动创建 AgentHome/TaskN"
+          />
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            @click="chooseWorkingDirectory"
+          >
+            <span class="material-symbols-outlined text-xl">folder_open</span>
+            选择目录
+          </BaseButton>
+        </div>
         <p class="mt-1 text-xs text-text-muted">
           不能与 Agent Home 相同；留空时后端会选择下一个 Task 序号。
         </p>
@@ -207,13 +254,26 @@ async function onSubmit(): Promise<void> {
             {{ vendorLabel(selectedAgent.vendor) }} 不支持
           </span>
         </label>
-        <BaseInput
-          v-model="form.skillSourceDirectories"
-          :disabled="!selectedAgent?.capabilities.supportsSkills"
-          mono
-          type="text"
-          :placeholder="`/path/to/skill 或 /path/to/${selectedVendorConfigName}/skills`"
-        />
+        <div class="flex gap-2">
+          <BaseInput
+            v-model="form.skillSourceDirectories"
+            class="min-w-0 flex-1"
+            :disabled="!selectedAgent?.capabilities.supportsSkills"
+            mono
+            type="text"
+            :placeholder="`/path/to/skill 或 /path/to/${selectedVendorConfigName}/skills`"
+          />
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            :disabled="!selectedAgent?.capabilities.supportsSkills"
+            @click="chooseSkillDirectories"
+          >
+            <span class="material-symbols-outlined text-xl">folder_open</span>
+            选择目录
+          </BaseButton>
+        </div>
         <p class="mt-1 text-xs text-text-muted">
           导入到本聊天工作目录的 {{ selectedVendorConfigName }}/skills。
         </p>
@@ -251,4 +311,16 @@ async function onSubmit(): Promise<void> {
       </BaseButton>
     </template>
   </Modal>
+
+  <ServerDirectoryPicker
+    :open="directoryPickerTarget !== null"
+    :title="directoryPickerTarget === 'skills' ? '选择服务器 Skill 目录' : '选择服务器工作目录'"
+    :mode="directoryPickerTarget === 'skills' ? 'multiple' : 'single'"
+    :initial-path="directoryPickerTarget === 'working' ? form.workingDirectory : ''"
+    :initial-paths="
+      directoryPickerTarget === 'skills' ? parseList(form.skillSourceDirectories) : []
+    "
+    @confirm="onDirectoryPicked"
+    @close="closeDirectoryPicker"
+  />
 </template>

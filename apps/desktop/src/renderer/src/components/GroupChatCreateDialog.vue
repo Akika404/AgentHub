@@ -19,6 +19,7 @@ import BaseButton from './ui/BaseButton.vue'
 import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
+import ServerDirectoryPicker from './ServerDirectoryPicker.vue'
 import { vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{ open: boolean }>()
@@ -50,7 +51,7 @@ const form = reactive({
 
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
-const selectingWorkspaceDirectory = ref(false)
+const workspacePickerOpen = ref(false)
 
 const compatibleProviders = computed(() =>
   providers.value.filter((p) => isVendorProviderCompatible(form.orchestratorVendor, p.type))
@@ -171,19 +172,16 @@ async function onSubmit(): Promise<void> {
   }
 }
 
-async function chooseWorkspaceDirectory(): Promise<void> {
-  if (selectingWorkspaceDirectory.value) return
-  selectingWorkspaceDirectory.value = true
-  try {
-    const directory = await window.api.selectDirectory()
-    if (directory) {
-      form.workspaceDir = directory
-    }
-  } catch {
-    submitError.value = '选择共享工作区目录失败'
-  } finally {
-    selectingWorkspaceDirectory.value = false
-  }
+function chooseWorkspaceDirectory(): void {
+  workspacePickerOpen.value = true
+}
+
+function closeWorkspacePicker(): void {
+  workspacePickerOpen.value = false
+}
+
+function onWorkspacePicked(paths: string[]): void {
+  form.workspaceDir = paths[0] ?? form.workspaceDir
 }
 </script>
 
@@ -314,11 +312,10 @@ async function chooseWorkspaceDirectory(): Promise<void> {
             class="shrink-0 whitespace-nowrap"
             variant="secondary"
             size="lg"
-            :disabled="selectingWorkspaceDirectory"
             @click="chooseWorkspaceDirectory"
           >
             <span class="material-symbols-outlined text-xl">folder_open</span>
-            {{ selectingWorkspaceDirectory ? '选择中...' : '选择目录' }}
+            选择目录
           </BaseButton>
         </div>
       </div>
@@ -333,4 +330,13 @@ async function chooseWorkspaceDirectory(): Promise<void> {
       </BaseButton>
     </template>
   </Modal>
+
+  <ServerDirectoryPicker
+    :open="workspacePickerOpen"
+    title="选择服务器共享工作区"
+    mode="single"
+    :initial-path="form.workspaceDir"
+    @confirm="onWorkspacePicked"
+    @close="closeWorkspacePicker"
+  />
 </template>
