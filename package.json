@@ -8,7 +8,9 @@
     "build": "pnpm -F @agenthub/desktop build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -F @agenthub/desktop lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "sync:agent-configs": "node scripts/sync-agent-configs.mjs",
+    "check:agent-configs": "node scripts/sync-agent-configs.mjs --check"
   },
   "devDependencies": {
     "prettier": "^3.7.4"

@@ -22,3 +22,12 @@ Do NOT automatically run tests in the following situations:
 
 - After completing any feature addition or modification, always check for related documentation (e.g., README.md, the project's /doc folder). If the changes cause the actual implementation to diverge from the existing docs, update them to keep everything consistent.
 - Explicitly call out any TODOs, known limitations, skipped edge cases, or follow-up work introduced by this change.
+
+# When Commit
+
+- Proactively suggest a commit after completing an independent change
+- Strictly follow Conventional Commits: `type(scope): description`
+- Allowed types: feat, fix, refactor, style, docs, test, chore, perf
+- scope: affected module name (lowercase), separate multiple modules with commas, use `*` if unsure
+- description: lowercase, concise, describe "what was done" (not how)
+- Example: `feat(desktop): skeleton loaders for list/message loading states`

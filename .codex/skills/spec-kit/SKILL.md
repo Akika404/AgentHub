@@ -41,15 +41,15 @@ Spec 确认后，编写一份完整且详细的实现计划：
 代码完成后必须执行以下检查：
 
 1. **回顾 Spec**：重新审视 spec 文档，检查是否有：
-  - 功能遗漏
-  - 部分功能因受限未完全实现
+- 功能遗漏
+- 部分功能因受限未完全实现
 
-   若存在以上情况，**必须明确告知用户**，并同步修改 spec 文档（特别是 `Known Limits` 部分）。
+若存在以上情况，**必须明确告知用户**，并同步修改 spec 文档（特别是 `Known Limits` 部分）。
 
 2. **更新 README**：检查以下文件是否需要更新描述，若需要则修改：
-  - 根目录 `README.md`
-  - `apps/server/README.md`（如果存在）
-  - `apps/desktop/README.md`（如果存在）
+- 根目录 `README.md`
+- `apps/server/README.md`（如果存在）
+- `apps/desktop/README.md`（如果存在）
 
 ## Spec 文档格式
 
