@@ -148,4 +148,7 @@ docs/_book
 
 # TODO: where does this rule come from?
 test/
-
+!apps/android/app/src/test/
+!apps/android/app/src/test/**
+!apps/android/app/src/androidTest/
+!apps/android/app/src/androidTest/**

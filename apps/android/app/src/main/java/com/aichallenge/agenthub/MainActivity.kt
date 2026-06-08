@@ -4,13 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.aichallenge.agenthub.ui.AgentHubApp
+import com.aichallenge.agenthub.ui.AppViewModel
 import com.aichallenge.agenthub.ui.theme.AgentHubTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,30 +18,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AgentHubTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+            AgentHubTheme(dynamicColor = false) {
+                AgentHubRoot()
             }
         }
     }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    AgentHubTheme {
-        Greeting("AgentHub")
-    }
+private fun AgentHubRoot() {
+    val context = LocalContext.current
+    val viewModel: AppViewModel = viewModel(factory = AppViewModel.factory(context))
+    val state by viewModel.state.collectAsState()
+    AgentHubApp(state = state, viewModel = viewModel)
 }
