@@ -84,6 +84,8 @@ export function toAgentChatView(
         skills: session.skills,
         mcpServers: session.mcpServers,
         status: session.status,
+        isPinned: session.isPinned,
+        archivedAt: session.archivedAt ? session.archivedAt.toISOString() : null,
         hasLiveSession: session.sdkSessionId != null,
         activeTurnId,
         lastTurnAt: session.lastTurnAt ? session.lastTurnAt.toISOString() : null,

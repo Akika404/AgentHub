@@ -72,6 +72,14 @@ export class AgentSession {
     @Column({ type: 'varchar', length: 16, default: 'active' })
     status!: AgentSessionStatus
 
+    /** 跨端聊天列表置顶状态，仅对 scope=user 有展示意义 */
+    @Column({ type: 'boolean', default: false })
+    isPinned!: boolean
+
+    /** 归档时间；非空表示聊天只读，不能再发起新 turn */
+    @Column({ type: 'datetime', nullable: true })
+    archivedAt!: Date | null
+
     @Column({ type: 'datetime', nullable: true })
     lastTurnAt!: Date | null
 

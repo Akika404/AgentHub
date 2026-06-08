@@ -68,6 +68,10 @@ export interface GroupChatView {
   id: string
   title: string
   status: GroupChatStatus
+  /** Cross-device list pin state. */
+  isPinned: boolean
+  /** null means the group is writable; non-null means archived/read-only. */
+  archivedAt: string | null
   /** shared git workspace root (source of truth; Agent runtime dirs live under it) */
   workspaceDir: string
   orchestrator: OrchestratorConfigView
@@ -100,6 +104,9 @@ export interface UpdateGroupChatPayload {
   projectMeta?: ProjectMetaInput
   /** member Agent ids to add (add-only in MVP) */
   addMemberAgentIds?: string[]
+  isPinned?: boolean
+  /** true archives the group, false restores it to writable. */
+  archived?: boolean
 }
 
 /**

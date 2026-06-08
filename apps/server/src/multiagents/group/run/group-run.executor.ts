@@ -106,6 +106,9 @@ export class GroupRunExecutor implements OnModuleInit {
         const group = await this.groupChat.loadGroup(userId, groupId)
         const text = payload.text?.trim()
         if (!text) throw BusinessException.badRequest('Message text cannot be empty')
+        if (group.status === 'archived' || group.archivedAt) {
+            throw BusinessException.forbidden('Archived group chat is read-only')
+        }
 
         const runId = randomUUID()
         const owned = await this.runStream.acquireActiveRun(group.id, runId)

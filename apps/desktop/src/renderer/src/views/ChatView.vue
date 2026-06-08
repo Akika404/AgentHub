@@ -53,12 +53,12 @@ type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done
 type SessionKind = 'agent' | 'group'
 type ChatListItem = ChatSummary & {
   pinned: boolean
+  archived: boolean
   running?: boolean
   updatedAt?: string
   groupMembers?: GroupMemberView[]
 }
 
-const PINNED_CHAT_IDS_STORAGE_KEY = 'agenthub:pinned-chat-ids'
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
 const INSPECTOR_WIDTH_STORAGE_KEY = 'agenthub:right-inspector-width'
 const GLOBAL_SIDEBAR_WIDTH = 68
@@ -123,7 +123,7 @@ const messagesLoading = ref(false)
 const runningChatIds = ref<Set<string>>(new Set())
 const createChatOpen = ref(false)
 const createGroupOpen = ref(false)
-const pinnedChatIds = ref<Set<string>>(readPinnedChatIds())
+const chatSearchQuery = ref('')
 const deleteChatTarget = ref<ChatListItem | null>(null)
 const deleteChatConfirmOpen = ref(false)
 const deletingChat = ref(false)
@@ -154,15 +154,26 @@ const streaming = computed(() =>
   activeSessionKey.value ? runningChatIds.value.has(activeSessionKey.value) : false
 )
 
+const activeArchived = computed(() => {
+  const chat = activeChat.value
+  if (chat) return chat.archivedAt !== null
+  const group = activeGroup.value
+  return group ? group.archivedAt !== null || group.status === 'archived' : false
+})
+
+const activeInputDisabledReason = computed(() => (activeArchived.value ? '已归档' : undefined))
+
 const chats = computed<ChatListItem[]>(() => {
   const agentItems = agentChats.value.map((chat, index) => {
     const key = agentSessionKey(chat.id)
     const updatedAt = chat.lastTurnAt ?? chat.updatedAt
+    const title = titleForChat(chat)
+    const preview = previewForChat(chat)
     return {
       item: {
         id: key,
-        title: titleForChat(chat),
-        preview: previewForChat(chat),
+        title,
+        preview,
         kind: 'agent' as const,
         avatar: {
           kind: 'initials' as const,
@@ -172,37 +183,66 @@ const chats = computed<ChatListItem[]>(() => {
           tone: chat.status === 'active' ? ('primary' as const) : ('neutral' as const)
         },
         active: key === activeSessionKey.value,
-        pinned: pinnedChatIds.value.has(key),
+        pinned: chat.isPinned,
+        archived: chat.archivedAt !== null,
         running: isChatRunning(key),
         updatedAt
       },
       index,
-      updatedAt
+      updatedAt,
+      searchText: [
+        title,
+        preview,
+        chat.agent.name,
+        vendorLabel(chat.agent.vendor),
+        chat.agent.vendor,
+        chat.agent.model,
+        chat.archivedAt ? '已归档 archived' : ''
+      ].join(' ')
     }
   })
 
   const groupItems = groupChats.value.map((group, index) => {
     const key = groupSessionKey(group.id)
     const updatedAt = group.updatedAt
+    const preview = previewForGroup(group)
     return {
       item: {
         id: key,
         title: group.title,
-        preview: previewForGroup(group),
+        preview,
         kind: 'group' as const,
         avatar: { kind: 'icon' as const, icon: 'groups', tone: 'primary' as const },
         active: key === activeSessionKey.value,
-        pinned: pinnedChatIds.value.has(key),
+        pinned: group.isPinned,
+        archived: group.archivedAt !== null || group.status === 'archived',
         running: isChatRunning(key),
         updatedAt,
         groupMembers: group.members
       },
       index: agentChats.value.length + index,
-      updatedAt
+      updatedAt,
+      searchText: [
+        group.title,
+        preview,
+        '群聊 group',
+        group.projectMeta.name,
+        group.projectMeta.goal ?? '',
+        ...group.projectMeta.techStack,
+        ...group.members.flatMap((member) => [
+          member.name,
+          member.roleInGroup ?? '',
+          member.capabilitySummary ?? '',
+          vendorLabel(member.vendor)
+        ]),
+        group.archivedAt || group.status === 'archived' ? '已归档 archived' : ''
+      ].join(' ')
     }
   })
 
+  const query = normalizeSearchQuery(chatSearchQuery.value)
   return [...agentItems, ...groupItems]
+    .filter((entry) => !query || normalizeSearchQuery(entry.searchText).includes(query))
     .sort((a, b) => {
       if (a.item.pinned !== b.item.pinned) return a.item.pinned ? -1 : 1
       const aTime = Date.parse(a.updatedAt)
@@ -228,7 +268,12 @@ const chatDetail = computed<ChatDetail | null>(() => {
     return {
       id: chat.id,
       title: titleForChat(chat),
-      status: runtime.value.phase === 'error' ? 'Error' : statusLabel(chat.status),
+      status:
+        runtime.value.phase === 'error'
+          ? 'Error'
+          : chat.archivedAt
+            ? 'Archived'
+            : statusLabel(chat.status),
       agentCount: 1
     }
   }
@@ -259,6 +304,10 @@ function statusLabel(status: AgentChatView['status']): string {
 function groupStatusLabel(group: GroupChatView): string {
   if (isGroupRunning(group.id)) return 'Running'
   return group.status === 'active' ? 'Active' : 'Archived'
+}
+
+function normalizeSearchQuery(value: string): string {
+  return value.trim().toLocaleLowerCase()
 }
 
 function titleForChat(chat: AgentChatView): string {
@@ -330,20 +379,6 @@ function reconcileRunningIndicators(): void {
     if (group.activeRunId) next.add(groupSessionKey(group.id))
   }
   runningChatIds.value = next
-}
-
-function readPinnedChatIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(PINNED_CHAT_IDS_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : []
-    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [])
-  } catch {
-    return new Set()
-  }
-}
-
-function writePinnedChatIds(ids: Set<string>): void {
-  localStorage.setItem(PINNED_CHAT_IDS_STORAGE_KEY, JSON.stringify([...ids]))
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -424,25 +459,6 @@ function stopPaneResize(): void {
   document.body.style.userSelect = previousBodyUserSelect
   window.removeEventListener('pointermove', onPaneResizeMove)
   window.removeEventListener('pointerup', stopPaneResize)
-}
-
-function prunePinnedChatIds(): void {
-  const validIds = new Set([
-    ...agentChats.value.map((chat) => agentSessionKey(chat.id)),
-    ...groupChats.value.map((group) => groupSessionKey(group.id))
-  ])
-  const next = new Set([...pinnedChatIds.value].filter((id) => validIds.has(id)))
-  if (next.size === pinnedChatIds.value.size) return
-  pinnedChatIds.value = next
-  writePinnedChatIds(next)
-}
-
-function toggleChatPinned(chat: ChatListItem): void {
-  const next = new Set(pinnedChatIds.value)
-  if (next.has(chat.id)) next.delete(chat.id)
-  else next.add(chat.id)
-  pinnedChatIds.value = next
-  writePinnedChatIds(next)
 }
 
 function clearChatWorkspace(): void {
@@ -1075,7 +1091,6 @@ async function loadWorkspace(): Promise<void> {
     groupChats.value = groupList
     agents.value = agentList
     reconcileRunningIndicators()
-    prunePinnedChatIds()
     const currentStillExists = activeSessionKey.value
       ? sessionExists(activeSessionKey.value)
       : false
@@ -1093,7 +1108,6 @@ async function refreshChats(): Promise<void> {
   const [chatList, groupList] = await Promise.all([agentChatApi.list(), groupChatApi.list()])
   agentChats.value = chatList
   groupChats.value = groupList
-  prunePinnedChatIds()
   reconcileRunningIndicators()
   void syncTurnWatchers()
   void syncGroupRunWatchers()
@@ -1318,6 +1332,38 @@ function requestDeleteChat(chat: ChatListItem): void {
   deleteChatConfirmOpen.value = true
 }
 
+function replaceAgentChat(chat: AgentChatView): void {
+  agentChats.value = agentChats.value.map((item) => (item.id === chat.id ? chat : item))
+}
+
+function replaceGroupChat(group: GroupChatView): void {
+  groupChats.value = groupChats.value.map((item) => (item.id === group.id ? group : item))
+}
+
+async function toggleChatPinned(chat: ChatListItem): Promise<void> {
+  const kind = sessionKind(chat.id)
+  const id = sessionRawId(chat.id)
+  if (kind === 'agent') {
+    replaceAgentChat(await agentChatApi.update(id, { isPinned: !chat.pinned }))
+  } else if (kind === 'group') {
+    replaceGroupChat(await groupChatApi.update(id, { isPinned: !chat.pinned }))
+  }
+}
+
+async function toggleChatArchived(chat: ChatListItem): Promise<void> {
+  const kind = sessionKind(chat.id)
+  const id = sessionRawId(chat.id)
+  if (kind === 'agent') {
+    const updated = await agentChatApi.update(id, { archived: !chat.archived })
+    replaceAgentChat(updated)
+    if (updated.archivedAt && chat.id === activeSessionKey.value) pendingReply.value = null
+  } else if (kind === 'group') {
+    const updated = await groupChatApi.update(id, { archived: !chat.archived })
+    replaceGroupChat(updated)
+    if (updated.archivedAt && chat.id === activeSessionKey.value) pendingReply.value = null
+  }
+}
+
 function closeDeleteChatDialog(): void {
   if (deletingChat.value) return
   deleteChatConfirmOpen.value = false
@@ -1358,7 +1404,6 @@ async function confirmDeleteChat(): Promise<void> {
 
     messageCache.delete(chat.id)
     reconcileRunningIndicators()
-    prunePinnedChatIds()
 
     deleteChatConfirmOpen.value = false
     deleteChatTarget.value = null
@@ -1923,6 +1968,7 @@ async function sendMessage(payload: {
   replyTo?: MessageReplyRef
   mentions?: string[]
 }): Promise<void> {
+  if (activeArchived.value) return
   if (activeChat.value) {
     await sendAgentMessage(payload)
     return
@@ -1937,7 +1983,7 @@ async function sendAgentMessage(payload: {
   replyTo?: MessageReplyRef
 }): Promise<void> {
   const chat = activeChat.value
-  if (!chat || streaming.value) return
+  if (!chat || streaming.value || chat.archivedAt) return
 
   const chatId = chat.id
   const key = agentSessionKey(chatId)
@@ -2009,7 +2055,7 @@ async function sendGroupMessage(payload: {
   mentions?: string[]
 }): Promise<void> {
   const group = activeGroup.value
-  if (!group || streaming.value) return
+  if (!group || streaming.value || group.archivedAt || group.status === 'archived') return
 
   const groupId = group.id
   const key = groupSessionKey(groupId)
@@ -2086,12 +2132,12 @@ async function onSelectOption(payload: {
   option: OptionItem
 }): Promise<void> {
   const { message, option } = payload
-  if (message.answered) return
+  if (message.answered || activeArchived.value) return
   await sendMessage({ text: option.label })
 }
 
 async function onReplyOption(payload: { message: OptionsMessage; text: string }): Promise<void> {
-  if (payload.message.answered) return
+  if (payload.message.answered || activeArchived.value) return
   await sendMessage({ text: payload.text })
 }
 
@@ -2100,7 +2146,7 @@ async function onSubmitQuestion(payload: {
   text: string
   mentions: string[]
 }): Promise<void> {
-  if (payload.message.answered || streaming.value) return
+  if (payload.message.answered || streaming.value || activeArchived.value) return
   // 乐观置灰本地卡片，避免刷新前重复提交。
   const sessionKey = activeSessionKey.value
   if (sessionKey) {
@@ -2176,6 +2222,7 @@ async function onCopyMessage(msg: ChatDisplayMessage): Promise<void> {
 }
 
 function onReplyMessage(msg: ChatDisplayMessage): void {
+  if (activeArchived.value) return
   pendingReply.value = {
     messageId: msg.id,
     senderName: messageSenderName(msg),
@@ -2184,6 +2231,7 @@ function onReplyMessage(msg: ChatDisplayMessage): void {
 }
 
 function onMentionSender(senderId: string): void {
+  if (activeArchived.value) return
   messageInputRef.value?.insertMentionById(senderId)
 }
 
@@ -2211,10 +2259,12 @@ onUnmounted(() => {
       :chats="chats"
       :active-chat-id="activeSessionKey"
       :loading="chatsLoading"
+      @search="chatSearchQuery = $event"
       @select="selectChat"
       @create-chat="openCreateChatDialog"
       @create-group-chat="openCreateGroupDialog"
       @toggle-pin="toggleChatPinned"
+      @toggle-archive="toggleChatArchived"
       @delete-chat="requestDeleteChat"
     />
     <div class="relative z-20 h-full w-0 flex-shrink-0">
@@ -2241,7 +2291,8 @@ onUnmounted(() => {
         :messages="messages"
         :loading="messagesLoading"
         :mention-targets="activeMentionTargets"
-        :mention-disabled="streaming"
+        :mention-disabled="streaming || activeArchived"
+        :interaction-disabled="activeArchived"
         @select-option="onSelectOption"
         @reply-option="onReplyOption"
         @submit-question="onSubmitQuestion"
@@ -2253,7 +2304,8 @@ onUnmounted(() => {
       <MessageInput
         ref="messageInputRef"
         :reply-to="pendingReply"
-        :disabled="streaming || !activeSessionKey"
+        :disabled="streaming || !activeSessionKey || activeArchived"
+        :disabled-reason="activeInputDisabledReason"
         :streaming="streaming"
         :mention-targets="activeMentionTargets"
         @send="sendMessage"

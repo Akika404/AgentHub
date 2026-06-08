@@ -51,6 +51,8 @@ CREATE TABLE `agent_session`
   `mcpServers`           json                   DEFAULT NULL COMMENT '合并后的有效 MCP servers',
   `sdkSessionId`         varchar(128)           DEFAULT NULL COMMENT '底层 SDK 会话 id',
   `status`               varchar(16)   NOT NULL DEFAULT 'active' COMMENT 'active / suspended / cleared',
+  `isPinned`             tinyint       NOT NULL DEFAULT 0 COMMENT '聊天列表跨端置顶状态',
+  `archivedAt`           datetime               DEFAULT NULL COMMENT '归档时间；非空表示只读，不允许再发起新 turn',
   `lastTurnAt`           datetime               DEFAULT NULL COMMENT '最近一轮对话完成时间',
   `createdAt`            datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updatedAt`            datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),

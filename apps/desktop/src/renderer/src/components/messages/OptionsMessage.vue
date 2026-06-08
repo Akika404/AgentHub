@@ -4,7 +4,7 @@ import type { OptionItem, OptionsMessage } from '../../api'
 import { formatTime } from '../../utils/format'
 import SenderAvatar from './SenderAvatar.vue'
 
-const props = defineProps<{ message: OptionsMessage }>()
+const props = defineProps<{ message: OptionsMessage; disabled?: boolean }>()
 
 const emit = defineEmits<{
   (e: 'select', payload: { message: OptionsMessage; option: OptionItem }): void
@@ -15,12 +15,12 @@ const draft = ref('')
 const isComposing = ref(false)
 
 function onSelect(option: OptionItem): void {
-  if (props.message.answered) return
+  if (props.message.answered || props.disabled) return
   emit('select', { message: props.message, option })
 }
 
 function submitDraft(): void {
-  if (props.message.answered || isComposing.value) return
+  if (props.message.answered || props.disabled || isComposing.value) return
   const text = draft.value.trim()
   if (!text) return
   emit('reply', { message: props.message, text })
@@ -56,10 +56,10 @@ function onInputKey(event: KeyboardEvent): void {
           <li v-for="opt in message.options" :key="opt.id">
             <button
               type="button"
-              :disabled="message.answered"
+              :disabled="message.answered || disabled"
               :class="[
                 'w-full flex items-center space-x-2.5 px-3 py-2.5 rounded text-left transition-colors group',
-                message.answered
+                message.answered || disabled
                   ? message.answeredOptionId === opt.id
                     ? 'bg-primary-soft border border-primary/40 cursor-default'
                     : 'bg-background opacity-60 cursor-not-allowed'
@@ -86,7 +86,7 @@ function onInputKey(event: KeyboardEvent): void {
             </button>
           </li>
           <li
-            v-if="!message.answered"
+            v-if="!message.answered && !disabled"
             class="flex items-center space-x-2 bg-white border border-surface-border px-3 py-2 rounded focus-within:border-primary transition-colors"
           >
             <input

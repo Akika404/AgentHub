@@ -8,6 +8,7 @@ import BaseButton from './ui/BaseButton.vue'
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
   disabled?: boolean
+  disabledReason?: string
   streaming?: boolean
   mentionTargets?: MentionTarget[]
 }>()
@@ -213,9 +214,7 @@ function extractMentionIds(value: string): string[] {
   const ids = new Set<string>()
   for (const target of normalizedMentionTargets.value) {
     const pattern = new RegExp(
-      `(^|[\\s([{（，。！？、；：,.!?;:])@${escapeRegExp(
-        target.label
-      )}(?= )`,
+      `(^|[\\s([{（，。！？、；：,.!?;:])@${escapeRegExp(target.label)}(?= )`,
       'u'
     )
     if (pattern.test(value)) ids.add(target.id)
@@ -287,8 +286,11 @@ defineExpose({ insertMentionById })
           ref="inputRef"
           v-model="text"
           :disabled="disabled"
-          class="w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-md text-text-main placeholder-text-muted bg-transparent leading-[22px]"
-          placeholder="Type a message or /command..."
+          :class="[
+            'w-full h-[72px] p-0 resize-none border-none focus:ring-0 focus:outline-none text-md text-text-main bg-transparent leading-[22px]',
+            disabledReason ? 'placeholder:text-text-main' : 'placeholder-text-muted'
+          ]"
+          :placeholder="disabledReason ?? 'Type a message or /command...'"
           @compositionstart="isComposing = true"
           @compositionend="onCompositionEnd"
           @input="onInput"

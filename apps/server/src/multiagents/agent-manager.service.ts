@@ -5,6 +5,7 @@ import { AgentChatService } from './chats/agent-chat.service.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
 import { UpdateAgentDto } from './dto/update-agent.dto.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
+import { UpdateAgentChatDto } from './dto/update-agent-chat.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
@@ -53,6 +54,10 @@ export class AgentManager {
 
     getChat(userId: string, chatId: string): Promise<AgentChatView> {
         return this.chats.getChat(userId, chatId)
+    }
+
+    updateChat(userId: string, chatId: string, dto: UpdateAgentChatDto): Promise<AgentChatView> {
+        return this.chats.updateChat(userId, chatId, dto)
     }
 
     listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {

@@ -5,6 +5,7 @@ import {
     Get,
     MessageEvent,
     Param,
+    Patch,
     Post,
     Sse,
     UseGuards
@@ -18,6 +19,7 @@ import { CurrentUser } from '../user/auth/current-user.decorator.js'
 import type { User } from '../user/entities/user.entity.js'
 import { AgentManager } from './agent-manager.service.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
+import { UpdateAgentChatDto } from './dto/update-agent-chat.dto.js'
 import { ConverseDto } from './dto/converse.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
 import { AgentChatViewDto, DeleteAgentChatResultDto } from './dto/agent-chat-response.dto.js'
@@ -55,6 +57,17 @@ export class AgentChatsController {
     @ApiEnvelope(AgentChatViewDto)
     get(@CurrentUser() user: User, @Param('chatId') chatId: string): Promise<AgentChatView> {
         return this.manager.getChat(user.id, chatId)
+    }
+
+    @Patch(':chatId')
+    @ApiOperation({ summary: '修改单 Agent 聊天列表状态（置顶 / 归档）' })
+    @ApiEnvelope(AgentChatViewDto)
+    update(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Body() dto: UpdateAgentChatDto
+    ): Promise<AgentChatView> {
+        return this.manager.updateChat(user.id, chatId, dto)
     }
 
     @Get(':chatId/messages')
@@ -123,10 +136,7 @@ export class AgentChatsController {
     @Delete(':chatId')
     @ApiOperation({ summary: '删除单 Agent 聊天' })
     @ApiEnvelope(DeleteAgentChatResultDto)
-    remove(
-        @CurrentUser() user: User,
-        @Param('chatId') chatId: string
-    ): Promise<{ deleted: true }> {
+    remove(@CurrentUser() user: User, @Param('chatId') chatId: string): Promise<{ deleted: true }> {
         return this.manager.removeChat(user.id, chatId)
     }
 }

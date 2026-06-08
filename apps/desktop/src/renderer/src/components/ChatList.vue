@@ -9,6 +9,7 @@ import BaseSkeleton from './ui/BaseSkeleton.vue'
 
 type ChatListItem = ChatSummary & {
   pinned: boolean
+  archived: boolean
   running?: boolean
   updatedAt?: string
   groupMembers?: GroupMemberView[]
@@ -26,6 +27,7 @@ const emit = defineEmits<{
   (e: 'create-chat'): void
   (e: 'create-group-chat'): void
   (e: 'toggle-pin', chat: ChatListItem): void
+  (e: 'toggle-archive', chat: ChatListItem): void
   (e: 'delete-chat', chat: ChatListItem): void
 }>()
 
@@ -42,6 +44,11 @@ const chatMenuItems = computed<MenuItem[]>(() => {
       id: 'toggle-pin',
       label: chat?.pinned ? '取消置顶' : '置顶聊天',
       icon: chat?.pinned ? 'keep_off' : 'keep'
+    },
+    {
+      id: 'toggle-archive',
+      label: chat?.archived ? '取消归档' : '归档聊天',
+      icon: chat?.archived ? 'unarchive' : 'archive'
     },
     { id: 'delete', label: '删除聊天', icon: 'delete' }
   ]
@@ -79,6 +86,7 @@ function onChatMenuSelect(id: string): void {
   const chat = chatMenuTarget.value
   if (!chat) return
   if (id === 'toggle-pin') emit('toggle-pin', chat)
+  else if (id === 'toggle-archive') emit('toggle-archive', chat)
   else if (id === 'delete') emit('delete-chat', chat)
 }
 
@@ -173,7 +181,10 @@ onBeforeUnmount(() => {
         v-for="chat in chats"
         :key="chat.id"
         class="px-3 mx-2 rounded-md flex items-center space-x-3 cursor-pointer transition-colors group py-2.5 mb-1 select-none"
-        :class="chat.id === activeChatId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
+        :class="[
+          chat.id === activeChatId ? 'bg-surface-active' : 'hover:bg-surface-hover',
+          chat.archived ? 'opacity-75' : ''
+        ]"
         @click="emit('select', chat.id)"
         @contextmenu="openChatMenu($event, chat)"
       >
@@ -233,6 +244,12 @@ onBeforeUnmount(() => {
               群聊
             </span>
             <span
+              v-if="chat.archived"
+              class="flex-shrink-0 rounded bg-gray-150 px-1.5 py-0.5 text-[11px] font-medium leading-none text-text-muted"
+            >
+              已归档
+            </span>
+            <span
               v-if="chat.pinned"
               class="material-symbols-outlined text-[18px] leading-none text-primary flex-shrink-0"
               title="已置顶"
@@ -245,6 +262,13 @@ onBeforeUnmount(() => {
           </div>
           <div class="text-text-muted truncate mt-1 text-sm leading-4">{{ chat.preview }}</div>
         </div>
+      </div>
+      <div
+        v-if="!loading && chats.length === 0"
+        class="mx-4 mt-8 flex flex-col items-center text-center text-text-muted"
+      >
+        <span class="material-symbols-outlined mb-2 text-3xl">search_off</span>
+        <span class="text-sm">没有匹配的聊天</span>
       </div>
     </div>
     <ContextMenu

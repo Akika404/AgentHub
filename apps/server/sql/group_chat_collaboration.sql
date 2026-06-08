@@ -25,6 +25,8 @@ CREATE TABLE `group_chat`
     `userId`                 varchar(36)   NOT NULL COMMENT '归属用户 id（逻辑外键到 user.id，无 DB 约束）；按它做数据隔离',
     `title`                  varchar(128)  NOT NULL COMMENT '群聊标题',
     `status`                 varchar(16)   NOT NULL DEFAULT 'active' COMMENT '群聊状态：active / archived',
+    `isPinned`               tinyint       NOT NULL DEFAULT 0 COMMENT '聊天列表跨端置顶状态',
+    `archivedAt`             datetime               DEFAULT NULL COMMENT '归档时间；非空表示只读，不允许再发起新 run',
     `workspaceDir`           varchar(1024) NOT NULL COMMENT '共享 git 工作区根；产出物真相源与 worktree 基底',
     `orchestratorVendor`     varchar(16)   NOT NULL COMMENT 'Orchestrator 厂商：claude / codex',
     `orchestratorModel`      varchar(128)  NOT NULL COMMENT 'Orchestrator 使用的模型名',

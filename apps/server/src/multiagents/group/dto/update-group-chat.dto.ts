@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer'
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsArray, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
+import { IsArray, IsBoolean, IsObject, IsOptional, IsString, ValidateNested } from 'class-validator'
 import type { UpdateGroupChatPayload } from '@agenthub/shared'
 import { ProjectMetaInputDto } from './create-group-chat.dto.js'
 
@@ -23,4 +23,14 @@ export class UpdateGroupChatDto implements UpdateGroupChatPayload {
     @IsArray()
     @IsString({ each: true })
     addMemberAgentIds?: string[]
+
+    @ApiPropertyOptional({ type: Boolean, description: '是否置顶群聊' })
+    @IsOptional()
+    @IsBoolean()
+    isPinned?: boolean
+
+    @ApiPropertyOptional({ type: Boolean, description: 'true 归档；false 取消归档' })
+    @IsOptional()
+    @IsBoolean()
+    archived?: boolean
 }

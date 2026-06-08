@@ -9,6 +9,7 @@ import {
   type CreateAgentChatPayload,
   type CreateAgentPayload,
   type StartTurnResult,
+  type UpdateAgentChatPayload,
   type UpdateAgentPayload
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
@@ -160,6 +161,8 @@ export const agentChatApi = {
   list: () => http.get<AgentChatView[]>('/agent-chats'),
   get: (chatId: string) => http.get<AgentChatView>(`/agent-chats/${chatId}`),
   create: (payload: CreateAgentChatPayload) => http.post<AgentChatView>('/agent-chats', payload),
+  update: (chatId: string, payload: UpdateAgentChatPayload) =>
+    http.patch<AgentChatView>(`/agent-chats/${chatId}`, payload),
   listMessages: (chatId: string) =>
     http.get<AgentChatMessageView[]>(`/agent-chats/${chatId}/messages`),
   clear: (chatId: string) => http.post<AgentChatView>(`/agent-chats/${chatId}/clear`),

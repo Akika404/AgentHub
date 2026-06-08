@@ -80,6 +80,16 @@ export class GroupChatViewDto implements GroupChatView {
     @ApiProperty({ enum: GROUP_STATUSES, description: '群状态' })
     status!: GroupChatStatus
 
+    @ApiProperty({ type: Boolean, description: '是否在聊天列表置顶' })
+    isPinned!: boolean
+
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '归档时间；null 表示未归档且可继续输入'
+    })
+    archivedAt!: string | null
+
     @ApiProperty({ description: '共享 git 工作区根目录' })
     workspaceDir!: string
 

@@ -36,6 +36,8 @@ export function toGroupChatView(
         id: group.id,
         title: group.title,
         status: group.status,
+        isPinned: group.isPinned,
+        archivedAt: group.archivedAt ? group.archivedAt.toISOString() : null,
         workspaceDir: group.workspaceDir,
         orchestrator: {
             vendor: group.orchestratorVendor,

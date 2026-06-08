@@ -32,6 +32,14 @@ export class GroupChat {
     @Column({ type: 'varchar', length: 16, default: 'active' })
     status!: GroupChatStatus
 
+    /** 跨端聊天列表置顶状态 */
+    @Column({ type: 'boolean', default: false })
+    isPinned!: boolean
+
+    /** 归档时间；非空表示群聊只读，不能再发起新 run */
+    @Column({ type: 'datetime', nullable: true })
+    archivedAt!: Date | null
+
     /** 共享 git 工作区根（产出物真相源；成员 worktree / SDK home 挂在其下） */
     @Column({ type: 'varchar', length: 1024 })
     workspaceDir!: string

@@ -6,7 +6,7 @@ import BaseButton from '../ui/BaseButton.vue'
 import BaseInput from '../ui/BaseInput.vue'
 import SenderAvatar from './SenderAvatar.vue'
 
-const props = defineProps<{ message: AgentQuestionMessage }>()
+const props = defineProps<{ message: AgentQuestionMessage; disabled?: boolean }>()
 
 const emit = defineEmits<{
   (e: 'submit', payload: { message: AgentQuestionMessage; text: string; mentions: string[] }): void
@@ -31,7 +31,7 @@ function isSelected(q: AgentQuestion, opt: AgentQuestionOption): boolean {
 }
 
 function toggle(q: AgentQuestion, opt: AgentQuestionOption): void {
-  if (props.message.answered) return
+  if (props.message.answered || props.disabled) return
   const draft = answers[q.id]
   if (!draft) return
   if (q.multiSelect) {
@@ -50,7 +50,8 @@ function questionAnswered(q: AgentQuestion): boolean {
 }
 
 const canSubmit = computed(
-  () => !props.message.answered && props.message.questions.every(questionAnswered)
+  () =>
+    !props.message.answered && !props.disabled && props.message.questions.every(questionAnswered)
 )
 
 /** 把各题作答拼成一句可读中文回复。 */
@@ -107,11 +108,7 @@ function submit(): void {
 
         <!-- 待作答：逐题表单 -->
         <template v-else>
-          <div
-            v-for="q in message.questions"
-            :key="q.id"
-            class="mb-4 last:mb-0"
-          >
+          <div v-for="q in message.questions" :key="q.id" class="mb-4 last:mb-0">
             <div class="flex items-baseline gap-2 mb-2">
               <span
                 v-if="q.header"
@@ -127,10 +124,13 @@ function submit(): void {
                   type="button"
                   :class="[
                     'w-full flex items-start gap-2.5 px-3 py-2 rounded text-left transition-colors',
-                    isSelected(q, opt)
-                      ? 'bg-primary-soft border border-primary/40'
-                      : 'bg-background border border-transparent hover:bg-primary-soft active:bg-primary-softer'
+                    disabled
+                      ? 'bg-background border border-transparent opacity-60 cursor-not-allowed'
+                      : isSelected(q, opt)
+                        ? 'bg-primary-soft border border-primary/40'
+                        : 'bg-background border border-transparent hover:bg-primary-soft active:bg-primary-softer'
                   ]"
+                  :disabled="disabled"
                   @click="toggle(q, opt)"
                 >
                   <span
@@ -160,17 +160,12 @@ function submit(): void {
               v-if="allowsText(q)"
               v-model="answers[q.id].text"
               type="text"
+              :disabled="disabled"
               :placeholder="q.options.length ? '其它/补充（可选）' : '在此输入你的回答…'"
             />
           </div>
 
-          <BaseButton
-            variant="primary"
-            block
-            :disabled="!canSubmit"
-            class="mt-1"
-            @click="submit"
-          >
+          <BaseButton variant="primary" block :disabled="!canSubmit" class="mt-1" @click="submit">
             <span class="material-symbols-outlined text-xl">send</span>
             提交回复
           </BaseButton>

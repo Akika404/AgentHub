@@ -21,6 +21,8 @@ export interface AgentChatView {
     skills: 'all' | string[] | null
     mcpServers: Record<string, unknown> | null
     status: AgentSessionStatus
+    isPinned: boolean
+    archivedAt: string | null
     hasLiveSession: boolean
     activeTurnId: string | null
     lastTurnAt: string | null

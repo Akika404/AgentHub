@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { In, Repository } from 'typeorm'
 import { getCapabilities, type AgentEvent } from '../adapter/index.js'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
+import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
 import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { Agent } from '../entities/agent.entity.js'
@@ -94,6 +95,8 @@ export class AgentChatService {
             mcpServers: this.policy.mergeMcpServers(agent.mcpServers, dto.mcpServers),
             sdkSessionId: null,
             status: 'active',
+            isPinned: false,
+            archivedAt: null,
             lastTurnAt: null
         })
         const saved = await this.sessionRepo.save(session)
@@ -104,7 +107,7 @@ export class AgentChatService {
         const groupSessionIds = await this.listGroupMemberSessionIds(userId)
         const sessions = await this.sessionRepo.find({
             where: { userId, scope: 'user' },
-            order: { updatedAt: 'DESC', createdAt: 'DESC' }
+            order: { isPinned: 'DESC', updatedAt: 'DESC', createdAt: 'DESC' }
         })
         const userSessions = sessions.filter((session) => !groupSessionIds.has(session.id))
         if (userSessions.length === 0) return []
@@ -130,6 +133,23 @@ export class AgentChatService {
         return toAgentChatView(session, agent, activeTurnId)
     }
 
+    async updateChat(
+        userId: string,
+        chatId: string,
+        dto: UpdateAgentChatDto
+    ): Promise<AgentChatView> {
+        const { session, agent } = await this.loadChat(userId, chatId)
+
+        if (dto.isPinned !== undefined) session.isPinned = dto.isPinned
+        if (dto.archived !== undefined) {
+            session.archivedAt = dto.archived ? (session.archivedAt ?? new Date()) : null
+        }
+
+        const saved = await this.sessionRepo.save(session)
+        const activeTurnId = await this.runtime.getActiveTurn(session.id)
+        return toAgentChatView(saved, agent, activeTurnId)
+    }
+
     async listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
         const { session } = await this.loadChat(userId, chatId)
         return this.messages.listChatMessages(userId, session.id)
@@ -137,6 +157,9 @@ export class AgentChatService {
 
     async startTurn(userId: string, chatId: string, prompt: string): Promise<{ turnId: string }> {
         const { session } = await this.loadChat(userId, chatId)
+        if (session.archivedAt) {
+            throw BusinessException.forbidden('Archived chat is read-only')
+        }
         return this.runtime.startTurn(session, prompt)
     }
 

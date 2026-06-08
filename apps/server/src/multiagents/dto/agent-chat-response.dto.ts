@@ -74,6 +74,16 @@ export class AgentChatViewDto implements AgentChatView {
     @ApiProperty({ enum: SESSION_STATUSES, description: '会话状态' })
     status!: AgentSessionStatus
 
+    @ApiProperty({ type: Boolean, description: '是否在聊天列表置顶' })
+    isPinned!: boolean
+
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '归档时间；null 表示未归档且可继续输入'
+    })
+    archivedAt!: string | null
+
     @ApiProperty({ description: '是否有底层 SDK 会话句柄' })
     hasLiveSession!: boolean
 

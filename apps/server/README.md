@@ -267,7 +267,8 @@ src/multiagents/
   `apiKey/baseUrl`。
 - **AgentSession**（`agent_session` 表）：Agent 运行会话；`scope=user` 表示用户显式创建的单聊，`scope=group`
   表示群聊成员内部运行会话。它包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、SDK 句柄和状态；创建时会把
-  Agent Home 下的 vendor 配置同步到会话 cwd。`/agent-chats` 只暴露 `scope=user` 的单聊。
+  Agent Home 下的 vendor 配置同步到会话 cwd。`/agent-chats` 只暴露 `scope=user` 的单聊。`isPinned` 保存跨端置顶状态，
+  `archivedAt` 非空时聊天只读，服务端拒绝新的 `converse`。
 - **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
 - **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/progress/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
 - **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。
@@ -285,6 +286,7 @@ src/multiagents/
 | POST       | `/api/agent-chats`                              | 创建单 Agent 聊天                                                                      |
 | GET        | `/api/agent-chats`                              | 列出当前用户单 Agent 聊天                                                              |
 | GET        | `/api/agent-chats/:chatId`                      | 查询聊天详情                                                                           |
+| PATCH      | `/api/agent-chats/:chatId`                      | 修改聊天列表状态（`isPinned` / `archived`）                                            |
 | GET        | `/api/agent-chats/:chatId/messages`             | 查询聊天消息历史                                                                       |
 | POST       | `/api/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
 | GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流（回放+追尾），遇 `done` 结束                                            |
@@ -365,7 +367,7 @@ src/multiagents/group/
 | POST       | `/api/group-chats`                                              | 建群（成员 + Orchestrator 配置 + projectMeta；可传 `workspaceDir`，未传则后端分配；后端 git init） |
 | GET        | `/api/group-chats`                                              | 列出当前用户群聊                                                                                   |
 | GET        | `/api/group-chats/:id`                                          | 群详情（成员/Orchestrator/projectMeta/activeRunId）                                                |
-| PATCH      | `/api/group-chats/:id`                                          | 改标题 / projectMeta / 加成员                                                                      |
+| PATCH      | `/api/group-chats/:id`                                          | 改标题 / projectMeta / 加成员 / 修改列表状态（`isPinned` / `archived`）                            |
 | DELETE     | `/api/group-chats/:id`                                          | 删群（级联删数据库记录；工作区 `ACTIVE=false`，不删除目录）                                        |
 | GET        | `/api/group-chats/:id/messages`                                 | 展示层消息历史（升序，多发言者）                                                                   |
 | POST       | `/api/group-chats/:id/converse`                                 | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}`                                  |
@@ -380,6 +382,7 @@ src/multiagents/group/
 ### 运行与并发
 
 - 一次群运行 = 一条 Redis Stream（`GroupRunStream`，按单聊 `TurnStream` 范式），成员 turn 事件经 `member_turn_event` 透传，天然多端围观；活跃指针 `SET NX` 做「群」级跨实例互斥（已有活跃轮 → 返回冲突，引导用 `activeRunId` 围观）。
+- 群聊主体保存 `isPinned` 与 `archivedAt`：置顶状态跨端一致；`archivedAt` 非空或 `status=archived` 时群聊只读，服务端拒绝新的 `converse`。
 - 成员干活复用单聊适配层（`createAgent` + `agentToConfig`）和 `scope=group` 的成员内部 `AgentSession`，`workingDirectory` 指向该任务的 git worktree；私有 L1 落 `agent_message` / `agent_message_step`，但不会进入 `/agent-chats` 单聊列表。轻量成员聊天（例如打招呼、给一句观点）走 `memberTurns`，真实调用成员 Agent，但不创建黑板 task、不建 worktree、不做 report/diff。
 - 成员 task 成功返回后，会先经过 Orchestrator 的隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。

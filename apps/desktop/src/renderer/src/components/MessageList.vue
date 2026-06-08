@@ -17,6 +17,7 @@ const props = defineProps<{
   loading?: boolean
   mentionTargets?: MentionTarget[]
   mentionDisabled?: boolean
+  interactionDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -92,7 +93,7 @@ function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
             id: 'mention',
             label: `@${mentionTarget.label}`,
             icon: 'alternate_email',
-            disabled: props.mentionDisabled
+            disabled: props.mentionDisabled || props.interactionDisabled
           }
         ]
       : []),
@@ -102,7 +103,7 @@ function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
       icon: message.pinned ? 'keep_off' : 'keep'
     },
     { id: 'copy', label: '复制', icon: 'content_copy' },
-    { id: 'reply', label: '回复', icon: 'reply' }
+    { id: 'reply', label: '回复', icon: 'reply', disabled: props.interactionDisabled }
   ]
   menuOpen.value = true
 }
@@ -189,12 +190,14 @@ watch(scrollSignature, async () => {
         <OptionsMessageView
           v-else-if="msg.kind === 'options'"
           :message="msg"
+          :disabled="interactionDisabled"
           @select="emit('select-option', $event)"
           @reply="emit('reply-option', $event)"
         />
         <AgentQuestionMessageView
           v-else-if="msg.kind === 'agent-question'"
           :message="msg"
+          :disabled="interactionDisabled"
           @submit="emit('submit-question', $event)"
         />
         <AgentRunMessageView v-else-if="isAgentRunMessage(msg)" :message="msg" />

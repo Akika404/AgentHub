@@ -77,6 +77,8 @@ export class GroupChatService {
             userId,
             title,
             status: 'active',
+            isPinned: false,
+            archivedAt: null,
             workspaceDir: '',
             orchestratorVendor: payload.orchestrator.vendor,
             orchestratorModel: payload.orchestrator.model,
@@ -98,7 +100,10 @@ export class GroupChatService {
                       'Group workspaceDir'
                   )
                 : await this.userWorkspace.allocateGroupWorkspaceDirectory(userId, saved.id)
-            saved.workspaceDir = await this.workspace.createWorkspace(saved.id, requestedWorkspaceDir)
+            saved.workspaceDir = await this.workspace.createWorkspace(
+                saved.id,
+                requestedWorkspaceDir
+            )
             await this.groupRepo.save(saved)
         } catch (err) {
             await this.groupRepo.delete({ id: saved.id, userId })
@@ -129,7 +134,7 @@ export class GroupChatService {
     async listGroupChats(userId: string): Promise<GroupChatView[]> {
         const groups = await this.groupRepo.find({
             where: { userId },
-            order: { updatedAt: 'DESC', createdAt: 'DESC' }
+            order: { isPinned: 'DESC', updatedAt: 'DESC', createdAt: 'DESC' }
         })
         if (groups.length === 0) return []
         const activeRuns = await this.runStream.getActiveRuns(groups.map((g) => g.id))
@@ -170,6 +175,11 @@ export class GroupChatService {
             if (pm.goal !== undefined) group.projectGoal = pm.goal?.trim() ? pm.goal.trim() : null
             if (pm.techStack !== undefined) group.projectTechStack = pm.techStack
             if (pm.status !== undefined) group.projectStatus = pm.status
+        }
+        if (payload.isPinned !== undefined) group.isPinned = payload.isPinned
+        if (payload.archived !== undefined) {
+            group.status = payload.archived ? 'archived' : 'active'
+            group.archivedAt = payload.archived ? (group.archivedAt ?? new Date()) : null
         }
         await this.groupRepo.save(group)
 

@@ -203,6 +203,10 @@ export interface AgentChatView {
   /** Effective MCP config after shallow merge; chat keys override Agent keys. */
   mcpServers: Record<string, unknown> | null
   status: AgentChatStatus
+  /** Cross-device list pin state. */
+  isPinned: boolean
+  /** null means the chat is writable; non-null means archived/read-only. */
+  archivedAt: string | null
   hasLiveSession: boolean
   /**
    * Id of the turn currently running for this chat, or null when idle. A client
@@ -289,4 +293,11 @@ export interface CreateAgentChatPayload {
   skillSourceDirectories?: string[]
   /** MCP servers shallow-merged with the Agent-level config. */
   mcpServers?: Record<string, unknown>
+}
+
+/** Update single-Agent chat list metadata. Omitted fields are left unchanged. */
+export interface UpdateAgentChatPayload {
+  isPinned?: boolean
+  /** true archives the chat, false restores it to writable. */
+  archived?: boolean
 }
