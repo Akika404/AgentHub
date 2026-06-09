@@ -18,7 +18,8 @@ CREATE TABLE `agent`
   `color`              varchar(7)    NOT NULL DEFAULT '#3370ff' COMMENT '默认头像和列表标识色',
   `capabilitySummary`  text                   DEFAULT NULL COMMENT '能力摘要，用于群聊 Orchestrator 判断擅长什么',
   `vendor`             varchar(16)   NOT NULL COMMENT 'claude / codex',
-  `platformProviderId` varchar(36)   NOT NULL COMMENT '引用 platform_provider.id',
+  `executionMode`      varchar(16)   NOT NULL DEFAULT 'server' COMMENT '执行位置：server（服务器内 SDK 执行）/ local（转发到用户本机 CLI）',
+  `platformProviderId` varchar(36)            DEFAULT NULL COMMENT '引用 platform_provider.id；server 必填，local 为 NULL（用本机登录态）',
   `model`              varchar(128)  NOT NULL COMMENT '模型名',
   `agentHomeDirectory` varchar(1024) NOT NULL COMMENT 'Agent 私有持久目录',
   `workingDirectory`   varchar(1024) NOT NULL COMMENT 'Agent 默认工作目录',
@@ -43,6 +44,8 @@ CREATE TABLE `agent_session`
   `userId`               varchar(36)   NOT NULL COMMENT '归属用户 id',
   `agentId`              varchar(36)   NOT NULL COMMENT '关联 agent.id',
   `vendor`               varchar(16)   NOT NULL COMMENT '冗余厂商字段',
+  `executionMode`        varchar(16)   NOT NULL DEFAULT 'server' COMMENT '冗余执行位置；local 会话的 turn 转发到 deviceId 标记的设备执行',
+  `deviceId`             varchar(64)            DEFAULT NULL COMMENT 'local 会话上次执行所在设备 id；换设备无法 resume，需降级新建会话',
   `scope`                varchar(16)   NOT NULL DEFAULT 'user' COMMENT 'user / group；群聊内部成员会话不进单聊列表',
   `title`                varchar(128)           DEFAULT NULL COMMENT '可选聊天标题',
   `workingDirectory`     varchar(1024) NOT NULL COMMENT '本聊天工作目录',
@@ -105,3 +108,24 @@ CREATE TABLE `agent_message_step`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci COMMENT ='agent 消息的有序运行步骤（thinking/progress/tool/todo）';
+
+-- =============================================================================
+-- 增量迁移：本地执行模式（local execution mode）
+--
+-- 面向已部署、表已存在的库（生产 NODE_ENV=production 下 synchronize=false，需手动执行）。
+-- 开发环境 synchronize=true 会自动建列，无需运行本段。
+-- 三处变更均向后兼容：新列带默认 'server'，存量行自动回填为现有行为；
+-- platformProviderId 放宽为可空对已有非空数据无影响。可在线执行，无需停机或回填脚本。
+-- =============================================================================
+
+ALTER TABLE `agent`
+  ADD COLUMN `executionMode` varchar(16) NOT NULL DEFAULT 'server'
+    COMMENT '执行位置：server / local' AFTER `vendor`,
+  MODIFY COLUMN `platformProviderId` varchar(36) DEFAULT NULL
+    COMMENT '引用 platform_provider.id；server 必填，local 为 NULL';
+
+ALTER TABLE `agent_session`
+  ADD COLUMN `executionMode` varchar(16) NOT NULL DEFAULT 'server'
+    COMMENT '冗余执行位置' AFTER `vendor`,
+  ADD COLUMN `deviceId` varchar(64) DEFAULT NULL
+    COMMENT 'local 会话上次执行所在设备 id' AFTER `executionMode`;
