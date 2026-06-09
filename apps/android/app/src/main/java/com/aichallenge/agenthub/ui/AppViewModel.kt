@@ -81,7 +81,11 @@ data class DirectoryPickerState(
     val preferredKind: String? = null,
     val roots: List<ServerDirectoryRoot> = emptyList(),
     val listing: ServerDirectoryListing? = null,
+    val pathDraft: String = "",
     val selectedPaths: List<String> = emptyList(),
+    val newFolderOpen: Boolean = false,
+    val newFolderName: String = "",
+    val newFolderError: String? = null,
     val loading: Boolean = false,
     val error: String? = null
 )
@@ -508,6 +512,7 @@ class AppViewModel(
                         title = title,
                         mode = mode,
                         preferredKind = preferredKind,
+                        pathDraft = initialPaths.firstOrNull().orEmpty(),
                         selectedPaths = initialPaths,
                         loading = true
                     )
@@ -520,7 +525,14 @@ class AppViewModel(
                     ?: roots.firstOrNull()?.path
                 val listing = workspaceFsRepository.directories(initialPath)
                 mutableState.update { state ->
-                    state.copy(directoryPicker = state.directoryPicker.copy(roots = roots, listing = listing, loading = false))
+                    state.copy(
+                        directoryPicker = state.directoryPicker.copy(
+                            roots = roots,
+                            listing = listing,
+                            pathDraft = listing.path,
+                            loading = false
+                        )
+                    )
                 }
             }.onFailure { err ->
                 mutableState.update { state ->
@@ -539,12 +551,33 @@ class AppViewModel(
             mutableState.update { it.copy(directoryPicker = it.directoryPicker.copy(loading = true, error = null)) }
             runCatching { workspaceFsRepository.directories(path) }
                 .onSuccess { listing ->
-                    mutableState.update { it.copy(directoryPicker = it.directoryPicker.copy(listing = listing, loading = false)) }
+                    mutableState.update {
+                        it.copy(
+                            directoryPicker = it.directoryPicker.copy(
+                                listing = listing,
+                                pathDraft = listing.path,
+                                newFolderOpen = false,
+                                newFolderName = "",
+                                newFolderError = null,
+                                loading = false
+                            )
+                        )
+                    }
                 }
                 .onFailure { err ->
                     mutableState.update { it.copy(directoryPicker = it.directoryPicker.copy(loading = false, error = errorMessage(err, "读取服务器目录失败"))) }
                 }
         }
+    }
+
+    fun updateDirectoryPathDraft(path: String) {
+        mutableState.update { it.copy(directoryPicker = it.directoryPicker.copy(pathDraft = path)) }
+    }
+
+    fun openDirectoryDraft() {
+        val picker = mutableState.value.directoryPicker
+        val path = picker.pathDraft.trim().ifBlank { picker.listing?.path.orEmpty() }
+        if (path.isNotBlank()) openDirectory(path)
     }
 
     fun toggleDirectorySelection(path: String) {
@@ -563,10 +596,75 @@ class AppViewModel(
         }
     }
 
+    fun openNewFolderEditor() {
+        mutableState.update {
+            it.copy(
+                directoryPicker = it.directoryPicker.copy(
+                    newFolderOpen = true,
+                    newFolderName = "",
+                    newFolderError = null
+                )
+            )
+        }
+    }
+
+    fun closeNewFolderEditor() {
+        mutableState.update {
+            it.copy(
+                directoryPicker = it.directoryPicker.copy(
+                    newFolderOpen = false,
+                    newFolderName = "",
+                    newFolderError = null
+                )
+            )
+        }
+    }
+
+    fun updateNewFolderName(name: String) {
+        mutableState.update {
+            it.copy(directoryPicker = it.directoryPicker.copy(newFolderName = name, newFolderError = null))
+        }
+    }
+
+    fun useNewFolderPath() {
+        val picker = mutableState.value.directoryPicker
+        val name = picker.newFolderName.trim()
+        val base = picker.listing?.path ?: picker.pathDraft.trim()
+        val error = when {
+            name.isBlank() -> "请输入文件夹名称"
+            name == "." || name == ".." || name.contains('/') || name.contains('\\') -> "文件夹名称不能包含路径分隔符"
+            base.isBlank() -> "请先选择服务器目录"
+            else -> null
+        }
+        if (error != null) {
+            mutableState.update { it.copy(directoryPicker = it.directoryPicker.copy(newFolderError = error)) }
+            return
+        }
+
+        val path = joinServerPath(base, name)
+        mutableState.update { state ->
+            val pickerState = state.directoryPicker
+            val selected = if (pickerState.mode == DirectoryMode.Multiple) {
+                (pickerState.selectedPaths + path).distinct()
+            } else {
+                pickerState.selectedPaths
+            }
+            state.copy(
+                directoryPicker = pickerState.copy(
+                    pathDraft = path,
+                    selectedPaths = selected,
+                    newFolderOpen = false,
+                    newFolderName = "",
+                    newFolderError = null
+                )
+            )
+        }
+    }
+
     fun confirmDirectorySelection() {
         val picker = mutableState.value.directoryPicker
-        val current = picker.listing?.path
-        val selected = if (picker.selectedPaths.isNotEmpty()) picker.selectedPaths else listOfNotNull(current)
+        val current = picker.pathDraft.trim().ifBlank { picker.listing?.path.orEmpty() }
+        val selected = if (picker.selectedPaths.isNotEmpty()) picker.selectedPaths else listOf(current).filter { it.isNotBlank() }
         mutableState.update { state ->
             state.copy(
                 pickedPaths = state.pickedPaths + (picker.target to selected),
@@ -662,6 +760,22 @@ class AppViewModel(
         val inner = if (type == "member_turn_event") event.jsonObject["event"] else null
         if (inner != null) {
             updateLastRunMessage(key) { reduceAgentRun(it, inner) }
+        } else if (type == "task_status") {
+            val status = event.jsonObject["status"]?.jsonPrimitive?.contentOrNull
+            val summary = event.jsonObject["summary"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val terminalStatuses = setOf("done", "failed", "blocked", "waiting_input")
+            if (summary.isNotBlank() && status != null && status in terminalStatuses) {
+                updateLastRunMessage(key) {
+                    val nextText = listOf(it.text, summary)
+                        .filter { text -> text.isNotBlank() }
+                        .distinct()
+                        .joinToString("\n\n")
+                    it.copy(
+                        status = if (status == "failed" || status == "blocked") "error" else "responding",
+                        text = nextText
+                    )
+                }
+            }
         } else if (type == "orchestrator_report") {
             val text = event.jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
             updateLastRunMessage(key) { it.copy(status = "responding", text = listOf(it.text, text).filter { v -> v.isNotBlank() }.joinToString("\n\n")) }
@@ -802,6 +916,16 @@ class AppViewModel(
 
     private fun errorMessage(err: Throwable, fallback: String): String =
         if (err is ApiException) err.message else err.message?.takeIf { it.isNotBlank() } ?: fallback
+
+    private fun joinServerPath(base: String, name: String): String {
+        val trimmedBase = base.trim().trimEnd('/', '\\')
+        val separator = if (base.contains('\\')) "\\" else "/"
+        return if (trimmedBase.matches(Regex("^[A-Za-z]:$"))) {
+            "$trimmedBase$separator${name.trim()}"
+        } else {
+            "${trimmedBase.ifBlank { separator }}${if (trimmedBase.isBlank()) "" else separator}${name.trim()}"
+        }
+    }
 
     override fun onCleared() {
         activeStreams.values.forEach { it.handle.close() }

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Groups
@@ -1121,6 +1122,14 @@ private fun CreateGroupSheet(state: AppUiState, viewModel: AppViewModel, onClose
 @Composable
 private fun DirectoryPickerSheet(state: AppUiState, viewModel: AppViewModel) {
     val picker = state.directoryPicker
+    val canCreateFolder = picker.listing?.root?.kind == "agent_workspace"
+    val confirmLabel = if (picker.mode == DirectoryMode.Multiple) {
+        "确认选择"
+    } else if (picker.pathDraft.trim().isNotBlank() && picker.pathDraft.trim() != picker.listing?.path) {
+        "使用输入路径"
+    } else {
+        "选择当前目录"
+    }
     ModalBottomSheet(onDismissRequest = viewModel::closeDirectoryPicker) {
         SheetContent(title = picker.title) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1130,6 +1139,20 @@ private fun DirectoryPickerSheet(state: AppUiState, viewModel: AppViewModel) {
                 }
                 IconButton(onClick = { viewModel.openDirectory(picker.listing?.path) }, enabled = !picker.loading) {
                     Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = picker.pathDraft,
+                    onValueChange = viewModel::updateDirectoryPathDraft,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("服务器路径") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { viewModel.openDirectoryDraft() })
+                )
+                Button(onClick = viewModel::openDirectoryDraft, enabled = !picker.loading && picker.pathDraft.trim().isNotBlank()) {
+                    Text("转到")
                 }
             }
             if (picker.roots.isNotEmpty()) {
@@ -1147,8 +1170,43 @@ private fun DirectoryPickerSheet(state: AppUiState, viewModel: AppViewModel) {
                 TextButton(onClick = { viewModel.openDirectory(picker.listing?.parentPath) }, enabled = picker.listing?.parentPath != null && !picker.loading) {
                     Text("上一级")
                 }
+                TextButton(onClick = viewModel::openNewFolderEditor, enabled = canCreateFolder && !picker.loading) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("新建文件夹")
+                }
                 TextButton(onClick = { picker.listing?.path?.let(viewModel::toggleDirectorySelection) }, enabled = picker.mode == DirectoryMode.Multiple && picker.listing != null) {
                     Text("加入当前")
+                }
+            }
+            AnimatedVisibility(picker.newFolderOpen) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = picker.newFolderName,
+                            onValueChange = viewModel::updateNewFolderName,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("文件夹名称") },
+                            singleLine = true,
+                            isError = picker.newFolderError != null,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { viewModel.useNewFolderPath() })
+                        )
+                        picker.newFolderError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = viewModel::closeNewFolderEditor, modifier = Modifier.weight(1f)) {
+                                Text("取消")
+                            }
+                            Button(onClick = viewModel::useNewFolderPath, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Check, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("使用")
+                            }
+                        }
+                    }
                 }
             }
             if (picker.loading) {
@@ -1168,8 +1226,12 @@ private fun DirectoryPickerSheet(state: AppUiState, viewModel: AppViewModel) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = viewModel::closeDirectoryPicker, modifier = Modifier.weight(1f)) { Text("取消") }
-                Button(onClick = viewModel::confirmDirectorySelection, modifier = Modifier.weight(1f), enabled = picker.listing != null) {
-                    Text(if (picker.mode == DirectoryMode.Single) "选择当前目录" else "确认选择")
+                Button(
+                    onClick = viewModel::confirmDirectorySelection,
+                    modifier = Modifier.weight(1f),
+                    enabled = picker.selectedPaths.isNotEmpty() || picker.pathDraft.trim().isNotBlank() || picker.listing != null
+                ) {
+                    Text(confirmLabel)
                 }
             }
         }

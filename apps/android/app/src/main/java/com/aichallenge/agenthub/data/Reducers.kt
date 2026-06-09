@@ -151,7 +151,22 @@ fun groupMessageToDisplay(view: GroupMessageView, members: List<GroupMemberView>
             view.answered == true,
             view.answerText
         )
-        else -> TextDisplayMessage(view.id, baseChatId, view.createdAt, sender, view.text.orEmpty(), view.replyTo)
+        else -> {
+            val steps = view.steps.mapNotNull(::runStepFromView)
+            if (view.senderRole == "agent" && steps.isNotEmpty()) {
+                AgentRunDisplayMessage(
+                    id = view.id,
+                    chatId = baseChatId,
+                    timestamp = view.createdAt,
+                    sender = sender,
+                    status = "done",
+                    steps = steps,
+                    text = view.text.orEmpty()
+                )
+            } else {
+                TextDisplayMessage(view.id, baseChatId, view.createdAt, sender, view.text.orEmpty(), view.replyTo)
+            }
+        }
     }
 }
 

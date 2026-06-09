@@ -303,6 +303,7 @@ data class GroupMessageView(
     val createdAt: String,
     val kind: String,
     val text: String? = null,
+    val steps: List<AgentRunStepView> = emptyList(),
     val heading: String? = null,
     val tasks: List<TaskItem> = emptyList(),
     val options: List<OptionItem> = emptyList(),

@@ -5,13 +5,17 @@ import com.aichallenge.agenthub.data.AgentChatAgentSummary
 import com.aichallenge.agenthub.data.AgentChatView
 import com.aichallenge.agenthub.data.AgentRunDisplayMessage
 import com.aichallenge.agenthub.data.AgentRunStep
+import com.aichallenge.agenthub.data.AgentRunStepView
 import com.aichallenge.agenthub.data.AgentTodoItem
 import com.aichallenge.agenthub.data.ApiResponse
 import com.aichallenge.agenthub.data.CreateAgentPayload
 import com.aichallenge.agenthub.data.DeletedResult
+import com.aichallenge.agenthub.data.GroupMemberView
+import com.aichallenge.agenthub.data.GroupMessageView
 import com.aichallenge.agenthub.data.RuntimeState
 import com.aichallenge.agenthub.data.SenderInfo
 import com.aichallenge.agenthub.data.deriveChatItems
+import com.aichallenge.agenthub.data.groupMessageToDisplay
 import com.aichallenge.agenthub.data.reduceAgentRun
 import com.aichallenge.agenthub.data.reduceRuntime
 import com.aichallenge.agenthub.data.validateAgentForm
@@ -92,6 +96,43 @@ class ReducersTest {
         val runtime = reduceRuntime(RuntimeState(), event)
 
         assertEquals(listOf(AgentTodoItem("ship", "in_progress")), runtime.todos)
+    }
+
+    @Test
+    fun groupAgentMessageWithStepsRendersAsRunMessage() {
+        val view = GroupMessageView(
+            id = "message-1",
+            groupChatId = "group-1",
+            senderRole = "agent",
+            senderAgentId = "agent-1",
+            createdAt = "2026-01-01T00:00:00.000Z",
+            kind = "text",
+            text = "完成了移动端同步",
+            steps = listOf(
+                AgentRunStepView(
+                    id = "step-1",
+                    seq = 0,
+                    type = "thinking",
+                    text = "分析最近提交"
+                )
+            )
+        )
+        val member = GroupMemberView(
+            agentId = "agent-1",
+            name = "Android",
+            color = "#3370ff",
+            vendor = "codex",
+            capabilities = AgentCapabilities()
+        )
+
+        val message = groupMessageToDisplay(view, listOf(member), "me")
+
+        assertTrue(message is AgentRunDisplayMessage)
+        val run = message as AgentRunDisplayMessage
+        assertEquals("done", run.status)
+        assertEquals("Android", run.sender.name)
+        assertEquals("完成了移动端同步", run.text)
+        assertEquals("思考中", run.steps.single().label)
     }
 
     @Test
