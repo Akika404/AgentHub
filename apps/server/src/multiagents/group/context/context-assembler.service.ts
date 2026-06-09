@@ -107,6 +107,7 @@ export class ContextAssembler {
         // —— 分段构建（保底段 + 可裁剪段）——
         const keepSections: string[] = []
         keepSections.push(this.renderTaskContext(input.task))
+        keepSections.push(this.renderArtifactWritebackPolicy())
         const pinnedContext = await this.groupMessages.pinnedContext(input.groupId)
         if (pinnedContext) keepSections.push(pinnedContext)
         if (targetArtifacts.length) keepSections.push(this.renderTargetArtifacts(targetArtifacts))
@@ -221,6 +222,14 @@ export class ContextAssembler {
         }
         if (task.outputSpec) lines.push(`output_spec: ${task.outputSpec}`)
         return lines.join('\n')
+    }
+
+    private renderArtifactWritebackPolicy(): string {
+        return [
+            '# Artifact writeback policy',
+            '- 如果本轮创建或修改了任何可交付文件（代码、页面、文档、设计稿、测试报告等），必须在最终 report.affected.artifacts 中列出所有产出物的工作区相对路径。',
+            '- 这些路径会被服务端写入黑板产出物记录；侧边栏“产出物”只展示黑板中的产出物。没有产出物时才留空。'
+        ].join('\n')
     }
 
     private renderTargetArtifacts(artifacts: BlackboardArtifact[]): string {

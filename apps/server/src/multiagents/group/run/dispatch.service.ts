@@ -97,9 +97,10 @@ const REPORT_INSTRUCTION = `
 # 收尾报告（必须）
 完成实际工作后（用你的文件工具 read→plan→patch→test），在输出最后给出一个 JSON 报告，放在 \`\`\`report 代码块里：
 \`\`\`report
-{"summary":"面向用户的交付摘要：详细说明完成了什么、产物/入口在哪里、关键能力与验证结果；如有偏差或注意事项也要写清楚。不要在 summary 里写 JSON/report/code fence。","affected":{"artifacts":[],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
+{"summary":"面向用户的交付摘要：详细说明完成了什么、产物/入口在哪里、关键能力与验证结果；如有偏差或注意事项也要写清楚。不要在 summary 里写 JSON/report/code fence。","affected":{"artifacts":["新增或修改的产出物工作区相对路径；无产出物才留空"],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
 \`\`\`
 summary 会作为群聊里该成员最终消息的正文展示给用户，所以你要把最终输出的信息再从这里写一遍，然后在最后加上总结，但不要粘贴完整文件、日志或内部 report。
+凡是本轮创建或修改了可交付文件（代码、页面、文档、设计稿、测试报告等），必须把它们作为产出物记录到 report.affected.artifacts，使用工作区相对路径；这些路径会被服务端写入黑板产出物，侧边栏“产出物”只依赖黑板记录展示。
 只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。
 
 # 需要向用户确认信息时（重要）
