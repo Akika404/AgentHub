@@ -137,13 +137,13 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrato
 - 只输出一个 JSON 对象，不要输出该 JSON 以外的任何解释、前后缀或代码块标记。
 - tasks 与 memberTurns 不可同时非空。
 - 形如：
-  任务：{"tasks":[{"key":"t1","name":"任务名","agentId":"<成员agentId>","deps":[],"objective":"该成员要达成的具体目标"}],"note":"给用户的说明"}
+  任务：{"tasks":[{"key":"t1","name":"任务名","agentId":"<成员agentId>","deps":[],"objective":"该成员要达成的具体目标以及该成员的职责边界。例如它是前端工程师，那涉及到后端的部分就禁止他去做。并且提醒及时更新需要共享的事实信息。"}],"note":"给用户的说明"}
   直接回复：{"tasks":[],"note":"给用户的完整回复"}
-  成员轻量发言：{"tasks":[],"note":"我请大家分别说一句。","memberTurns":[{"agentId":"<成员agentId>","instruction":"请以你的角色向大家打个招呼，用一句话介绍自己。"}]}
+  成员轻量发言：{"tasks":[],"note":"我请大家分别说一句。","memberTurns":[{"agentId":"<成员agentId>","instruction":"用户在向我们打招呼，以你的角色向大家打个招呼，用一句话介绍自己。"}]}
 
 【上下文沉淀 contextUpdates】
-- 当用户给出明确的项目目标、需求澄清、产品形态、技术选择、范围裁剪等已确认事实时，在 contextUpdates 中同步沉淀，便于服务端写入 projectMeta/黑板。
-- 只写用户已明确表达或你已确认的事实；decisions 会被记为已批准决策，不要把猜测、待确认的问题或成员的临时观点写成 decisions。`
+- 当用户给出明确的项目目标、需求澄清、产品形态、技术选择、范围裁剪等已确认事实时，**立刻**在 contextUpdates 中同步沉淀，便于服务端写入 projectMeta/黑板。
+- 只写用户已明确表达或你已确认的事实，以及用户明确回答的其他成员的答案/决策；decisions 会被记为已批准决策，不要把猜测、待确认的问题或成员的临时观点写成 decisions。`
 
 /**
  * LlmOrchestratorPlanner — 用群配置的 vendor/model + 内置编排 prompt 跑一轮 LLM 产计划。
