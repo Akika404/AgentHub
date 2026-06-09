@@ -45,6 +45,7 @@ const error = ref<string | null>(null)
 const newFolderOpen = ref(false)
 const newFolderName = ref('')
 const newFolderError = ref<string | null>(null)
+const isNewFolderNameComposing = ref(false)
 
 const isMultiple = computed(() => props.mode === 'multiple')
 const currentPath = computed(() => pathDraft.value.trim() || listing.value?.path || '')
@@ -198,6 +199,30 @@ function useNewFolder(): void {
   resetNewFolder()
 }
 
+function isComposingEvent(event: KeyboardEvent): boolean {
+  return (
+    isNewFolderNameComposing.value ||
+    event.isComposing ||
+    event.key === 'Process' ||
+    event.keyCode === 229
+  )
+}
+
+function onNewFolderNameKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter') {
+    if (isComposingEvent(event)) return
+    event.preventDefault()
+    useNewFolder()
+    return
+  }
+
+  if (event.key === 'Escape') {
+    if (isComposingEvent(event)) return
+    event.preventDefault()
+    resetNewFolder()
+  }
+}
+
 function confirm(): void {
   const draft = pathDraft.value.trim()
   const paths = isMultiple.value ? selectedPaths.value : unique([draft || currentPath.value])
@@ -289,8 +314,9 @@ watch(rootPath, (next) => {
             :invalid="newFolderError !== null"
             type="text"
             placeholder="文件夹名称"
-            @keyup.enter="useNewFolder"
-            @keyup.esc="resetNewFolder"
+            @compositionstart="isNewFolderNameComposing = true"
+            @compositionend="isNewFolderNameComposing = false"
+            @keydown="onNewFolderNameKeydown"
           />
           <p v-if="newFolderError" class="mt-1 text-xs text-danger">{{ newFolderError }}</p>
         </div>
