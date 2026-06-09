@@ -119,6 +119,8 @@ export interface UpdateGroupChatPayload {
 export interface ConverseGroupPayload {
   text: string
   mentions?: string[]
+  /** Uploaded attachment ids returned by `POST /group-chats/:id/attachments`. */
+  attachmentIds?: string[]
   /**
    * When present, this message quotes an earlier presentation_log message. The
    * server resolves the quoted message's full text by `messageId` and injects it

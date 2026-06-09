@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { TextMessage } from '../../api'
 import { formatTime } from '../../utils/format'
 import { renderMarkdown } from '../../utils/markdown'
+import AttachmentList from './AttachmentList.vue'
 import SenderAvatar from './SenderAvatar.vue'
 
 const props = defineProps<{ message: TextMessage }>()
@@ -27,6 +28,7 @@ const renderedHtml = computed(() => renderMarkdown(props.message.text))
           <div class="opacity-80 line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
         </div>
         <span v-text="message.text"></span>
+        <AttachmentList :attachments="message.attachments" inverse />
       </div>
       <span class="text-sm text-text-muted mt-1">{{ formatTime(message.timestamp) }}</span>
     </div>
@@ -50,6 +52,7 @@ const renderedHtml = computed(() => renderMarkdown(props.message.text))
           <div class="line-clamp-2 break-words">{{ message.replyTo.excerpt }}</div>
         </div>
         <div class="markdown-body" v-html="renderedHtml"></div>
+        <AttachmentList :attachments="message.attachments" />
       </div>
     </div>
   </div>

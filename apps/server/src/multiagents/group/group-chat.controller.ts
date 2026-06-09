@@ -9,15 +9,26 @@ import {
     Post,
     Query,
     Sse,
-    UseGuards
+    UploadedFile,
+    UseGuards,
+    UseInterceptors
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiProduces, ApiTags } from '@nestjs/swagger'
+import {
+    ApiBearerAuth,
+    ApiBody,
+    ApiConsumes,
+    ApiOperation,
+    ApiProduces,
+    ApiTags
+} from '@nestjs/swagger'
+import { FileInterceptor } from '@nestjs/platform-express'
 import { Observable, from, map } from 'rxjs'
 import type {
     BlackboardArtifactPreview,
     BlackboardEventView,
     BlackboardView,
     DeploymentView,
+    GroupAttachmentView,
     GroupChatView,
     GroupMessageView,
     WorkspaceCommitResult,
@@ -39,6 +50,7 @@ import {
     GroupChatViewDto,
     StartGroupRunResultDto
 } from './dto/group-chat-response.dto.js'
+import { GroupAttachmentViewDto } from './dto/group-attachment-response.dto.js'
 import { GroupMessageViewDto } from './dto/group-message-response.dto.js'
 import {
     BlackboardArtifactPreviewDto,
@@ -55,6 +67,10 @@ import {
     WorkspaceCommitResultDto,
     WorkspaceDiffSummaryDto
 } from '../dto/workspace-diff-response.dto.js'
+import {
+    MAX_GROUP_ATTACHMENT_BYTES,
+    type UploadedGroupAttachmentFile
+} from './group-attachment.service.js'
 
 @ApiTags('group-chats')
 @ApiBearerAuth()
@@ -153,6 +169,36 @@ export class GroupChatController {
         @Body() dto: WorkspaceCommitDto
     ): Promise<WorkspaceCommitResult> {
         return this.manager.commitWorkspace(user.id, id, dto)
+    }
+
+    @Post(':id/attachments')
+    @UseInterceptors(
+        FileInterceptor('file', {
+            limits: { fileSize: MAX_GROUP_ATTACHMENT_BYTES, files: 1 }
+        })
+    )
+    @ApiOperation({
+        summary: '上传群聊附件',
+        description:
+            '上传先进入群聊运行态临时目录；随后在 converse 中通过 attachmentIds 消费并复制到共享工作区 attachments/<runId>/。'
+    })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['file'],
+            properties: {
+                file: { type: 'string', format: 'binary' }
+            }
+        }
+    })
+    @ApiEnvelope(GroupAttachmentViewDto, { status: 201 })
+    uploadAttachment(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @UploadedFile() file?: UploadedGroupAttachmentFile
+    ): Promise<GroupAttachmentView> {
+        return this.manager.uploadAttachment(user.id, id, file)
     }
 
     @Post(':id/converse')

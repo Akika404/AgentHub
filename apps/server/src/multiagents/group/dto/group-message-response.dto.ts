@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger'
 import type {
     AgentQuestion,
     AgentRunStepView,
+    GroupAttachmentView,
     GroupSenderRole,
     OptionItem,
     TaskItem
@@ -86,6 +87,14 @@ export class GroupMessageViewDto {
 
     @ApiProperty({ required: false, description: 'agent-question 已作答时用户提交的拼接回复' })
     answerText?: string
+
+    @ApiProperty({
+        required: false,
+        type: 'array',
+        items: { type: 'object', additionalProperties: true },
+        description: '本消息携带的上传附件'
+    })
+    attachments?: GroupAttachmentView[]
 
     @ApiProperty({ description: '创建时间，ISO8601' })
     createdAt!: string

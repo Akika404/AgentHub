@@ -14,6 +14,17 @@ export interface ApiStreamRequest {
   token?: string
 }
 
+export interface ApiUploadRequest {
+  path: string
+  fieldName?: string
+  file: {
+    name: string
+    type?: string
+    data: ArrayBuffer
+  }
+  token?: string
+}
+
 /** Response returned by the main-process HTTP proxy. */
 export interface ApiProxyResponse {
   /** HTTP status; 0 when the request never reached the server */
@@ -27,6 +38,7 @@ export interface ApiProxyResponse {
 
 export interface RendererApi {
   request(req: ApiRequest): Promise<ApiProxyResponse>
+  upload(req: ApiUploadRequest): Promise<ApiProxyResponse>
   streamStart(req: ApiStreamRequest): Promise<ApiProxyResponse>
   streamCancel(streamId: string): Promise<void>
   selectDirectory(): Promise<string | null>

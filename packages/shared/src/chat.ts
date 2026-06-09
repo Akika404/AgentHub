@@ -89,6 +89,7 @@ interface BaseMessage {
   timestamp: string
   /** when true the message is pinned within the chat */
   pinned?: boolean
+  attachments?: GroupAttachmentView[]
 }
 
 export interface SystemMessage extends BaseMessage {
@@ -103,6 +104,18 @@ export interface MessageReplyRef {
   senderName: string
   /** short excerpt of the original message content */
   excerpt: string
+}
+
+/** File attached to a group chat message and made available in the workspace. */
+export interface GroupAttachmentView {
+  id: string
+  groupChatId: string
+  originalName: string
+  mimeType: string
+  size: number
+  /** workspace-relative path; null until the attachment is consumed by a group run */
+  workspacePath: string | null
+  createdAt: string
 }
 
 export interface TextMessage extends BaseMessage {
@@ -172,6 +185,7 @@ interface GroupMessageBase {
   createdAt: string
   /** when true the message is pinned within the group and injected into future context */
   pinned: boolean
+  attachments?: GroupAttachmentView[]
 }
 
 export interface GroupTextMessageView extends GroupMessageBase {

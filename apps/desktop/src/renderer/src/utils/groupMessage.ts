@@ -47,7 +47,8 @@ export function groupMessageToDisplay(
     id: view.id,
     chatId: view.groupChatId,
     timestamp: view.createdAt,
-    pinned: view.pinned
+    pinned: view.pinned,
+    ...(view.attachments?.length ? { attachments: view.attachments } : {})
   }
   if (view.kind === 'system') {
     return { ...base, kind: 'system', text: view.text }

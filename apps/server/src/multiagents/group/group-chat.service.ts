@@ -17,6 +17,7 @@ import { GroupChat } from './entities/group-chat.entity.js'
 import { GroupChatMember } from './entities/group-chat-member.entity.js'
 import { GroupMessage } from './entities/group-message.entity.js'
 import { GroupRun } from './entities/group-run.entity.js'
+import { GroupAttachment } from './entities/group-attachment.entity.js'
 import { BlackboardArtifactEntity } from './blackboard/entities/blackboard-artifact.entity.js'
 import { BlackboardDecisionEntity } from './blackboard/entities/blackboard-decision.entity.js'
 import { BlackboardContractEntity } from './blackboard/entities/blackboard-contract.entity.js'
@@ -218,6 +219,7 @@ export class GroupChatService {
             await m.delete(GroupChatMember, { groupChatId: group.id })
             await m.delete(GroupMessage, { groupChatId: group.id })
             await m.delete(GroupRun, { groupChatId: group.id })
+            await m.delete(GroupAttachment, { groupChatId: group.id })
             await m.delete(BlackboardArtifactEntity, { groupChatId: group.id })
             await m.delete(BlackboardDecisionEntity, { groupChatId: group.id })
             await m.delete(BlackboardContractEntity, { groupChatId: group.id })

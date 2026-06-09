@@ -5,6 +5,7 @@ import type {
     AgentQuestion,
     BlackboardArtifact,
     DeployManifest,
+    GroupAttachmentView,
     GroupMessageView,
     GroupSenderRole,
     MessageReplyRef,
@@ -82,8 +83,13 @@ export class GroupMessageService {
         text: string,
         senderAgentId: string | null = null,
         replyTo: MessageReplyRef | null = null,
-        agentMessageId: string | null = null
+        agentMessageId: string | null = null,
+        attachments: GroupAttachmentView[] = []
     ): Promise<GroupMessageView> {
+        const payload = {
+            ...(agentMessageId ? { agentMessageId } : {}),
+            ...(attachments.length ? { attachments } : {})
+        }
         const saved = await this.messageRepo.save(
             this.messageRepo.create({
                 groupChatId: groupId,
@@ -92,7 +98,7 @@ export class GroupMessageService {
                 senderRole,
                 senderAgentId,
                 text,
-                payload: agentMessageId ? { agentMessageId } : null,
+                payload: Object.keys(payload).length ? payload : null,
                 replyTo,
                 pinned: false
             })

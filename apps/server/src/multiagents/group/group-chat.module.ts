@@ -16,6 +16,7 @@ import { GroupChat } from './entities/group-chat.entity.js'
 import { GroupChatMember } from './entities/group-chat-member.entity.js'
 import { GroupMessage } from './entities/group-message.entity.js'
 import { GroupRun } from './entities/group-run.entity.js'
+import { GroupAttachment } from './entities/group-attachment.entity.js'
 import { BlackboardArtifactEntity } from './blackboard/entities/blackboard-artifact.entity.js'
 import { BlackboardDecisionEntity } from './blackboard/entities/blackboard-decision.entity.js'
 import { BlackboardContractEntity } from './blackboard/entities/blackboard-contract.entity.js'
@@ -26,6 +27,7 @@ import { GroupChatController } from './group-chat.controller.js'
 import { GroupChatManager } from './group-chat.manager.js'
 import { GroupChatService } from './group-chat.service.js'
 import { GroupMessageService } from './group-message.service.js'
+import { GroupAttachmentService } from './group-attachment.service.js'
 import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
 import { DeploymentService } from './deployment/deployment.service.js'
@@ -69,6 +71,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
             GroupChatMember,
             GroupMessage,
             GroupRun,
+            GroupAttachment,
             BlackboardArtifactEntity,
             BlackboardDecisionEntity,
             BlackboardContractEntity,
@@ -90,6 +93,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         GroupChatManager,
         GroupChatService,
         GroupMessageService,
+        GroupAttachmentService,
         GroupArtifactPreviewService,
         GroupWorkspaceService,
         DeploymentService,

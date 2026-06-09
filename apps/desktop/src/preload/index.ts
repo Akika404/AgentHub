@@ -16,11 +16,23 @@ interface ApiStreamRequest {
   token?: string
 }
 
+interface ApiUploadRequest {
+  path: string
+  fieldName?: string
+  file: {
+    name: string
+    type?: string
+    data: ArrayBuffer
+  }
+  token?: string
+}
+
 type StreamEventName = 'event' | 'error' | 'done'
 
 // Custom APIs for renderer: a single typed channel onto the main-process HTTP proxy.
 const api = {
   request: (req: ApiRequest) => ipcRenderer.invoke('api:request', req),
+  upload: (req: ApiUploadRequest) => ipcRenderer.invoke('api:upload', req),
   streamStart: (req: ApiStreamRequest) => ipcRenderer.invoke('api:stream:start', req),
   streamCancel: (streamId: string) => ipcRenderer.invoke('api:stream:cancel', streamId),
   selectDirectory: () => ipcRenderer.invoke('dialog:select-directory') as Promise<string | null>,

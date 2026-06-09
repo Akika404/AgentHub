@@ -7,6 +7,7 @@ import type {
     BlackboardTaskNode,
     BlackboardTaskStatus,
     ConverseGroupPayload,
+    GroupAttachmentView,
     GroupRouteKind,
     TaskItem
 } from '@agenthub/shared'
@@ -29,6 +30,7 @@ import { GroupRunStream } from './group-run-stream.service.js'
 import { OrchestratorService, type TaskOutcome } from './orchestrator.service.js'
 import { computeReady, markDownstreamBlocked } from './task-scheduler.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
+import { GroupAttachmentService } from '../group-attachment.service.js'
 
 interface MemberPair {
     member: GroupChatMember
@@ -54,6 +56,8 @@ const RESUME_CONTINUITY: ContinuityResult = {
 const QUOTE_CAVEAT =
     '' +
     '注意：以上为用户引用的历史消息，仅代表引用当时的情况，可能与当前产出物/黑板事实不一致。请以当前产出物与黑板为准，必要时自行重新确认其可靠性。'
+
+const DEFAULT_ATTACHMENT_ONLY_TEXT = '请阅读并处理上传的文件。'
 
 /**
  * GroupRunExecutor — 编排一次群运行（一条用户消息）。
@@ -81,6 +85,7 @@ export class GroupRunExecutor implements OnModuleInit {
         private readonly memberChat: MemberChatService,
         private readonly blackboard: BlackboardService,
         private readonly groupMessages: GroupMessageService,
+        private readonly attachments: GroupAttachmentService,
         private readonly runStream: GroupRunStream,
         private readonly config: ConfigService,
         private readonly debug: GroupDebugLogger
@@ -109,7 +114,8 @@ export class GroupRunExecutor implements OnModuleInit {
         payload: ConverseGroupPayload
     ): Promise<{ runId: string }> {
         const group = await this.groupChat.loadGroup(userId, groupId)
-        const text = payload.text?.trim()
+        const attachmentIds = payload.attachmentIds ?? []
+        const text = payload.text?.trim() || (attachmentIds.length ? DEFAULT_ATTACHMENT_ONLY_TEXT : '')
         if (!text) throw BusinessException.badRequest('Message text cannot be empty')
         if (group.status === 'archived' || group.archivedAt) {
             throw BusinessException.forbidden('Archived group chat is read-only')
@@ -124,38 +130,39 @@ export class GroupRunExecutor implements OnModuleInit {
             )
         }
 
-        const membersWithAgents = await this.groupChat.listMembersWithAgents(group.id)
-        const route = this.router.route(
-            text,
-            payload.mentions,
-            membersWithAgents.map(({ agent }) => ({ agentId: agent.id, name: agent.name }))
-        )
-        this.debug.log('group.run.user_input', {
-            groupId: group.id,
-            runId,
-            userId,
-            text,
-            mentions: payload.mentions ?? [],
-            members: membersWithAgents.map(({ member, agent }) => ({
-                agentId: agent.id,
-                name: agent.name,
-                vendor: agent.vendor,
-                model: agent.model,
-                roleInGroup: member.roleInGroup,
-                agentSessionId: member.agentSessionId
-            })),
-            route
-        })
-
+        let membersWithAgents: MemberPair[]
+        let route: ReturnType<MessageRouter['route']>
+        let consumedAttachments: GroupAttachmentView[] = []
         try {
-            await this.groupMessages.appendText(
-                group.id,
+            consumedAttachments = await this.attachments.consumeForRun(
                 userId,
-                'user',
-                text,
-                null,
-                payload.replyTo ?? null
+                group,
+                attachmentIds,
+                runId
             )
+            membersWithAgents = await this.groupChat.listMembersWithAgents(group.id)
+            route = this.router.route(
+                text,
+                payload.mentions,
+                membersWithAgents.map(({ agent }) => ({ agentId: agent.id, name: agent.name }))
+            )
+            this.debug.log('group.run.user_input', {
+                groupId: group.id,
+                runId,
+                userId,
+                text,
+                mentions: payload.mentions ?? [],
+                attachments: consumedAttachments,
+                members: membersWithAgents.map(({ member, agent }) => ({
+                    agentId: agent.id,
+                    name: agent.name,
+                    vendor: agent.vendor,
+                    model: agent.model,
+                    roleInGroup: member.roleInGroup,
+                    agentSessionId: member.agentSessionId
+                })),
+                route
+            })
             await this.runRepo.save(
                 this.runRepo.create({
                     id: runId,
@@ -166,14 +173,38 @@ export class GroupRunExecutor implements OnModuleInit {
                     userText: text
                 })
             )
+            await this.groupMessages.appendText(
+                group.id,
+                userId,
+                'user',
+                text,
+                null,
+                payload.replyTo ?? null,
+                null,
+                consumedAttachments
+            )
+            await this.attachments.finalizeForRun(userId, group, runId).catch((err) => {
+                this.logger.warn(
+                    `Failed to clean finalized attachment temp files for run ${runId}: ${this.errMsg(err)}`
+                )
+            })
         } catch (err) {
+            await this.attachments.rollbackForRun(userId, group, runId).catch((rollbackErr) => {
+                this.logger.warn(
+                    `Failed to roll back attachments for run ${runId}: ${this.errMsg(rollbackErr)}`
+                )
+            })
+            await this.runRepo.delete({ id: runId }).catch(() => undefined)
             await this.runStream.abandonRun(group.id, runId)
             throw err
         }
 
         // 引用：按 messageId 取 presentation_log 完整原文（不信任 client excerpt），
         // 拼成带免责提示的引用前言折进 userText，使其贯穿路由判定/编排/派发到目标成员上下文。
-        const userText = await this.buildQuotedUserText(group.id, text, payload.replyTo)
+        const userText = this.buildAttachmentUserText(
+            await this.buildQuotedUserText(group.id, text, payload.replyTo),
+            consumedAttachments
+        )
 
         void this.runGroup({
             group,
@@ -185,6 +216,11 @@ export class GroupRunExecutor implements OnModuleInit {
             members: membersWithAgents
         })
         return { runId }
+    }
+
+    private buildAttachmentUserText(text: string, attachments: GroupAttachmentView[]): string {
+        const context = this.attachments.renderPromptContext(attachments)
+        return context ? [context, '', text].join('\n') : text
     }
 
     /**

@@ -41,6 +41,20 @@ export interface ApiStreamRequest {
   token?: string
 }
 
+export interface ApiUploadRequest {
+  /** POST path relative to the API base, e.g. `/group-chats/:id/attachments` */
+  path: string
+  /** multipart field name; defaults to `file` */
+  fieldName?: string
+  file: {
+    name: string
+    type?: string
+    data: ArrayBuffer
+  }
+  /** bearer token for protected routes */
+  token?: string
+}
+
 const activeStreams = new Map<string, AbortController>()
 
 async function handleRequest(req: ApiRequest): Promise<ApiProxyResponse> {
@@ -65,6 +79,39 @@ async function handleRequest(req: ApiRequest): Promise<ApiProxyResponse> {
     }
 
     return { status: response.status, ok: response.ok, body }
+  } catch (err) {
+    return {
+      status: 0,
+      ok: false,
+      body: null,
+      error: err instanceof Error ? err.message : String(err)
+    }
+  }
+}
+
+async function handleUpload(req: ApiUploadRequest): Promise<ApiProxyResponse> {
+  const headers: Record<string, string> = {}
+  if (req.token) headers['Authorization'] = `Bearer ${req.token}`
+
+  try {
+    const form = new FormData()
+    const blob = new Blob([req.file.data], {
+      type: req.file.type || 'application/octet-stream'
+    })
+    form.append(req.fieldName ?? 'file', blob, req.file.name)
+
+    const response = await fetch(`${BASE_URL}${req.path}`, {
+      method: 'POST',
+      headers,
+      body: form
+    })
+
+    const text = await response.text()
+    return {
+      status: response.status,
+      ok: response.ok,
+      body: parseResponseBody(text)
+    }
   } catch (err) {
     return {
       status: 0,
@@ -202,6 +249,7 @@ function handleStreamCancel(streamId: string): void {
 /** Register the `api:request` IPC handler. Call once after app is ready. */
 export function registerApiProxy(): void {
   ipcMain.handle('api:request', (_event, req: ApiRequest) => handleRequest(req))
+  ipcMain.handle('api:upload', (_event, req: ApiUploadRequest) => handleUpload(req))
   ipcMain.handle('api:stream:start', (event, req: ApiStreamRequest) =>
     handleStreamStart(event, req)
   )

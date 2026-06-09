@@ -3,6 +3,7 @@ import type {
     AgentRunStepView,
     BlackboardArtifact,
     DeployManifest,
+    GroupAttachmentView,
     GroupMessageView,
     MessageReplyRef,
     OptionItem,
@@ -24,20 +25,41 @@ function toReplyRef(ref: MessageReplyRef | null): MessageReplyRef | undefined {
     return { messageId, senderName, excerpt }
 }
 
+function toAttachments(payload: Record<string, unknown>): GroupAttachmentView[] | undefined {
+    const value = payload.attachments
+    if (!Array.isArray(value)) return undefined
+    const attachments = value.filter((item): item is GroupAttachmentView => {
+        if (!item || typeof item !== 'object') return false
+        const rec = item as Record<string, unknown>
+        return (
+            typeof rec.id === 'string' &&
+            typeof rec.groupChatId === 'string' &&
+            typeof rec.originalName === 'string' &&
+            typeof rec.mimeType === 'string' &&
+            typeof rec.size === 'number' &&
+            (typeof rec.workspacePath === 'string' || rec.workspacePath === null) &&
+            typeof rec.createdAt === 'string'
+        )
+    })
+    return attachments.length ? attachments : undefined
+}
+
 /** GroupMessage 实体 -> GroupMessageView（按 kind 还原结构化负载） */
 export function toGroupMessageView(
     message: GroupMessage,
     steps: AgentRunStepView[] = []
 ): GroupMessageView {
+    const payload = message.payload ?? {}
+    const attachments = toAttachments(payload)
     const base = {
         id: message.id,
         groupChatId: message.groupChatId,
         senderRole: message.senderRole,
         senderAgentId: message.senderAgentId,
         createdAt: message.createdAt.toISOString(),
-        pinned: message.pinned === true
+        pinned: message.pinned === true,
+        ...(attachments ? { attachments } : {})
     }
-    const payload = message.payload ?? {}
     switch (message.kind) {
         case 'task-list':
             return {

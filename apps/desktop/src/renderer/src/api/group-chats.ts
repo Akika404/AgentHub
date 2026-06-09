@@ -9,6 +9,7 @@ import {
   type CreateGroupChatPayload,
   type DeploymentEvent,
   type DeploymentView,
+  type GroupAttachmentView,
   type GroupChatView,
   type GroupMessageView,
   type GroupRunEvent,
@@ -22,6 +23,38 @@ import {
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
 import { ApiError, http } from './http'
+
+async function unwrapUploadResponse<T>(
+  res: Awaited<ReturnType<typeof window.api.upload>>
+): Promise<T> {
+  if (res.status === 0) {
+    throw new ApiError(-1, res.error ?? '无法连接到服务器，请确认后端已启动')
+  }
+
+  const envelope = res.body as ApiResponse<T> | null
+  if (!envelope || typeof envelope.code !== 'number') {
+    throw new ApiError(res.status, `请求失败（HTTP ${res.status}）`)
+  }
+
+  if (envelope.code === SUCCESS_CODE) return envelope.data as T
+  if (envelope.code === ERROR_CODE.UNAUTHORIZED) onUnauthorized()
+  throw new ApiError(envelope.code, envelope.message || `请求失败（code ${envelope.code}）`)
+}
+
+async function uploadAttachment(groupId: string, file: File): Promise<GroupAttachmentView> {
+  const data = await file.arrayBuffer()
+  const res = await window.api.upload({
+    path: `/group-chats/${groupId}/attachments`,
+    fieldName: 'file',
+    token: getToken() ?? undefined,
+    file: {
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      data
+    }
+  })
+  return unwrapUploadResponse<GroupAttachmentView>(res)
+}
 
 export interface GroupRunHandlers {
   onEvent(event: GroupRunEvent): void
@@ -185,6 +218,7 @@ export const groupChatApi = {
   listMessages: (id: string) => http.get<GroupMessageView[]>(`/group-chats/${id}/messages`),
   updateMessage: (id: string, messageId: string, payload: UpdateGroupMessagePayload) =>
     http.patch<GroupMessageView>(`/group-chats/${id}/messages/${messageId}`, payload),
+  uploadAttachment,
   getWorkspaceDiff: (id: string) =>
     http.get<WorkspaceDiffSummary>(`/group-chats/${id}/workspace-diff`),
   commitWorkspace: (id: string, payload?: WorkspaceCommitPayload) =>

@@ -33,7 +33,6 @@ export class MessageReplyRefDto implements MessageReplyRef {
 export class ConverseGroupDto implements ConverseGroupPayload {
     @ApiProperty({ type: String, description: '用户消息原文' })
     @IsString()
-    @IsNotEmpty()
     text!: string
 
     /** 提及的成员 agentId 或 'orchestrator'；空表示交 Orchestrator 判断。 */
@@ -45,6 +44,16 @@ export class ConverseGroupDto implements ConverseGroupPayload {
     @IsArray()
     @IsString({ each: true })
     mentions?: string[]
+
+    /** 上传附件 id；必须属于当前用户当前群，且尚未被发送消费。 */
+    @ApiPropertyOptional({
+        type: [String],
+        description: '上传附件 id；由 POST /group-chats/:id/attachments 返回'
+    })
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    attachmentIds?: string[]
 
     /** 引用的历史消息；服务端按 messageId 取原文注入目标成员上下文。 */
     @ApiPropertyOptional({ type: MessageReplyRefDto, description: '引用的历史消息' })

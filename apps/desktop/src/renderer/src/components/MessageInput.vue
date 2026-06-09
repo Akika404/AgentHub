@@ -2,8 +2,13 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { MessageReplyRef } from '../api'
 import type { MentionTarget } from '../types/mentions'
+import { formatBytes } from '../utils/format'
 import AgentAvatar from './AgentAvatar.vue'
 import BaseButton from './ui/BaseButton.vue'
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+const MAX_ATTACHMENTS = 5
+const DEFAULT_ATTACHMENT_ONLY_TEXT = '请阅读并处理上传的文件。'
 
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
@@ -11,17 +16,25 @@ const props = defineProps<{
   disabledReason?: string
   streaming?: boolean
   mentionTargets?: MentionTarget[]
+  attachmentsEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'send', payload: { text: string; replyTo?: MessageReplyRef; mentions?: string[] }): void
+  (
+    e: 'send',
+    payload: { text: string; replyTo?: MessageReplyRef; mentions?: string[]; files?: File[] }
+  ): void
   (e: 'cancel-reply'): void
   (e: 'stop'): void
 }>()
 
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 const isComposing = ref(false)
+const attachmentError = ref<string | null>(null)
+const dragActive = ref(false)
+const files = ref<File[]>([])
 const mentionTrigger = ref<{ start: number; query: string } | null>(null)
 const highlightedMentionIndex = ref(0)
 
@@ -48,6 +61,7 @@ const filteredMentionTargets = computed(() => {
 })
 
 const mentionOpen = computed(() => filteredMentionTargets.value.length > 0)
+const canSend = computed(() => text.value.trim().length > 0 || files.value.length > 0)
 
 watch(
   () => props.replyTo,
@@ -73,14 +87,17 @@ function submit(): void {
   if (props.disabled || isComposing.value) return
   const rawText = text.value
   const trimmed = rawText.trim()
-  if (!trimmed) return
+  if (!trimmed && files.value.length === 0) return
   const mentions = extractMentionIds(rawText)
   emit('send', {
-    text: trimmed,
+    text: trimmed || DEFAULT_ATTACHMENT_ONLY_TEXT,
     replyTo: props.replyTo ?? undefined,
-    ...(mentions.length ? { mentions } : {})
+    ...(mentions.length ? { mentions } : {}),
+    ...(files.value.length ? { files: [...files.value] } : {})
   })
   text.value = ''
+  files.value = []
+  attachmentError.value = null
   closeMentionPicker()
 }
 
@@ -206,6 +223,64 @@ function insertMentionById(id: string): void {
   insertMention(target, false)
 }
 
+function openFilePicker(): void {
+  if (props.disabled || !props.attachmentsEnabled) return
+  fileInputRef.value?.click()
+}
+
+function onFileInput(event: Event): void {
+  const input = event.target as HTMLInputElement
+  addFiles(input.files)
+  input.value = ''
+}
+
+function addFiles(fileList: FileList | File[] | null): void {
+  if (!props.attachmentsEnabled || props.disabled || !fileList) return
+  attachmentError.value = null
+  const next = [...files.value]
+  for (const file of Array.from(fileList)) {
+    if (next.length >= MAX_ATTACHMENTS) {
+      attachmentError.value = `最多上传 ${MAX_ATTACHMENTS} 个文件`
+      break
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      attachmentError.value = `单个文件不能超过 ${formatBytes(MAX_ATTACHMENT_BYTES)}`
+      continue
+    }
+    const duplicate = next.some(
+      (item) =>
+        item.name === file.name &&
+        item.size === file.size &&
+        item.lastModified === file.lastModified
+    )
+    if (!duplicate) next.push(file)
+  }
+  files.value = next
+}
+
+function removeFile(index: number): void {
+  files.value = files.value.filter((_, i) => i !== index)
+  if (files.value.length < MAX_ATTACHMENTS) attachmentError.value = null
+}
+
+function onDragOver(event: DragEvent): void {
+  if (!props.attachmentsEnabled || props.disabled) return
+  event.preventDefault()
+  dragActive.value = true
+}
+
+function onDragLeave(event: DragEvent): void {
+  if ((event.currentTarget as HTMLElement)?.contains(event.relatedTarget as Node | null)) return
+  dragActive.value = false
+}
+
+function onDrop(event: DragEvent): void {
+  if (!props.attachmentsEnabled || props.disabled) return
+  event.preventDefault()
+  dragActive.value = false
+  addFiles(event.dataTransfer?.files ?? null)
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -226,7 +301,13 @@ defineExpose({ insertMentionById })
 </script>
 
 <template>
-  <div class="p-4 border-t border-surface-border bg-surface flex-shrink-0">
+  <div
+    class="p-4 border-t border-surface-border bg-surface flex-shrink-0"
+    :class="dragActive ? 'bg-primary-soft/60' : ''"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <div class="flex flex-col">
       <div
         v-if="replyTo"
@@ -245,6 +326,33 @@ defineExpose({ insertMentionById })
         >
           <span class="material-symbols-outlined text-2xl">close</span>
         </button>
+      </div>
+      <div v-if="files.length || attachmentError" class="mb-2 flex flex-wrap gap-2">
+        <div
+          v-for="(file, index) in files"
+          :key="`${file.name}-${file.size}-${file.lastModified}`"
+          class="flex max-w-[260px] items-center gap-2 rounded border border-surface-border bg-background px-2.5 py-1.5 text-sm text-text-main"
+        >
+          <span class="material-symbols-outlined text-xl text-primary">attach_file</span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{{ file.name }}</span>
+            <span class="block text-xs text-text-muted">{{ formatBytes(file.size) }}</span>
+          </span>
+          <button
+            type="button"
+            class="rounded p-0.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-main"
+            title="移除附件"
+            @click="removeFile(index)"
+          >
+            <span class="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+        <div
+          v-if="attachmentError"
+          class="flex items-center rounded border border-danger/30 bg-danger/5 px-2.5 py-1.5 text-sm text-danger"
+        >
+          {{ attachmentError }}
+        </div>
       </div>
       <div class="relative p-1">
         <Transition name="pop">
@@ -301,7 +409,14 @@ defineExpose({ insertMentionById })
       </div>
       <div class="flex items-center justify-between py-2">
         <div class="flex items-center space-x-2 text-text-muted">
-          <BaseButton variant="ghost" icon>
+          <input ref="fileInputRef" type="file" class="hidden" multiple @change="onFileInput" />
+          <BaseButton
+            variant="ghost"
+            icon
+            title="上传文件"
+            :disabled="disabled || !attachmentsEnabled"
+            @click="openFilePicker"
+          >
             <span class="material-symbols-outlined text-3xl">attach_file</span>
           </BaseButton>
           <BaseButton variant="ghost" icon>
@@ -319,7 +434,7 @@ defineExpose({ insertMentionById })
         <button
           v-else
           class="bg-primary text-white px-5 py-1.5 rounded text-base font-medium flex items-center space-x-1.5 hover:bg-primary-hover transition-colors disabled:opacity-50"
-          :disabled="disabled || isComposing || !text.trim()"
+          :disabled="disabled || isComposing || !canSend"
           @click="submit"
         >
           <span>发送&nbsp;</span>

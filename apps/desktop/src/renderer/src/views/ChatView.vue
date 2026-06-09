@@ -15,6 +15,7 @@ import type {
   DeployManifest,
   DeploymentView,
   GroupChatView,
+  GroupAttachmentView,
   GroupMemberView,
   GroupRunEvent,
   MessageReplyRef,
@@ -602,6 +603,26 @@ function appendSystemMessage(sessionKey: string, text: string): void {
     timestamp: new Date().toISOString(),
     text
   })
+}
+
+function localAttachmentViews(groupId: string, files: File[] | undefined): GroupAttachmentView[] {
+  return (files ?? []).map((file, index) => ({
+    id: `local-${Date.now()}-${index}`,
+    groupChatId: groupId,
+    originalName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    size: file.size,
+    workspacePath: null,
+    createdAt: new Date().toISOString()
+  }))
+}
+
+function attachmentLines(attachments: GroupAttachmentView[] | undefined): string[] {
+  return (attachments ?? []).map((attachment) =>
+    attachment.workspacePath
+      ? `[${attachment.originalName}](${attachment.workspacePath})`
+      : attachment.originalName
+  )
 }
 
 /** Insert a deploy card into the live group session (from a `deploy_card` event). */
@@ -2098,6 +2119,7 @@ async function sendMessage(payload: {
   text: string
   replyTo?: MessageReplyRef
   mentions?: string[]
+  files?: File[]
 }): Promise<void> {
   if (activeArchived.value) return
   if (activeChat.value) {
@@ -2184,6 +2206,7 @@ async function sendGroupMessage(payload: {
   text: string
   replyTo?: MessageReplyRef
   mentions?: string[]
+  files?: File[]
 }): Promise<void> {
   const group = activeGroup.value
   if (!group || streaming.value || group.archivedAt || group.status === 'archived') return
@@ -2198,6 +2221,7 @@ async function sendGroupMessage(payload: {
     timestamp: new Date().toISOString(),
     sender: currentUserSender(),
     text: prompt,
+    ...(payload.files?.length ? { attachments: localAttachmentViews(groupId, payload.files) } : {}),
     ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
   }
 
@@ -2227,11 +2251,17 @@ async function sendGroupMessage(payload: {
   }
 
   try {
+    const attachments = payload.files?.length
+      ? await Promise.all(payload.files.map((file) => groupChatApi.uploadAttachment(groupId, file)))
+      : []
     stream = await groupChatApi.converse(
       groupId,
       {
         text: prompt,
         ...(payload.mentions?.length ? { mentions: payload.mentions } : {}),
+        ...(attachments.length
+          ? { attachmentIds: attachments.map((attachment) => attachment.id) }
+          : {}),
         ...(payload.replyTo ? { replyTo: payload.replyTo } : {})
       },
       proxyHandlers
@@ -2307,7 +2337,7 @@ function messageToPlainText(msg: ChatDisplayMessage): string {
     case 'system':
       return msg.text
     case 'text':
-      return msg.text
+      return [msg.text, ...attachmentLines(msg.attachments)].filter(Boolean).join('\n')
     case 'task-list':
       return [msg.heading, ...msg.tasks.map((t) => `- ${t.title} [${t.status}]`)].join('\n')
     case 'options':
@@ -2474,6 +2504,7 @@ onUnmounted(() => {
         :disabled-reason="activeInputDisabledReason"
         :streaming="streaming"
         :mention-targets="activeMentionTargets"
+        :attachments-enabled="!!activeGroup"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
         @stop="stopCurrentTurn"

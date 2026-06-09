@@ -3,6 +3,7 @@ import type {
   BlackboardArtifact,
   ChatMessage,
   DeployManifest,
+  GroupAttachmentView,
   SenderInfo
 } from '../api'
 
@@ -29,6 +30,7 @@ export interface AgentRunMessage {
   kind: 'agent-run'
   timestamp: string
   pinned?: boolean
+  attachments?: GroupAttachmentView[]
   sender: SenderInfo
   status: 'thinking' | 'tool' | 'responding' | 'done' | 'error'
   steps: AgentRunStep[]
@@ -42,6 +44,7 @@ export interface DeployMessage {
   kind: 'deploy'
   timestamp: string
   pinned?: boolean
+  attachments?: GroupAttachmentView[]
   sender: SenderInfo
   manifest: DeployManifest
   artifacts: BlackboardArtifact[]
