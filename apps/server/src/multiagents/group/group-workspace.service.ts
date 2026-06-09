@@ -176,7 +176,7 @@ export class GroupWorkspaceService {
         const wt = this.worktreeDir(groupId, taskId, workspaceDir)
         try {
             await this.git(wt, ['add', '-A'])
-            const staged = (await this.git(wt, ['diff', '--cached', '--name-status'])).trim()
+            const staged = await this.git(wt, ['diff', '--cached', '--name-status', '-z'])
             if (!staged) return []
             const files = this.parseNameStatus(staged)
             await this.git(wt, ['commit', '-m', `task: ${taskId}`])
@@ -209,10 +209,10 @@ export class GroupWorkspaceService {
         } catch (err) {
             // 串行执行下不应发生冲突；如发生，如实记录并继续清理（冲突仲裁留第二份 spec）
             this.logger.error(`Merge failed for task ${taskId}: ${this.errMsg(err)}`)
-            throw BusinessException.conflict(
-                `Failed to merge task worktree: ${this.errMsg(err)}`,
-                { groupId, taskId }
-            )
+            throw BusinessException.conflict(`Failed to merge task worktree: ${this.errMsg(err)}`, {
+                groupId,
+                taskId
+            })
         } finally {
             await this.cleanupWorktree(repo, wt, branch)
         }
@@ -302,7 +302,9 @@ export class GroupWorkspaceService {
         try {
             await this.writeActiveMarker(repo, false)
         } catch (err) {
-            this.logger.warn(`Failed to mark group workspace ${groupId} inactive: ${this.errMsg(err)}`)
+            this.logger.warn(
+                `Failed to mark group workspace ${groupId} inactive: ${this.errMsg(err)}`
+            )
         }
     }
 
@@ -320,15 +322,22 @@ export class GroupWorkspaceService {
     }
 
     private parseNameStatus(output: string): GroupChangedFile[] {
-        return output
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line) => {
-                const [status, ...rest] = line.split('\t')
-                return { status: status.trim(), path: rest.join('\t').trim() }
-            })
-            .filter((f) => f.path)
+        const fields = output.split('\0').filter(Boolean)
+        const files: GroupChangedFile[] = []
+        for (let i = 0; i < fields.length; ) {
+            const status = fields[i++]?.trim()
+            const path = fields[i++]
+            if (!status || !path) continue
+
+            if (status.startsWith('R') || status.startsWith('C')) {
+                const nextPath = fields[i++]
+                if (nextPath) files.push({ status, path: nextPath })
+                continue
+            }
+
+            files.push({ status, path })
+        }
+        return files
     }
 
     private async git(cwd: string, args: string[]): Promise<string> {

@@ -31,6 +31,7 @@ import {
     toTaskView
 } from '../mappers/blackboard.mapper.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
+import { decodeGitQuotedPath } from '../git-path.js'
 
 export interface ArtifactUpsert {
     path: string
@@ -150,14 +151,16 @@ export class BlackboardService {
     }
 
     async getArtifact(groupId: string, path: string): Promise<BlackboardArtifact | null> {
-        const e = await this.artifactRepo.findOne({ where: { groupChatId: groupId, path } })
+        const e = await this.findArtifactByPath(groupId, path)
         const artifact = e ? toArtifactView(e) : null
         this.debug.log('group.blackboard.read_artifact', { groupId, path, artifact })
         return artifact
     }
 
     async getArtifactById(groupId: string, artifactId: string): Promise<BlackboardArtifact | null> {
-        const e = await this.artifactRepo.findOne({ where: { groupChatId: groupId, id: artifactId } })
+        const e = await this.artifactRepo.findOne({
+            where: { groupChatId: groupId, id: artifactId }
+        })
         const artifact = e ? toArtifactView(e) : null
         this.debug.log('group.blackboard.read_artifact_by_id', { groupId, artifactId, artifact })
         return artifact
@@ -169,9 +172,7 @@ export class BlackboardService {
         patch: ArtifactUpsert,
         basedOnVersion?: number
     ): Promise<BlackboardArtifact> {
-        const existing = await this.artifactRepo.findOne({
-            where: { groupChatId: groupId, path: patch.path }
-        })
+        const existing = await this.findArtifactByPath(groupId, patch.path)
         if (!existing) {
             const created = await this.artifactRepo.save(
                 this.artifactRepo.create({
@@ -221,6 +222,7 @@ export class BlackboardService {
 
         existing.version += 1
         existing.type = patch.type
+        existing.path = patch.path
         existing.summary = patch.summary
         existing.status = patch.status ?? existing.status
         existing.updatedByAgentId = patch.updatedByAgentId
@@ -240,6 +242,17 @@ export class BlackboardService {
             artifact
         })
         return artifact
+    }
+
+    private async findArtifactByPath(
+        groupId: string,
+        path: string
+    ): Promise<BlackboardArtifactEntity | null> {
+        const direct = await this.artifactRepo.findOne({ where: { groupChatId: groupId, path } })
+        if (direct) return direct
+
+        const artifacts = await this.artifactRepo.find({ where: { groupChatId: groupId } })
+        return artifacts.find((artifact) => decodeGitQuotedPath(artifact.path) === path) ?? null
     }
 
     /** 写决策：把 supersedes 指向的旧决策置 superseded。 */

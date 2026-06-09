@@ -11,12 +11,13 @@ import type { BlackboardContractEntity } from '../blackboard/entities/blackboard
 import type { BlackboardDecisionEntity } from '../blackboard/entities/blackboard-decision.entity.js'
 import type { BlackboardEventEntity } from '../blackboard/entities/blackboard-event.entity.js'
 import type { BlackboardTaskEntity } from '../blackboard/entities/blackboard-task.entity.js'
+import { decodeGitQuotedPath } from '../git-path.js'
 
 export function toArtifactView(e: BlackboardArtifactEntity): BlackboardArtifact {
     return {
         id: e.id,
         type: e.type,
-        path: e.path,
+        path: decodeGitQuotedPath(e.path),
         ownerAgentId: e.ownerAgentId,
         version: e.version,
         status: e.status,
