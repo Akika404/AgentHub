@@ -52,6 +52,7 @@ const RESUME_CONTINUITY: ContinuityResult = {
 
 /** 引用消息注入目标成员上下文时的免责提示（结论性事实以当前产出物/黑板为准）。 */
 const QUOTE_CAVEAT =
+    '' +
     '注意：以上为用户引用的历史消息，仅代表引用当时的情况，可能与当前产出物/黑板事实不一致。请以当前产出物与黑板为准，必要时自行重新确认其可靠性。'
 
 /**
@@ -1125,7 +1126,7 @@ export class GroupRunExecutor implements OnModuleInit {
                 ? '- (无)'
                 : outcomes.map((o) => `- [${o.status}] ${o.name}：${o.summary}`).join('\n')
         return [
-            '【内部续编排检查】',
+            '# 内部续编排检查',
             `原始用户需求：${originalUserText}`,
             `刚完成的阶段序号：${completedStage}`,
             `刚完成的阶段结果：\n${render(stageOutcomes)}`,
@@ -1146,7 +1147,7 @@ export class GroupRunExecutor implements OnModuleInit {
             .map((o) => `- [${o.status}] ${o.name}：${o.summary}`)
             .join('\n')
         return [
-            '【最终验收未通过，继续完成缺口】',
+            '# 最终验收未通过，继续完成缺口',
             `原始用户需求：${originalUserText}`,
             `验收提出的后续指令：${followUpInstruction}`,
             `本轮已完成/已处理的任务：\n${outcomes || '- (无)'}`,

@@ -101,7 +101,7 @@ summary 会作为群聊里该成员最终消息的正文展示给用户，应该
 只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。
 
 # 需要向用户确认信息时（重要）
-不要使用 AskUserQuestion 工具（群聊后台运行里它拿不到用户输入、必失败）。改为在 report 里设 awaiting_user_input:true，并尽量输出结构化的 questions 数组（会渲染成可点选的提问卡片，用户作答后自动拼成回复发回给你）：
+**不要使用 AskUserQuestion 工具（群聊后台运行里它拿不到用户输入、必失败）**。改为在 report 里设 awaiting_user_input:true，并尽量输出结构化的 questions 数组（会渲染成可点选的提问卡片，用户作答后自动拼成回复发回给你）：
 \`\`\`report
 {
   "summary":"等待用户确认时区计算器需求",
