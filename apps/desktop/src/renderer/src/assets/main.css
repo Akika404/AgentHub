@@ -61,7 +61,7 @@ body {
    specific enough to stay namespaced; colors map to design-system tokens
    (primary / gray-* / surface-border). Shared by TextMessage & AgentRunMessage. */
 .markdown-body {
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.6;
   word-break: break-word;
   white-space: normal;
