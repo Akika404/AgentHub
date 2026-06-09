@@ -4,6 +4,8 @@
  */
 
 import type { AgentRunStepView } from './agent.js'
+import type { DeployManifest } from './deployment.js'
+import type { BlackboardArtifact } from './blackboard.js'
 
 export type ChatKind = 'group' | 'agent' | 'user' | 'team'
 
@@ -209,12 +211,25 @@ export interface GroupAgentQuestionView extends GroupMessageBase {
   answerText?: string
 }
 
+/**
+ * 部署卡片（渲染层）：群聊 run 在 Orchestrator 总结后产出可呈现交付物时展示。
+ * `static` 模式点「预览」直接在产物抽屉打开 `entryPath`；`service` 模式展示
+ * 声明的启动命令，用户确认后由服务端起 dev server，再在部署抽屉里 iframe 显示。
+ */
+export interface GroupDeployMessageView extends GroupMessageBase {
+  kind: 'deploy'
+  manifest: DeployManifest
+  /** 本轮可部署/预览的产物（卡片据此列出可点项） */
+  artifacts: BlackboardArtifact[]
+}
+
 export type GroupMessageView =
   | GroupTextMessageView
   | GroupSystemMessageView
   | GroupTaskListMessageView
   | GroupOptionsMessageView
   | GroupAgentQuestionView
+  | GroupDeployMessageView
 
 export interface ChatDetail {
   id: string

@@ -1,6 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import type { BlackboardTaskNode, GroupRouteKind, TaskItem } from '@agenthub/shared'
+import type {
+    BlackboardArtifact,
+    BlackboardTaskNode,
+    DeployManifest,
+    GroupRouteKind,
+    TaskItem
+} from '@agenthub/shared'
 import { Repository } from 'typeorm'
 import type { Agent } from '../../entities/agent.entity.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
@@ -457,6 +463,9 @@ export class OrchestratorService {
                     runId,
                     text: review.summary
                 })
+                if (review.complete) {
+                    await this.emitDeployCard(group, userId, runId, review.deploy)
+                }
                 this.debug.log('group.orchestrator.report.review_confirmed', {
                     groupId: group.id,
                     runId,
@@ -498,6 +507,8 @@ export class OrchestratorService {
             runId,
             text: fallbackText
         })
+        // 无 final review（或其失败）时降级：仅当产物里有可直接预览的入口文件才出静态卡。
+        await this.emitDeployCard(group, userId, runId, null)
         this.debug.log('group.orchestrator.report.fallback', {
             groupId: group.id,
             runId,
@@ -506,6 +517,108 @@ export class OrchestratorService {
             text: fallbackText
         })
         return { text: fallbackText, shouldContinue: false }
+    }
+
+    /**
+     * 在总结之后、done 之前发部署卡片：把 manifest + 可预览产物落一张 deploy 卡片并广播
+     * deploy_card 事件。manifest 为 null 时降级探测一个静态入口文件（index.html）；探测不到
+     * 则不出卡。任何异常只记录、不影响 run 收尾。
+     */
+    private async emitDeployCard(
+        group: GroupChat,
+        userId: string,
+        runId: string,
+        manifest: DeployManifest | null
+    ): Promise<void> {
+        try {
+            const state = await this.blackboard.getState(group.id)
+            const artifacts = state.artifacts.filter(
+                (a) => a.status !== 'deprecated' && !this.isHiddenArtifact(a.path)
+            )
+            const resolved = manifest
+                ? this.normalizeDeployManifest(manifest, artifacts)
+                : this.detectStaticManifest(artifacts)
+            if (!resolved) return
+            const cardArtifacts = this.selectCardArtifacts(resolved, artifacts)
+            await this.groupMessages.appendDeploy(group.id, userId, resolved, cardArtifacts)
+            await this.runStream.publish(runId, {
+                type: 'deploy_card',
+                runId,
+                manifest: resolved,
+                artifacts: cardArtifacts
+            })
+            this.debug.log('group.orchestrator.deploy_card', {
+                groupId: group.id,
+                runId,
+                userId,
+                manifest: resolved,
+                artifactCount: cardArtifacts.length
+            })
+        } catch (err) {
+            this.debug.log('group.orchestrator.deploy_card.failed', {
+                groupId: group.id,
+                runId,
+                error: err instanceof Error ? err.message : String(err)
+            })
+        }
+    }
+
+    /** 降级探测：产物里存在 index.html 时构造一张 static 卡（否则不出卡）。 */
+    private detectStaticManifest(artifacts: BlackboardArtifact[]): DeployManifest | null {
+        const entry = artifacts.find((a) => {
+            const name =
+                a.path
+                    .split(/[\\/]+/)
+                    .pop()
+                    ?.toLowerCase() ?? ''
+            return name === 'index.html'
+        })
+        return entry ? { mode: 'static', entryPath: entry.path } : null
+    }
+
+    private normalizeDeployManifest(
+        manifest: DeployManifest,
+        artifacts: BlackboardArtifact[]
+    ): DeployManifest | null {
+        if (manifest.mode === 'static') {
+            const entryPath = manifest.entryPath?.trim()
+            if (!entryPath || !artifacts.some((artifact) => artifact.path === entryPath))
+                return null
+            const note = manifest.note?.trim()
+            return { mode: 'static', entryPath, ...(note ? { note } : {}) }
+        }
+
+        const command = manifest.command?.trim()
+        const port = manifest.port
+        if (!command || !port || !Number.isInteger(port) || port < 1 || port > 65535) return null
+        const installCommand = manifest.installCommand?.trim()
+        const entryPath = manifest.entryPath?.trim()
+        const note = manifest.note?.trim()
+        return {
+            mode: 'service',
+            command,
+            port,
+            ...(installCommand ? { installCommand } : {}),
+            ...(entryPath ? { entryPath } : {}),
+            ...(note ? { note } : {})
+        }
+    }
+
+    /** 卡片要列出的产物：static 优先入口文件本身，否则全部可预览产物。 */
+    private selectCardArtifacts(
+        manifest: DeployManifest,
+        artifacts: BlackboardArtifact[]
+    ): BlackboardArtifact[] {
+        if (manifest.mode === 'static' && manifest.entryPath) {
+            const entry = artifacts.find((a) => a.path === manifest.entryPath)
+            if (entry) return [entry]
+        }
+        return artifacts
+    }
+
+    private isHiddenArtifact(path: string): boolean {
+        const hidden = new Set(['.codex', '.agents', '.claude'])
+        return path.split(/[\\/]+/).some((segment) => hidden.has(segment))
     }
 
     private async persistReviewerSessionId(

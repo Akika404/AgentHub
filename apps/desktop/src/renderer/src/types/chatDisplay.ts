@@ -1,4 +1,10 @@
-import type { AgentTodoItem, ChatMessage, SenderInfo } from '../api'
+import type {
+  AgentTodoItem,
+  BlackboardArtifact,
+  ChatMessage,
+  DeployManifest,
+  SenderInfo
+} from '../api'
 
 export interface AgentRunStep {
   id: string
@@ -29,12 +35,28 @@ export interface AgentRunMessage {
   text: string
 }
 
-export type ChatDisplayMessage = ChatMessage | AgentRunMessage
+/** 部署卡片（渲染层）：群聊总结后展示可预览/可运行的交付物。 */
+export interface DeployMessage {
+  id: string
+  chatId: string
+  kind: 'deploy'
+  timestamp: string
+  pinned?: boolean
+  sender: SenderInfo
+  manifest: DeployManifest
+  artifacts: BlackboardArtifact[]
+}
+
+export type ChatDisplayMessage = ChatMessage | AgentRunMessage | DeployMessage
 
 export function isAgentRunMessage(message: ChatDisplayMessage): message is AgentRunMessage {
   return message.kind === 'agent-run'
 }
 
+export function isDeployMessage(message: ChatDisplayMessage): message is DeployMessage {
+  return message.kind === 'deploy'
+}
+
 export function isChatMessage(message: ChatDisplayMessage): message is ChatMessage {
-  return !isAgentRunMessage(message)
+  return !isAgentRunMessage(message) && !isDeployMessage(message)
 }

@@ -7,9 +7,12 @@ import {
   type BlackboardView,
   type ConverseGroupPayload,
   type CreateGroupChatPayload,
+  type DeploymentEvent,
+  type DeploymentView,
   type GroupChatView,
   type GroupMessageView,
   type GroupRunEvent,
+  type StartDeploymentPayload,
   type StartGroupRunResult,
   type UpdateGroupChatPayload
 } from '@agenthub/shared'
@@ -22,12 +25,27 @@ export interface GroupRunHandlers {
   onDone?(): void
 }
 
+export interface DeploymentHandlers {
+  onEvent(event: DeploymentEvent): void
+  onError?(message: string): void
+  onDone?(): void
+}
+
 export interface GroupRunStream {
   streamId: string
   runId: string
   /** Resolves once the SSE subscription is established (or rejects if it fails). */
   started: Promise<void>
   /** Detach this client from the run. Does NOT stop the run server-side. */
+  cancel(): Promise<void>
+}
+
+/** A live SSE subscription that is not tied to a group run id. */
+export interface SseSubscription {
+  streamId: string
+  /** Resolves once the SSE subscription is established (or rejects if it fails). */
+  started: Promise<void>
+  /** Detach this client from the stream. Does NOT affect server-side state. */
   cancel(): Promise<void>
 }
 
@@ -44,10 +62,10 @@ function hasStreamId(payload: unknown, streamId: string): payload is { streamId:
   )
 }
 
-function isStreamPayload(
+function isStreamPayload<T>(
   payload: unknown,
   streamId: string
-): payload is { streamId: string; data: GroupRunEvent } {
+): payload is { streamId: string; data: T } {
   return hasStreamId(payload, streamId) && 'data' in payload
 }
 
@@ -57,13 +75,16 @@ function cleanup(unsubscribers: Array<() => void>): void {
 }
 
 /**
- * Subscribe to a group run's event stream (replay + live tail). The run executes
- * server-side independently of this subscription; cancelling only detaches this
- * client. Mirrors the single-chat turn subscription.
+ * Generic SSE subscription over the main-process stream proxy. Wires the
+ * event/error/done IPC channels for one `streamId` and resolves `started` once
+ * the connection is confirmed (or rejects on failure). Used by both group-run
+ * and deployment-log streams.
  */
-function subscribeRun(groupId: string, runId: string, handlers: GroupRunHandlers): GroupRunStream {
+function subscribeSse<T>(
+  path: string,
+  handlers: { onEvent(event: T): void; onError?(message: string): void; onDone?(): void }
+): SseSubscription {
   const streamId = nextStreamId()
-  const path = `/group-chats/${groupId}/runs/${runId}/events`
   const unsubscribers: Array<() => void> = []
 
   const cancel = async (): Promise<void> => {
@@ -73,7 +94,7 @@ function subscribeRun(groupId: string, runId: string, handlers: GroupRunHandlers
 
   unsubscribers.push(
     window.api.onStream('event', (payload) => {
-      if (!isStreamPayload(payload, streamId)) return
+      if (!isStreamPayload<T>(payload, streamId)) return
       handlers.onEvent(payload.data)
     }),
     window.api.onStream('error', (payload) => {
@@ -111,7 +132,29 @@ function subscribeRun(groupId: string, runId: string, handlers: GroupRunHandlers
       }
     })
 
-  return { streamId, runId, started, cancel }
+  return { streamId, started, cancel }
+}
+
+/**
+ * Subscribe to a group run's event stream (replay + live tail). The run executes
+ * server-side independently of this subscription; cancelling only detaches this
+ * client. Mirrors the single-chat turn subscription.
+ */
+function subscribeRun(groupId: string, runId: string, handlers: GroupRunHandlers): GroupRunStream {
+  const sub = subscribeSse<GroupRunEvent>(`/group-chats/${groupId}/runs/${runId}/events`, handlers)
+  return { streamId: sub.streamId, runId, started: sub.started, cancel: sub.cancel }
+}
+
+/** Subscribe to a deployment's log/status stream (replay + live tail). */
+function subscribeDeployment(
+  groupId: string,
+  deploymentId: string,
+  handlers: DeploymentHandlers
+): SseSubscription {
+  return subscribeSse<DeploymentEvent>(
+    `/group-chats/${groupId}/deployments/${deploymentId}/logs`,
+    handlers
+  )
 }
 
 /** Start a group run then subscribe to its event stream. */
@@ -148,5 +191,13 @@ export const groupChatApi = {
       `/group-chats/${id}/blackboard/artifacts/${artifactId}/preview`
     ),
   getBlackboardEvents: (id: string) =>
-    http.get<BlackboardEventView[]>(`/group-chats/${id}/blackboard/events`)
+    http.get<BlackboardEventView[]>(`/group-chats/${id}/blackboard/events`),
+  /** Start a service deployment from a deploy card's manifest. */
+  startDeployment: (id: string, payload: StartDeploymentPayload) =>
+    http.post<DeploymentView>(`/group-chats/${id}/deployments`, payload),
+  /** Stop a running service deployment (idempotent). */
+  stopDeployment: (id: string, deploymentId: string) =>
+    http.delete<{ stopped: true }>(`/group-chats/${id}/deployments/${deploymentId}`),
+  /** Subscribe to a deployment's log/status stream (replay + live tail). */
+  subscribeDeployment
 }

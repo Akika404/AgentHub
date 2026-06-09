@@ -17,6 +17,7 @@ import type {
     BlackboardArtifactPreview,
     BlackboardEventView,
     BlackboardView,
+    DeploymentView,
     GroupChatView,
     GroupMessageView
 } from '@agenthub/shared'
@@ -41,6 +42,7 @@ import {
     BlackboardEventViewDto,
     BlackboardViewDto
 } from './dto/blackboard-response.dto.js'
+import { DeploymentViewDto, StartDeploymentDto, StopDeploymentResultDto } from './dto/deployment-response.dto.js'
 
 @ApiTags('group-chats')
 @ApiBearerAuth()
@@ -184,5 +186,50 @@ export class GroupChatController {
             limit ? Number(limit) : undefined,
             offset ? Number(offset) : undefined
         )
+    }
+
+    // —— 部署（service 模式运行 dev server + 预览）——
+
+    @Post(':id/deployments')
+    @ApiOperation({
+        summary: '启动一次 service 部署（运行 deploy 卡片声明的 dev server）',
+        description:
+            '用户在 deploy 卡片上点「运行」后调用：服务端在群工作区按声明命令起 dev server（缺依赖先 install），立即返回部署视图。订阅 deployments/:deploymentId/logs 观看日志与就绪状态。一个群同时仅一个活跃部署，启动新部署会停止旧的。'
+    })
+    @ApiEnvelope(DeploymentViewDto, { status: 201 })
+    startDeployment(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Body() dto: StartDeploymentDto
+    ): Promise<DeploymentView> {
+        return this.manager.startDeployment(user.id, id, dto.manifest)
+    }
+
+    @Delete(':id/deployments/:deploymentId')
+    @ApiOperation({ summary: '停止一个 service 部署（杀进程树，幂等）' })
+    @ApiEnvelope(StopDeploymentResultDto)
+    stopDeployment(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('deploymentId') deploymentId: string
+    ): Promise<{ stopped: true }> {
+        return this.manager.stopDeployment(user.id, id, deploymentId)
+    }
+
+    @Sse(':id/deployments/:deploymentId/logs')
+    @SkipEnvelope()
+    @ApiOperation({
+        summary: '订阅部署事件流（SSE：状态 + 日志，回放 + 实时追尾）',
+        description:
+            '返回 text/event-stream，先回放当前状态与已有日志，再实时推送 DeploymentEvent（log / status），部署进入 stopped/failed 后结束。'
+    })
+    @ApiProduces('text/event-stream')
+    async deploymentLogs(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('deploymentId') deploymentId: string
+    ): Promise<Observable<MessageEvent>> {
+        const stream = await this.manager.subscribeDeployment(user.id, id, deploymentId)
+        return from(stream).pipe(map((ev): MessageEvent => ({ data: ev as object })))
     }
 }

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
-import type { AgentQuestionMessage, OptionItem, OptionsMessage } from '../api'
-import { isAgentRunMessage, type ChatDisplayMessage } from '../types/chatDisplay'
+import type { AgentQuestionMessage, BlackboardArtifact, OptionItem, OptionsMessage } from '../api'
+import {
+  isAgentRunMessage,
+  isDeployMessage,
+  type ChatDisplayMessage,
+  type DeployMessage
+} from '../types/chatDisplay'
 import type { MentionTarget } from '../types/mentions'
 import SystemMessageView from './messages/SystemMessage.vue'
 import TextMessageView from './messages/TextMessage.vue'
@@ -9,6 +14,7 @@ import TaskListMessageView from './messages/TaskListMessage.vue'
 import OptionsMessageView from './messages/OptionsMessage.vue'
 import AgentQuestionMessageView from './messages/AgentQuestionMessage.vue'
 import AgentRunMessageView from './messages/AgentRunMessage.vue'
+import DeployMessageView from './messages/DeployMessage.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import BaseSkeleton from './ui/BaseSkeleton.vue'
 
@@ -31,6 +37,8 @@ const emit = defineEmits<{
   (e: 'copy-message', message: ChatDisplayMessage): void
   (e: 'reply-message', message: ChatDisplayMessage): void
   (e: 'mention-sender', senderId: string): void
+  (e: 'preview-artifact', artifact: BlackboardArtifact): void
+  (e: 'run-deployment', message: DeployMessage): void
 }>()
 
 const scrollRef = ref<HTMLElement | null>(null)
@@ -201,6 +209,12 @@ watch(scrollSignature, async () => {
           @submit="emit('submit-question', $event)"
         />
         <AgentRunMessageView v-else-if="isAgentRunMessage(msg)" :message="msg" />
+        <DeployMessageView
+          v-else-if="isDeployMessage(msg)"
+          :message="msg"
+          @preview-artifact="emit('preview-artifact', $event)"
+          @run-deployment="emit('run-deployment', $event)"
+        />
       </div>
     </template>
     <ContextMenu

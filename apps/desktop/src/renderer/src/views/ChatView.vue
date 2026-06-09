@@ -12,6 +12,8 @@ import type {
   ChatDetail,
   AgentQuestionMessage,
   ChatSummary,
+  DeployManifest,
+  DeploymentView,
   GroupChatView,
   GroupMemberView,
   GroupRunEvent,
@@ -32,7 +34,8 @@ import {
   isAgentRunMessage,
   type AgentRunMessage,
   type AgentRunStep,
-  type ChatDisplayMessage
+  type ChatDisplayMessage,
+  type DeployMessage
 } from '../types/chatDisplay'
 import type { MentionTarget } from '../types/mentions'
 import { agentInitials } from '../utils/avatar'
@@ -48,6 +51,7 @@ import GroupChatCreateDialog from '../components/GroupChatCreateDialog.vue'
 import GroupDetailPanel from '../components/GroupDetailPanel.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ArtifactPreviewDrawer from '../components/ArtifactPreviewDrawer.vue'
+import DeploymentDrawer from '../components/DeploymentDrawer.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
 type SessionKind = 'agent' | 'group'
@@ -57,6 +61,10 @@ type ChatListItem = ChatSummary & {
   running?: boolean
   updatedAt?: string
   groupMembers?: GroupMemberView[]
+}
+interface ActiveDeploymentState {
+  groupId: string
+  view: DeploymentView
 }
 
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
@@ -98,6 +106,8 @@ const activeSessionKey = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
 const activeGroupBlackboard = ref<BlackboardView | null>(null)
 const previewArtifact = ref<BlackboardArtifact | null>(null)
+const activeDeployment = ref<ActiveDeploymentState | null>(null)
+const deploymentStarting = ref(false)
 const groupBlackboards = new Map<string, BlackboardView | null>()
 const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST_DEFAULT_WIDTH))
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
@@ -577,6 +587,52 @@ function appendSystemMessage(sessionKey: string, text: string): void {
     timestamp: new Date().toISOString(),
     text
   })
+}
+
+/** Insert a deploy card into the live group session (from a `deploy_card` event). */
+function appendDeployCard(
+  group: GroupChatView,
+  manifest: DeployManifest,
+  artifacts: BlackboardArtifact[]
+): void {
+  const sessionKey = groupSessionKey(group.id)
+  appendMessage(sessionKey, {
+    id: `m-deploy-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    chatId: sessionKey,
+    kind: 'deploy',
+    timestamp: new Date().toISOString(),
+    sender: groupOrchestratorSender(),
+    manifest,
+    artifacts
+  })
+}
+
+/** Run a service deploy card: start the dev server then open the run drawer. */
+async function runDeployment(message: DeployMessage): Promise<void> {
+  const group = activeGroup.value
+  if (!group || deploymentStarting.value) return
+  deploymentStarting.value = true
+  try {
+    const deployment = await groupChatApi.startDeployment(group.id, {
+      manifest: message.manifest
+    })
+    previewArtifact.value = null
+    activeDeployment.value = { groupId: group.id, view: deployment }
+  } catch (err) {
+    const text = err instanceof ApiError ? err.message : '启动部署失败'
+    appendSystemMessage(groupSessionKey(group.id), text)
+  } finally {
+    deploymentStarting.value = false
+  }
+}
+
+/** Stop the active deployment (best-effort) when closing the run drawer. */
+async function closeDeployment(): Promise<void> {
+  const deployment = activeDeployment.value
+  activeDeployment.value = null
+  if (deployment) {
+    await groupChatApi.stopDeployment(deployment.groupId, deployment.view.id).catch(() => undefined)
+  }
 }
 
 function runStepId(type: AgentRunStep['type']): string {
@@ -1232,6 +1288,11 @@ async function detachAllTurns(): Promise<void> {
 }
 
 async function selectChat(key: string): Promise<void> {
+  const nextKind = sessionKind(key)
+  const nextGroupId = nextKind === 'group' ? sessionRawId(key) : null
+  if (activeDeployment.value && activeDeployment.value.groupId !== nextGroupId) {
+    await closeDeployment()
+  }
   activeSessionKey.value = key
   pendingReply.value = null
   previewArtifact.value = null
@@ -1350,6 +1411,9 @@ async function confirmDeleteChat(): Promise<void> {
       if (isChatRunning(chat.id) || groupStreams.has(chat.id)) {
         await stopGroupRun(id)
         await detachGroupRun(id)
+      }
+      if (activeDeployment.value?.groupId === id) {
+        await closeDeployment()
       }
       await groupChatApi.delete(id)
       groupChats.value = groupChats.value.filter((item) => item.id !== id)
@@ -1741,6 +1805,8 @@ function buildGroupRunHandlers(
       } else if (event.type === 'orchestrator_report') {
         const orchestratorKey = ensureGroupOrchestratorRunMessage(group, runId)
         updateAgentRunText(orchestratorKey, event.text)
+      } else if (event.type === 'deploy_card') {
+        appendDeployCard(group, event.manifest, event.artifacts)
       } else if (event.type === 'done') {
         finishGroupRunMessages(groupId, runId, event.success)
       }
@@ -2146,6 +2212,8 @@ function messageToPlainText(msg: ChatDisplayMessage): string {
       return [msg.text, ...msg.options.map((o) => `- ${o.label}`)].join('\n')
     case 'agent-question':
       return [msg.summary, ...msg.questions.map((q) => `- ${q.header || q.question}`)].join('\n')
+    case 'deploy':
+      return msg.manifest.mode === 'service' ? '可运行的项目' : '可预览的产物'
   }
 }
 
@@ -2218,6 +2286,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', normalizePaneWidths)
   stopPaneResize()
+  void closeDeployment()
   // 只断开本端订阅，turn 在服务端继续运行；重新打开或在其它设备仍可围观
   void detachAllTurns()
 })
@@ -2271,6 +2340,8 @@ onUnmounted(() => {
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"
         @mention-sender="onMentionSender"
+        @preview-artifact="previewArtifact = $event"
+        @run-deployment="runDeployment"
       />
       <MessageInput
         ref="messageInputRef"
@@ -2313,6 +2384,11 @@ onUnmounted(() => {
       :group-id="activeGroup?.id ?? null"
       :artifact="previewArtifact"
       @close="previewArtifact = null"
+    />
+    <DeploymentDrawer
+      :group-id="activeDeployment?.groupId ?? null"
+      :deployment="activeDeployment?.view ?? null"
+      @close="closeDeployment"
     />
     <AgentChatCreateDialog
       :open="createChatOpen"

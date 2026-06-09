@@ -73,6 +73,15 @@ export function groupMessageToDisplay(
       answerText: view.answerText
     }
   }
+  if (view.kind === 'deploy') {
+    return {
+      ...base,
+      kind: 'deploy',
+      sender,
+      manifest: view.manifest,
+      artifacts: view.artifacts
+    }
+  }
   const steps = runStepsFromViews(view.steps)
   if (view.senderRole === 'agent' && steps.length > 0) {
     return {

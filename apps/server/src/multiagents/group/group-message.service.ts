@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
 import type {
     AgentQuestion,
+    BlackboardArtifact,
+    DeployManifest,
     GroupMessageView,
     GroupSenderRole,
     MessageReplyRef,
@@ -146,6 +148,31 @@ export class GroupMessageService {
                 senderAgentId,
                 text: summary,
                 payload: { taskId, questions: normalized, answered: false }
+            })
+        )
+        return toGroupMessageView(saved)
+    }
+
+    /**
+     * 群聊 run 在 Orchestrator 总结后产出可呈现交付物 → 落一张 deploy 卡片。
+     * manifest 描述如何呈现/运行；artifacts 是卡片可点的产物列表。senderRole 固定
+     * 为 orchestrator（由编排器在 run 收尾时发出）。
+     */
+    async appendDeploy(
+        groupId: string,
+        userId: string,
+        manifest: DeployManifest,
+        artifacts: BlackboardArtifact[]
+    ): Promise<GroupMessageView> {
+        const saved = await this.messageRepo.save(
+            this.messageRepo.create({
+                groupChatId: groupId,
+                userId,
+                kind: 'deploy',
+                senderRole: 'orchestrator',
+                senderAgentId: null,
+                text: null,
+                payload: { manifest, artifacts }
             })
         )
         return toGroupMessageView(saved)

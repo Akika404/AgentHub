@@ -2,7 +2,13 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 import type { GroupSenderRole, MessageReplyRef } from '@agenthub/shared'
 
 /** 展示层消息卡片类型 */
-export type GroupMessageKind = 'text' | 'system' | 'task-list' | 'options' | 'agent-question'
+export type GroupMessageKind =
+    | 'text'
+    | 'system'
+    | 'task-list'
+    | 'options'
+    | 'agent-question'
+    | 'deploy'
 
 /**
  * GroupMessage — 群聊展示层 presentation_log（给人看 / 审计），多发言者。
@@ -37,7 +43,7 @@ export class GroupMessage {
     @Column({ type: 'text', nullable: true })
     text!: string | null
 
-    /** 结构化负载：task-list 的 {heading,tasks}；options 的 {options,answered,...}；agent-question 的 {taskId,questions,answered} */
+    /** 结构化负载：task-list 的 {heading,tasks}；options 的 {options,answered,...}；agent-question 的 {taskId,questions,answered}；deploy 的 {manifest,artifacts} */
     @Column({ type: 'json', nullable: true })
     payload!: Record<string, unknown> | null
 

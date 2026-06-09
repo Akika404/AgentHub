@@ -5,6 +5,9 @@ import type {
     BlackboardView,
     ConverseGroupPayload,
     CreateGroupChatPayload,
+    DeployManifest,
+    DeploymentEvent,
+    DeploymentView,
     GroupChatView,
     GroupMessageView,
     GroupRunEvent,
@@ -16,6 +19,8 @@ import { GroupMessageService } from './group-message.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
 import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
+import { GroupWorkspaceService } from './group-workspace.service.js'
+import { DeploymentService } from './deployment/deployment.service.js'
 import { BusinessException } from '../../common/index.js'
 
 /**
@@ -29,6 +34,8 @@ export class GroupChatManager {
         private readonly groupMessages: GroupMessageService,
         private readonly blackboard: BlackboardService,
         private readonly artifactPreview: GroupArtifactPreviewService,
+        private readonly workspace: GroupWorkspaceService,
+        private readonly deployments: DeploymentService,
         private readonly runStream: GroupRunStream,
         private readonly executor: GroupRunExecutor
     ) {}
@@ -53,7 +60,9 @@ export class GroupChatManager {
         return this.groupChat.updateGroupChat(userId, id, payload)
     }
 
-    deleteGroupChat(userId: string, id: string): Promise<{ deleted: true }> {
+    async deleteGroupChat(userId: string, id: string): Promise<{ deleted: true }> {
+        await this.groupChat.loadGroup(userId, id)
+        await this.deployments.stopAllForGroup(id)
         return this.groupChat.deleteGroupChat(userId, id)
     }
 
@@ -108,5 +117,39 @@ export class GroupChatManager {
     ): Promise<BlackboardEventView[]> {
         await this.groupChat.loadGroup(userId, groupId)
         return this.blackboard.listEvents(groupId, limit, offset)
+    }
+
+    // —— 部署（service 模式运行 dev server + 预览）——
+
+    async startDeployment(
+        userId: string,
+        groupId: string,
+        manifest: DeployManifest
+    ): Promise<DeploymentView> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        if (manifest.mode !== 'service') {
+            throw BusinessException.badRequest('Only service deployments can be started')
+        }
+        const repoDir = this.workspace.repoDir(group.id, group.workspaceDir)
+        return this.deployments.start(group.id, repoDir, manifest)
+    }
+
+    async stopDeployment(
+        userId: string,
+        groupId: string,
+        deploymentId: string
+    ): Promise<{ stopped: true }> {
+        await this.groupChat.loadGroup(userId, groupId)
+        await this.deployments.stop(groupId, deploymentId)
+        return { stopped: true }
+    }
+
+    async subscribeDeployment(
+        userId: string,
+        groupId: string,
+        deploymentId: string
+    ): Promise<AsyncIterable<DeploymentEvent>> {
+        await this.groupChat.loadGroup(userId, groupId)
+        return this.deployments.subscribe(groupId, deploymentId)
     }
 }

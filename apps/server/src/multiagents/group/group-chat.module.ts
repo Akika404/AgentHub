@@ -26,6 +26,9 @@ import { GroupChatService } from './group-chat.service.js'
 import { GroupMessageService } from './group-message.service.js'
 import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
+import { DeploymentService } from './deployment/deployment.service.js'
+import { LocalProcessRunner } from './deployment/local-process.runner.js'
+import { DEPLOYMENT_RUNNER } from './deployment/deployment-runner.interface.js'
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { AgentMemoryService } from './memory/agent-memory.service.js'
 import { ContextAssembler } from './context/context-assembler.service.js'
@@ -86,6 +89,9 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         GroupMessageService,
         GroupArtifactPreviewService,
         GroupWorkspaceService,
+        DeploymentService,
+        LocalProcessRunner,
+        { provide: DEPLOYMENT_RUNNER, useExisting: LocalProcessRunner },
         BlackboardService,
         AgentMemoryService,
         ContextAssembler,

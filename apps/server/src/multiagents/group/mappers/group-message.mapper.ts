@@ -1,6 +1,8 @@
 import type {
     AgentQuestion,
     AgentRunStepView,
+    BlackboardArtifact,
+    DeployManifest,
     GroupMessageView,
     MessageReplyRef,
     OptionItem,
@@ -69,6 +71,15 @@ export function toGroupMessageView(
             }
         case 'system':
             return { ...base, kind: 'system', text: message.text ?? '' }
+        case 'deploy':
+            return {
+                ...base,
+                kind: 'deploy',
+                manifest: (payload.manifest ?? { mode: 'static' }) as DeployManifest,
+                artifacts: Array.isArray(payload.artifacts)
+                    ? (payload.artifacts as BlackboardArtifact[])
+                    : []
+            }
         case 'text':
         default: {
             const replyTo = toReplyRef(message.replyTo)

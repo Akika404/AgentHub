@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { readFile, stat } from 'node:fs/promises'
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
-import type { BlackboardArtifact } from '@agenthub/shared'
+import type { BlackboardArtifact, DeployManifest } from '@agenthub/shared'
 import {
     createAgent,
     type AgentAdapter,
@@ -45,6 +45,8 @@ export interface OrchestratorFinalReviewResult {
     completedItems: string[]
     gaps: string[]
     followUpInstruction: string | null
+    /** 可呈现交付物的部署声明；无可部署产物时为 null。 */
+    deploy: DeployManifest | null
     orchestratorSessionId?: string | null
 }
 
@@ -77,7 +79,15 @@ const FINAL_REVIEW_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrator，负
 - summary：给用户看的最终正文。complete=true 时是一段自然、具体、诚实的总结，说明完成了什么以及产物位置；complete=false 时说明当前进度与还差什么。
 - completedItems：始终列出已真正交付的工作（用短句）；即使整体未完成也要如实填写已完成的部分，没有则为空数组。
 - gaps：未满足或不充分的项（用短句）。complete=true 时为空数组。
-- followUpInstruction：complete=false 时给一段自包含、可直接交给编排器继续派发成员任务的指令，点明还缺什么、建议交给哪类成员；complete=true 时为 null。`
+- followUpInstruction：complete=false 时给一段自包含、可直接交给编排器继续派发成员任务的指令，点明还缺什么、建议交给哪类成员；complete=true 时为 null。
+
+【部署声明 deploy】
+判断本轮产物是否是一个"可以给用户直接看/运行"的交付物，据此填写 deploy（无可呈现交付物时填 null）：
+- mode="static"：产物是可直接预览的单个文件（如 index.html、报告 .md/.txt），entryPath 填该文件相对工作区根的路径（如 "index.html"）。不要为需要构建/起服务才能看的项目填 static。
+- mode="service"：产物是需要起 dev server 才能访问的网页项目（如 Vite/React/Vue 工程）。必须填 command（启动 dev server 的命令，如 "npm run dev"）与 port（该命令实际监听的端口，需与项目配置一致）。若依赖未安装需要先安装，填 installCommand（如 "npm install"）；entryPath 可选填项目根或入口文件。
+- note：可选，一句话向用户说明这个部署是什么。
+- 只在 complete=true 且确有可呈现交付物时填 deploy；纯规划/PRD/方案/设计类交付物填 null。
+- command/port 必须来自你对产物的真实判断（读 package.json 的 scripts 与框架默认端口），不要臆造。`
 
 const REVIEW_TEXT_EXTENSIONS = new Set([
     '.css',
@@ -228,9 +238,29 @@ export class LlmOrchestratorFinalReviewer implements OrchestratorFinalReviewer {
                 summary: { type: 'string' },
                 completedItems: { type: 'array', items: { type: 'string' } },
                 gaps: { type: 'array', items: { type: 'string' } },
-                followUpInstruction: { type: ['string', 'null'] }
+                followUpInstruction: { type: ['string', 'null'] },
+                deploy: {
+                    type: ['object', 'null'],
+                    properties: {
+                        mode: { type: 'string', enum: ['static', 'service'] },
+                        entryPath: { type: 'string' },
+                        command: { type: 'string' },
+                        installCommand: { type: 'string' },
+                        port: { type: 'integer' },
+                        note: { type: 'string' }
+                    },
+                    required: ['mode'],
+                    additionalProperties: false
+                }
             },
-            required: ['complete', 'summary', 'completedItems', 'gaps', 'followUpInstruction'],
+            required: [
+                'complete',
+                'summary',
+                'completedItems',
+                'gaps',
+                'followUpInstruction',
+                'deploy'
+            ],
             additionalProperties: false
         }
     }
@@ -388,7 +418,35 @@ export class LlmOrchestratorFinalReviewer implements OrchestratorFinalReviewer {
             followUpInstruction:
                 typeof rec.followUpInstruction === 'string' && rec.followUpInstruction.trim()
                     ? rec.followUpInstruction.trim()
-                    : null
+                    : null,
+            deploy: this.parseDeploy(rec.deploy)
+        }
+    }
+
+    /** 校验 deploy 声明；非法/缺字段则降级为 null（宁可不出卡，也不出错卡）。 */
+    private parseDeploy(raw: unknown): DeployManifest | null {
+        if (typeof raw !== 'object' || raw === null) return null
+        const rec = raw as Record<string, unknown>
+        const mode = rec.mode
+        if (mode !== 'static' && mode !== 'service') return null
+        const str = (v: unknown): string | undefined =>
+            typeof v === 'string' && v.trim() ? v.trim() : undefined
+        if (mode === 'static') {
+            const entryPath = str(rec.entryPath)
+            if (!entryPath) return null
+            return { mode, entryPath, ...(str(rec.note) ? { note: str(rec.note) } : {}) }
+        }
+        // service：command + 合法 port 必填，否则无法运行 → 降级 null
+        const command = str(rec.command)
+        const port = typeof rec.port === 'number' ? rec.port : undefined
+        if (!command || !port || !Number.isInteger(port) || port < 1 || port > 65535) return null
+        return {
+            mode,
+            command,
+            port,
+            ...(str(rec.installCommand) ? { installCommand: str(rec.installCommand) } : {}),
+            ...(str(rec.entryPath) ? { entryPath: str(rec.entryPath) } : {}),
+            ...(str(rec.note) ? { note: str(rec.note) } : {})
         }
     }
 

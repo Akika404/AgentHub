@@ -8,7 +8,8 @@
  * blackboard. See `doc/context/群聊上下文管理设计方案.md`.
  */
 import type { AgentVendor, AgentCapabilities, AgentEvent } from './agent.js'
-import type { BlackboardTaskNode, BlackboardTaskStatus, BlackboardUpdate } from './blackboard.js'
+import type { BlackboardTaskNode, BlackboardTaskStatus, BlackboardUpdate, BlackboardArtifact } from './blackboard.js'
+import type { DeployManifest } from './deployment.js'
 import type { MessageReplyRef } from './chat.js'
 
 // —— Project meta (lives on the group chat, not a separate table) ——
@@ -168,4 +169,15 @@ export type GroupRunEvent =
     }
   | { type: 'blackboard_update'; runId: string; update: BlackboardUpdate }
   | { type: 'orchestrator_report'; runId: string; text: string }
+  | {
+      /**
+       * Emitted after the Orchestrator's final report (before `done`) when the
+       * run produced a presentable deliverable. Carries the deploy manifest and
+       * the artifacts the card lists, so the renderer can insert the card live.
+       */
+      type: 'deploy_card'
+      runId: string
+      manifest: DeployManifest
+      artifacts: BlackboardArtifact[]
+    }
   | { type: 'done'; runId: string; success: boolean }
