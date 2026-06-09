@@ -161,6 +161,7 @@ data class AgentChatMessageView(
     val role: String,
     val text: String,
     val createdAt: String,
+    val pinned: Boolean = false,
     val steps: List<AgentRunStepView> = emptyList(),
     val replyTo: MessageReplyRef? = null
 )
@@ -301,6 +302,7 @@ data class GroupMessageView(
     val senderRole: String,
     val senderAgentId: String? = null,
     val createdAt: String,
+    val pinned: Boolean = false,
     val kind: String,
     val text: String? = null,
     val steps: List<AgentRunStepView> = emptyList(),

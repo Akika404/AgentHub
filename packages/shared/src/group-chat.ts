@@ -132,6 +132,11 @@ export interface StartGroupRunResult {
   runId: string
 }
 
+/** Update a group presentation_log message. Omitted fields are left unchanged. */
+export interface UpdateGroupMessagePayload {
+  pinned?: boolean
+}
+
 // —— Routing ——
 
 export type GroupRouteKind = 'direct_single' | 'multi' | 'orchestrate'

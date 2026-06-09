@@ -34,7 +34,8 @@ export function toGroupMessageView(
         groupChatId: message.groupChatId,
         senderRole: message.senderRole,
         senderAgentId: message.senderAgentId,
-        createdAt: message.createdAt.toISOString()
+        createdAt: message.createdAt.toISOString(),
+        pinned: message.pinned === true
     }
     const payload = message.payload ?? {}
     switch (message.kind) {

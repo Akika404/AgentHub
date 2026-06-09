@@ -20,6 +20,7 @@ export const ORCHESTRATOR_PLANNER = Symbol('ORCHESTRATOR_PLANNER')
 export interface OrchestratorContext {
     projectGoal: string | null
     blackboardSummary: string
+    pinnedMessages: string
     recentUserIntents: string[]
     memberStatus: Array<{
         agentId: string
@@ -421,6 +422,7 @@ export class LlmOrchestratorExecutor implements OrchestratorExecutor {
             `<决策信息>`,
             `- 项目目标：${req.context.projectGoal ?? '(未设定)'}`,
             `- 黑板摘要：\n${req.context.blackboardSummary}`,
+            `- Pin 消息上下文：\n${req.context.pinnedMessages || '(无)'}`,
             `- 进行中/未完成的任务：\n${this.renderActiveTaskGraph(req.context.activeTaskGraph)}`,
             `- 成员（agentId | 名称 | 群角色 | 能力摘要）：\n${members}`,
             `- 路由来源 routeKind：${req.routeKind}`,

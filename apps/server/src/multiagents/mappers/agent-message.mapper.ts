@@ -28,7 +28,8 @@ export function toAgentChatMessageView(
         agentId: message.agentId,
         role: message.role,
         text: message.text,
-        createdAt: message.createdAt.toISOString()
+        createdAt: message.createdAt.toISOString(),
+        pinned: message.pinned === true
     }
     if (steps.length > 0) {
         view.steps = steps.map(toAgentRunStepView)

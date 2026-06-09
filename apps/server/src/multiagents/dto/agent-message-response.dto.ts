@@ -22,4 +22,7 @@ export class AgentChatMessageViewDto implements AgentChatMessageView {
 
     @ApiProperty({ description: '创建时间，ISO8601' })
     createdAt!: string
+
+    @ApiProperty({ type: Boolean, description: '是否 Pin 到当前会话后续上下文' })
+    pinned!: boolean
 }

@@ -15,6 +15,7 @@ import {
   type StartDeploymentPayload,
   type StartGroupRunResult,
   type UpdateGroupChatPayload,
+  type UpdateGroupMessagePayload,
   type WorkspaceCommitPayload,
   type WorkspaceCommitResult,
   type WorkspaceDiffSummary
@@ -182,6 +183,8 @@ export const groupChatApi = {
     http.patch<GroupChatView>(`/group-chats/${id}`, payload),
   delete: (id: string) => http.delete<{ deleted: true }>(`/group-chats/${id}`),
   listMessages: (id: string) => http.get<GroupMessageView[]>(`/group-chats/${id}/messages`),
+  updateMessage: (id: string, messageId: string, payload: UpdateGroupMessagePayload) =>
+    http.patch<GroupMessageView>(`/group-chats/${id}/messages/${messageId}`, payload),
   getWorkspaceDiff: (id: string) =>
     http.get<WorkspaceDiffSummary>(`/group-chats/${id}/workspace-diff`),
   commitWorkspace: (id: string, payload?: WorkspaceCommitPayload) =>

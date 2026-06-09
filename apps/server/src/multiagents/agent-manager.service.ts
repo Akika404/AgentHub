@@ -12,6 +12,7 @@ import { CreateAgentDto } from './dto/create-agent.dto.js'
 import { UpdateAgentDto } from './dto/update-agent.dto.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from './dto/update-agent-chat.dto.js'
+import { UpdateAgentMessageDto } from './dto/update-agent-message.dto.js'
 import type { AgentView } from './dto/agent-view.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
@@ -68,6 +69,15 @@ export class AgentManager {
 
     listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
         return this.chats.listChatMessages(userId, chatId)
+    }
+
+    updateChatMessage(
+        userId: string,
+        chatId: string,
+        messageId: string,
+        dto: UpdateAgentMessageDto
+    ): Promise<AgentChatMessageView> {
+        return this.chats.updateChatMessage(userId, chatId, messageId, dto)
     }
 
     getWorkspaceDiff(userId: string, chatId: string): Promise<WorkspaceDiffSummary> {

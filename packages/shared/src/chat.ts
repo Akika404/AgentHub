@@ -170,6 +170,8 @@ interface GroupMessageBase {
   /** member Agent id when senderRole === 'agent'; null for user/orchestrator/system */
   senderAgentId: string | null
   createdAt: string
+  /** when true the message is pinned within the group and injected into future context */
+  pinned: boolean
 }
 
 export interface GroupTextMessageView extends GroupMessageBase {

@@ -126,11 +126,20 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
             throw err
         }
 
-        // 发给 SDK 的 prompt 拼引用前言（按 messageId 取会话内原文，回退 client excerpt）；
-        // agent session 连续，引用仅做指代消歧，前言不落库。
-        const sdkPrompt = await this.buildQuotedPrompt(session, prompt, replyTo)
+        // 发给 SDK 的 prompt 拼 pinned 全局上下文 + 引用前言；二者不落库。
+        const sdkPrompt = await this.buildSdkPrompt(session, prompt, replyTo)
         void this.runTurn(session, live, sdkPrompt, abort, turnId)
         return { turnId }
+    }
+
+    private async buildSdkPrompt(
+        session: AgentSession,
+        prompt: string,
+        replyTo: MessageReplyRef | null
+    ): Promise<string> {
+        const pinnedContext = await this.messages.pinnedContext(session.userId, session.id)
+        const quotedPrompt = await this.buildQuotedPrompt(session, prompt, replyTo)
+        return [pinnedContext, quotedPrompt].filter(Boolean).join('\n\n')
     }
 
     /** 单聊引用前言：被引用消息原文（服务端为准，回退 excerpt）作为 `>` 引用块拼到 prompt 前。 */

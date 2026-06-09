@@ -278,7 +278,7 @@ src/multiagents/
   表示群聊成员内部运行会话。它包含可选 title、会话 cwd、会话私有 home、有效 skills/MCP、SDK 句柄和状态；创建时会把
   Agent Home 下的 vendor 配置同步到会话 cwd。`/agent-chats` 只暴露 `scope=user` 的单聊。`isPinned` 保存跨端置顶状态，
   `archivedAt` 非空时聊天只读，服务端拒绝新的 `converse`。
-- **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离。
+- **AgentMessage**（`agent_message` 表）：主聊天区可见文本，按 `sessionId` 隔离；`pinned` 表示该消息会作为当前单聊后续 turn 的固定上下文注入。
 - **AgentMessageStep**（`agent_message_step` 表）：一条 agent 消息产出过程中的有序运行步骤（thinking/progress/tool/todo），以 `messageId` 关联、`seq` 排序；tool 步骤合并 tool_use+tool_result 并存完整 input/output。
 - **LiveAgent**（内存）：按 `session.id` 持有 adapter 和 busy 锁。
 - **Turn 事件流**（Redis）：一轮对话一条 Redis Stream，承载该轮 `AgentEvent` 的广播与回放；另含会话活跃指针（`SET NX` 跨实例并发锁）与跨实例 abort 控制频道。turn 是与 HTTP 请求解耦的游离后台任务，支撑后台运行与多端实时围观；同一聊天已有活跃 turn 时，新 prompt 会返回 busy，应通过 `activeTurnId` 订阅既存 turn。
@@ -297,6 +297,7 @@ src/multiagents/
 | GET        | `/api/agent-chats/:chatId`                      | 查询聊天详情                                                                           |
 | PATCH      | `/api/agent-chats/:chatId`                      | 修改聊天列表状态（`isPinned` / `archived`）                                            |
 | GET        | `/api/agent-chats/:chatId/messages`             | 查询聊天消息历史                                                                       |
+| PATCH      | `/api/agent-chats/:chatId/messages/:messageId`  | 修改消息标注状态（`pinned`）；Pin 后进入当前聊天后续 Agent 上下文                      |
 | GET        | `/api/agent-chats/:chatId/workspace-diff`       | 查询本聊天工作区相对 AgentHub checkpoint 的累计文件变更                                |
 | POST       | `/api/agent-chats/:chatId/workspace-commit`     | 提交/确认本聊天工作区变更并推进 checkpoint；运行中拒绝提交                             |
 | POST       | `/api/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
@@ -306,6 +307,8 @@ src/multiagents/
 | DELETE     | `/api/agent-chats/:chatId`                      | 删除聊天                                                                               |
 
 Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入，创建 Agent 时必须提供非空值。创建 Agent 时，`workingDirectory` 必须位于当前用户 `agent_workspace`，`agentHomeDirectory` 必须位于当前用户 `agent_home`；未传 Agent Home 时后端分配到 `agent_home/<agentId>`。创建聊天时 `workingDirectory` 可选；留空时后端分配到当前用户 `agent_workspace/chat-<sessionId>`，会话私有 home 固定在 `session/<sessionId>`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；skill 来源必须位于当前用户 `skills`。MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
+
+消息级 `pinned` 是会话内上下文，不是聊天列表置顶：服务端按当前 `chatId + userId` 校验消息归属，允许在归档聊天中 Pin/Unpin。后续单聊 turn 会把 pinned 消息按创建时间升序渲染为 `# Pinned messages (会话内全局上下文)`，再拼引用块和本轮 prompt。
 
 工作区 diff 面板使用 `refs/agenthub/workspace-diff/agent-chat/<chatId>` 作为本聊天的累计变更 checkpoint。`workspace-diff` 返回 checkpoint 之后的文件变更（含新增/修改/删除、行数与可展开 diff）；`workspace-commit` 会提交可见未提交变更（如果存在）并推进 checkpoint，后续变更重新累计。
 
@@ -383,6 +386,7 @@ src/multiagents/group/
 | PATCH      | `/api/group-chats/:id`                                          | 改标题 / projectMeta / 加成员 / 修改列表状态（`isPinned` / `archived`）                            |
 | DELETE     | `/api/group-chats/:id`                                          | 删群（级联删数据库记录；工作区 `ACTIVE=false`，不删除目录）                                        |
 | GET        | `/api/group-chats/:id/messages`                                 | 展示层消息历史（升序，多发言者）                                                                   |
+| PATCH      | `/api/group-chats/:id/messages/:messageId`                      | 修改群聊消息标注状态（`pinned`）；Pin 后进入当前群后续 Orchestrator 与成员上下文                   |
 | POST       | `/api/group-chats/:id/converse`                                 | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}`                                  |
 | GET `@Sse` | `/api/group-chats/:id/runs/:runId/events`                       | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束）                                        |
 | POST       | `/api/group-chats/:id/runs/:runId/abort`                        | 中止整个群运行（跨实例广播）                                                                       |
@@ -398,6 +402,7 @@ src/multiagents/group/
 
 - 一次群运行 = 一条 Redis Stream（`GroupRunStream`，按单聊 `TurnStream` 范式），成员 turn 事件经 `member_turn_event` 透传，天然多端围观；活跃指针 `SET NX` 做「群」级跨实例互斥（已有活跃轮 → 返回冲突，引导用 `activeRunId` 围观）。
 - 群聊主体保存 `isPinned` 与 `archivedAt`：置顶状态跨端一致；`archivedAt` 非空或 `status=archived` 时群聊只读，服务端拒绝新的 `converse`。
+- 群聊消息保存 `pinned`：它是当前群聊内的固定上下文，不跨群共享；Pin/Unpin 只改消息标注，归档群也允许操作。后续 Orchestrator 决策、成员 task `ContextAssembler`、轻量成员聊天都会注入 `# Pinned messages (群聊内全局上下文)` 摘要块。
 - 成员干活复用单聊适配层（`createAgent` + `agentToConfig`）和 `scope=group` 的成员内部 `AgentSession`，`workingDirectory` 指向该任务的 git worktree；私有 L1 落 `agent_message` / `agent_message_step`，但不会进入 `/agent-chats` 单聊列表。轻量成员聊天（例如打招呼、给一句观点）走 `memberTurns`，真实调用成员 Agent，但不创建黑板 task、不建 worktree、不做 report/diff。
 - 成员 task 成功返回后，会先经过隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：该判断使用无状态 `ChatClient`，不会复用或污染 `group_chat.orchestratorSessionId`，并会携带成员 `roleInGroup` / `capabilitySummary`、Orchestrator 分配的任务目标、成员最终输出和直接下游任务。若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。

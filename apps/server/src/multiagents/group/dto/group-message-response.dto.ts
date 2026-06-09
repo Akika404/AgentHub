@@ -8,7 +8,7 @@ import type {
 } from '@agenthub/shared'
 
 const SENDER_ROLES: GroupSenderRole[] = ['user', 'orchestrator', 'agent', 'system']
-const MESSAGE_KINDS = ['text', 'system', 'task-list', 'options', 'agent-question'] as const
+const MESSAGE_KINDS = ['text', 'system', 'task-list', 'options', 'agent-question', 'deploy'] as const
 
 /**
  * 群聊展示层消息（多发言者）。运行时是 text/system/task-list/options 的判别联合；
@@ -89,4 +89,7 @@ export class GroupMessageViewDto {
 
     @ApiProperty({ description: '创建时间，ISO8601' })
     createdAt!: string
+
+    @ApiProperty({ type: Boolean, description: '是否 Pin 到当前群聊后续上下文' })
+    pinned!: boolean
 }

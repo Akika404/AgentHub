@@ -536,6 +536,7 @@ function agentRunFromView(view: AgentChatMessageView, chat: AgentChatView): Agen
     chatId: view.chatId,
     kind: 'agent-run',
     timestamp: view.createdAt,
+    pinned: view.pinned,
     sender: agentSender(chat),
     status: 'done',
     steps,
@@ -550,6 +551,7 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatD
       chatId: view.chatId,
       kind: 'system',
       timestamp: view.createdAt,
+      pinned: view.pinned,
       text: view.text
     }
   }
@@ -563,6 +565,7 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatD
     chatId: view.chatId,
     kind: 'text',
     timestamp: view.createdAt,
+    pinned: view.pinned,
     sender: view.role === 'user' ? currentUserSender() : agentSender(chat),
     text: view.text,
     ...(view.replyTo ? { replyTo: view.replyTo } : {})
@@ -2324,22 +2327,34 @@ function messageSenderName(msg: ChatDisplayMessage): string {
   return msg.kind === 'system' ? '系统' : msg.sender.name
 }
 
-function onPinMessage(msg: ChatDisplayMessage): void {
+async function updateMessagePinned(msg: ChatDisplayMessage, pinned: boolean): Promise<void> {
   const key = activeSessionKey.value
   if (!key) return
-  const next = messages.value.map((message) =>
-    message.id === msg.id ? { ...message, pinned: !message.pinned } : message
-  )
-  messageCache.set(key, next)
-  messages.value = next
+  const kind = sessionKind(key)
+  const id = sessionRawId(key)
+  try {
+    if (kind === 'agent') {
+      await agentChatApi.updateMessage(id, msg.id, { pinned })
+    } else if (kind === 'group') {
+      await groupChatApi.updateMessage(id, msg.id, { pinned })
+    } else {
+      return
+    }
+    updateCachedMessages(key, (cached) =>
+      cached.map((message) => (message.id === msg.id ? { ...message, pinned } : message))
+    )
+  } catch (err) {
+    const message = err instanceof ApiError ? err.message : 'Pin 消息失败'
+    appendSystemMessage(key, message)
+  }
+}
+
+function onPinMessage(msg: ChatDisplayMessage): void {
+  void updateMessagePinned(msg, !msg.pinned)
 }
 
 function onUnpinFromBar(msg: ChatDisplayMessage): void {
-  const key = activeSessionKey.value
-  if (!key) return
-  const next = messages.value.map((m) => (m.id === msg.id ? { ...m, pinned: false } : m))
-  messageCache.set(key, next)
-  messages.value = next
+  void updateMessagePinned(msg, false)
 }
 
 function onJumpToMessage(msg: ChatDisplayMessage): void {

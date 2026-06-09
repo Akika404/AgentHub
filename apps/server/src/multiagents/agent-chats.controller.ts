@@ -20,6 +20,7 @@ import type { User } from '../user/entities/user.entity.js'
 import { AgentManager } from './agent-manager.service.js'
 import { CreateAgentChatDto } from './dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from './dto/update-agent-chat.dto.js'
+import { UpdateAgentMessageDto } from './dto/update-agent-message.dto.js'
 import { ConverseDto } from './dto/converse.dto.js'
 import type { AgentChatView } from './dto/agent-chat-view.dto.js'
 import { AgentChatViewDto, DeleteAgentChatResultDto } from './dto/agent-chat-response.dto.js'
@@ -84,6 +85,18 @@ export class AgentChatsController {
         @Param('chatId') chatId: string
     ): Promise<AgentChatMessageView[]> {
         return this.manager.listChatMessages(user.id, chatId)
+    }
+
+    @Patch(':chatId/messages/:messageId')
+    @ApiOperation({ summary: '修改单 Agent 聊天消息标注状态（Pin / 取消 Pin）' })
+    @ApiEnvelope(AgentChatMessageViewDto)
+    updateMessage(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Param('messageId') messageId: string,
+        @Body() dto: UpdateAgentMessageDto
+    ): Promise<AgentChatMessageView> {
+        return this.manager.updateChatMessage(user.id, chatId, messageId, dto)
     }
 
     @Get(':chatId/workspace-diff')

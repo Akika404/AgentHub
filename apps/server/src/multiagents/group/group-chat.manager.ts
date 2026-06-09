@@ -26,6 +26,7 @@ import { GroupWorkspaceService } from './group-workspace.service.js'
 import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { DeploymentService } from './deployment/deployment.service.js'
 import { BusinessException } from '../../common/index.js'
+import { UpdateGroupMessageDto } from './dto/update-group-message.dto.js'
 
 /**
  * GroupChatManager — 群聊领域的对外门面（控制器只依赖它，委派给聚焦服务）。
@@ -74,6 +75,16 @@ export class GroupChatManager {
     async listMessages(userId: string, groupId: string): Promise<GroupMessageView[]> {
         await this.groupChat.loadGroup(userId, groupId)
         return this.groupMessages.listMessages(groupId)
+    }
+
+    async updateMessage(
+        userId: string,
+        groupId: string,
+        messageId: string,
+        payload: UpdateGroupMessageDto
+    ): Promise<GroupMessageView> {
+        await this.groupChat.loadGroup(userId, groupId)
+        return this.groupMessages.updateMessage(groupId, messageId, payload)
     }
 
     async getWorkspaceDiff(userId: string, groupId: string): Promise<WorkspaceDiffSummary> {

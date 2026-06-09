@@ -91,10 +91,17 @@ export interface AgentChatMessageView {
   role: AgentChatMessageRole
   text: string
   createdAt: string
+  /** when true the message is pinned within the chat and injected into future context */
+  pinned: boolean
   /** 该消息产出过程中的有序运行步骤；仅 agent 消息可能非空 */
   steps?: AgentRunStepView[]
   /** when present, this user message is a reply that quotes another message */
   replyTo?: MessageReplyRef
+}
+
+/** Update a single-Agent chat message. Omitted fields are left unchanged. */
+export interface UpdateAgentChatMessagePayload {
+  pinned?: boolean
 }
 
 /** Vendor capability matrix (asymmetric: codex lacks mcp). */

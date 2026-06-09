@@ -82,6 +82,7 @@ CREATE TABLE `group_message`
     `text`          text                 DEFAULT NULL COMMENT 'text / system / options 的正文；agent-question 存摘要；task-list 通常为 NULL',
     `payload`       json                 DEFAULT NULL COMMENT '卡片专属结构化负载：task-list 的 heading/tasks；options 的 options/answered；agent-question 的 taskId/questions/answered',
     `replyTo`       json                 DEFAULT NULL COMMENT '引用消息快照 {messageId,senderName,excerpt}；非引用为 NULL',
+    `pinned`        tinyint     NOT NULL DEFAULT 0 COMMENT '消息是否 Pin 到当前群聊后续上下文',
     `createdAt`     datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间',
     PRIMARY KEY (`id`),
     KEY `IDX_group_message_userId` (`userId`),

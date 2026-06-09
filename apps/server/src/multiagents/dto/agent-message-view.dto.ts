@@ -26,6 +26,8 @@ export interface AgentChatMessageView {
     role: AgentMessageRole
     text: string
     createdAt: string
+    /** 该消息是否被 Pin；Pin 后会注入当前会话后续上下文 */
+    pinned: boolean
     /** 该消息产出过程中的有序运行步骤；仅 agent 消息可能非空 */
     steps?: AgentRunStepView[]
     /** 当本条 user 消息为引用回复时携带被引用消息快照 */

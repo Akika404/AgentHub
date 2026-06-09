@@ -11,6 +11,7 @@ import {
   type MessageReplyRef,
   type StartTurnResult,
   type UpdateAgentChatPayload,
+  type UpdateAgentChatMessagePayload,
   type UpdateAgentPayload,
   type WorkspaceCommitPayload,
   type WorkspaceCommitResult,
@@ -173,6 +174,8 @@ export const agentChatApi = {
     http.patch<AgentChatView>(`/agent-chats/${chatId}`, payload),
   listMessages: (chatId: string) =>
     http.get<AgentChatMessageView[]>(`/agent-chats/${chatId}/messages`),
+  updateMessage: (chatId: string, messageId: string, payload: UpdateAgentChatMessagePayload) =>
+    http.patch<AgentChatMessageView>(`/agent-chats/${chatId}/messages/${messageId}`, payload),
   getWorkspaceDiff: (chatId: string) =>
     http.get<WorkspaceDiffSummary>(`/agent-chats/${chatId}/workspace-diff`),
   commitWorkspace: (chatId: string, payload?: WorkspaceCommitPayload) =>

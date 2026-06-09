@@ -164,6 +164,7 @@ export class OrchestratorService {
         const context: OrchestratorContext = {
             projectGoal: group.projectGoal,
             blackboardSummary: await this.blackboard.summarize(group.id),
+            pinnedMessages: await this.groupMessages.pinnedContext(group.id),
             recentUserIntents: [params.userText],
             memberStatus: members.map(({ member, agent }) => ({
                 agentId: agent.id,

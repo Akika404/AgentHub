@@ -31,6 +31,7 @@ import type { User } from '../../user/entities/user.entity.js'
 import { GroupChatManager } from './group-chat.manager.js'
 import { CreateGroupChatDto } from './dto/create-group-chat.dto.js'
 import { UpdateGroupChatDto } from './dto/update-group-chat.dto.js'
+import { UpdateGroupMessageDto } from './dto/update-group-message.dto.js'
 import { ConverseGroupDto } from './dto/converse-group.dto.js'
 import {
     AbortGroupRunResultDto,
@@ -116,6 +117,18 @@ export class GroupChatController {
     @ApiEnvelope(GroupMessageViewDto, { isArray: true })
     listMessages(@CurrentUser() user: User, @Param('id') id: string): Promise<GroupMessageView[]> {
         return this.manager.listMessages(user.id, id)
+    }
+
+    @Patch(':id/messages/:messageId')
+    @ApiOperation({ summary: '修改群聊消息标注状态（Pin / 取消 Pin）' })
+    @ApiEnvelope(GroupMessageViewDto)
+    updateMessage(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('messageId') messageId: string,
+        @Body() dto: UpdateGroupMessageDto
+    ): Promise<GroupMessageView> {
+        return this.manager.updateMessage(user.id, id, messageId, dto)
     }
 
     @Get(':id/workspace-diff')

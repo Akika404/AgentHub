@@ -3,6 +3,7 @@ import type { AgentMemoryItem, BlackboardArtifact, BlackboardContract } from '@a
 import { BlackboardService } from '../blackboard/blackboard.service.js'
 import { AgentMemoryService, type MemoryScope } from '../memory/agent-memory.service.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
+import { GroupMessageService } from '../group-message.service.js'
 
 export type DispatchMode = 'new_task' | 'modify_existing'
 
@@ -46,6 +47,7 @@ export interface ContextAssemblerOutput {
     trace: {
         targetArtifacts: AssembledArtifactRef[]
         contracts: string[]
+        pinnedMessages: boolean
         memoryIds: string[]
         droppedMemoryIds: string[]
         omitted: string[]
@@ -75,6 +77,7 @@ export class ContextAssembler {
     constructor(
         private readonly blackboard: BlackboardService,
         private readonly memory: AgentMemoryService,
+        private readonly groupMessages: GroupMessageService,
         private readonly debug: GroupDebugLogger
     ) {}
 
@@ -104,6 +107,8 @@ export class ContextAssembler {
         // —— 分段构建（保底段 + 可裁剪段）——
         const keepSections: string[] = []
         keepSections.push(this.renderTaskContext(input.task))
+        const pinnedContext = await this.groupMessages.pinnedContext(input.groupId)
+        if (pinnedContext) keepSections.push(pinnedContext)
         if (targetArtifacts.length) keepSections.push(this.renderTargetArtifacts(targetArtifacts))
         if (contracts.length) keepSections.push(this.renderContracts(contracts))
 
@@ -146,6 +151,7 @@ export class ContextAssembler {
                 loadPolicy: 'read_before_edit' as const
             })),
             contracts: contracts.map((c) => c.id),
+            pinnedMessages: Boolean(pinnedContext),
             memoryIds: kept.filter((m) => !omitted.includes('memory')).map((m) => m.id),
             droppedMemoryIds: dropped.map((m) => m.id),
             omitted

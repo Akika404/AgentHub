@@ -11,6 +11,7 @@ import type {
 } from '@agenthub/shared'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
+import { UpdateAgentMessageDto } from '../dto/update-agent-message.dto.js'
 import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { Agent } from '../entities/agent.entity.js'
@@ -164,6 +165,16 @@ export class AgentChatService {
     async listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
         const { session } = await this.loadChat(userId, chatId)
         return this.messages.listChatMessages(userId, session.id)
+    }
+
+    async updateChatMessage(
+        userId: string,
+        chatId: string,
+        messageId: string,
+        dto: UpdateAgentMessageDto
+    ): Promise<AgentChatMessageView> {
+        const { session } = await this.loadChat(userId, chatId)
+        return this.messages.updateChatMessage(userId, session.id, messageId, dto)
     }
 
     async getWorkspaceDiff(userId: string, chatId: string): Promise<WorkspaceDiffSummary> {

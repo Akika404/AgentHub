@@ -36,6 +36,9 @@ export class AgentMessage {
     @Column({ type: 'json', nullable: true })
     replyTo!: MessageReplyRef | null
 
+    @Column({ type: 'boolean', default: false })
+    pinned!: boolean
+
     @CreateDateColumn()
     createdAt!: Date
 }

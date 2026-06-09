@@ -43,7 +43,12 @@ export function groupMessageToDisplay(
   members: Map<string, GroupSenderMeta>,
   currentUserName: string
 ): ChatDisplayMessage {
-  const base = { id: view.id, chatId: view.groupChatId, timestamp: view.createdAt }
+  const base = {
+    id: view.id,
+    chatId: view.groupChatId,
+    timestamp: view.createdAt,
+    pinned: view.pinned
+  }
   if (view.kind === 'system') {
     return { ...base, kind: 'system', text: view.text }
   }

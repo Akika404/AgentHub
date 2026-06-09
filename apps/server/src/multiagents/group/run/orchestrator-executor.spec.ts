@@ -56,6 +56,7 @@ function planRequest(): DecisionRequest {
         context: {
             projectGoal: null,
             blackboardSummary: '(blackboard empty)',
+            pinnedMessages: '',
             recentUserIntents: ['各位好'],
             memberStatus: [],
             activeTaskGraph: []

@@ -8,12 +8,18 @@ import type {
     GroupMessageView,
     GroupSenderRole,
     MessageReplyRef,
-    TaskItem
+    TaskItem,
+    UpdateGroupMessagePayload
 } from '@agenthub/shared'
 import { AgentMessageStep } from '../entities/agent-message-step.entity.js'
 import { toAgentRunStepView } from '../mappers/agent-message.mapper.js'
 import { GroupMessage } from './entities/group-message.entity.js'
 import { toGroupMessageView } from './mappers/group-message.mapper.js'
+import { BusinessException } from '../../common/index.js'
+import {
+    renderPinnedMessagesContext,
+    type PinnedMessageContextItem
+} from '../context/pinned-message-context.js'
 
 /**
  * GroupMessageService — 展示层 presentation_log 的读写（多发言者）。
@@ -32,7 +38,7 @@ export class GroupMessageService {
     async listMessages(groupId: string): Promise<GroupMessageView[]> {
         const rows = await this.messageRepo.find({
             where: { groupChatId: groupId },
-            order: { createdAt: 'ASC' }
+            order: { createdAt: 'ASC', id: 'ASC' }
         })
         const stepsByMessage = await this.loadStepsByAgentMessage(rows)
         return rows.map((row) => {
@@ -40,6 +46,33 @@ export class GroupMessageService {
             const steps = agentMessageId ? (stepsByMessage.get(agentMessageId) ?? []) : []
             return toGroupMessageView(row, steps.map(toAgentRunStepView))
         })
+    }
+
+    async updateMessage(
+        groupId: string,
+        messageId: string,
+        payload: UpdateGroupMessagePayload
+    ): Promise<GroupMessageView> {
+        const message = await this.messageRepo.findOne({
+            where: { id: messageId, groupChatId: groupId }
+        })
+        if (!message) throw BusinessException.notFound(`Message ${messageId} not found`)
+
+        if (payload.pinned !== undefined) message.pinned = payload.pinned
+        const saved = await this.messageRepo.save(message)
+        const agentMessageId = this.agentMessageIdFromPayload(saved.payload)
+        const steps = agentMessageId
+            ? await this.stepRepo.find({
+                  where: { messageId: agentMessageId },
+                  order: { seq: 'ASC' }
+              })
+            : []
+        return toGroupMessageView(saved, steps.map(toAgentRunStepView))
+    }
+
+    async pinnedContext(groupId: string): Promise<string> {
+        const items = await this.listPinnedContextItems(groupId)
+        return renderPinnedMessagesContext('Pinned messages (群聊内全局上下文)', items)
     }
 
     async appendText(
@@ -60,7 +93,8 @@ export class GroupMessageService {
                 senderAgentId,
                 text,
                 payload: agentMessageId ? { agentMessageId } : null,
-                replyTo
+                replyTo,
+                pinned: false
             })
         )
         return toGroupMessageView(saved)
@@ -86,7 +120,8 @@ export class GroupMessageService {
                 senderRole: 'system',
                 senderAgentId: null,
                 text,
-                payload: null
+                payload: null,
+                pinned: false
             })
         )
         return toGroupMessageView(saved)
@@ -108,7 +143,8 @@ export class GroupMessageService {
                 senderRole,
                 senderAgentId,
                 text: null,
-                payload: { heading, tasks }
+                payload: { heading, tasks },
+                pinned: false
             })
         )
         return toGroupMessageView(saved)
@@ -147,7 +183,8 @@ export class GroupMessageService {
                 senderRole: 'agent',
                 senderAgentId,
                 text: summary,
-                payload: { taskId, questions: normalized, answered: false }
+                payload: { taskId, questions: normalized, answered: false },
+                pinned: false
             })
         )
         return toGroupMessageView(saved)
@@ -172,7 +209,8 @@ export class GroupMessageService {
                 senderRole: 'orchestrator',
                 senderAgentId: null,
                 text: null,
-                payload: { manifest, artifacts }
+                payload: { manifest, artifacts },
+                pinned: false
             })
         )
         return toGroupMessageView(saved)
@@ -228,6 +266,98 @@ export class GroupMessageService {
         if (typeof value !== 'object' || value === null) return false
         const rec = value as Record<string, unknown>
         return typeof rec.id === 'string' && typeof rec.title === 'string'
+    }
+
+    private async listPinnedContextItems(groupId: string): Promise<PinnedMessageContextItem[]> {
+        const rows = await this.messageRepo.find({
+            where: { groupChatId: groupId, pinned: true },
+            order: { createdAt: 'ASC', id: 'ASC' }
+        })
+        const stepsByMessage = await this.loadStepsByAgentMessage(rows)
+        const items: PinnedMessageContextItem[] = []
+        for (const row of rows) {
+            const agentMessageId = this.agentMessageIdFromPayload(row.payload)
+            const steps = agentMessageId ? (stepsByMessage.get(agentMessageId) ?? []) : []
+            const text = this.messageToContextText(row, steps)
+            if (!text) continue
+            items.push({
+                sender: this.senderLabel(row),
+                kind: row.kind,
+                text,
+                createdAt: row.createdAt
+            })
+        }
+        return items
+    }
+
+    private messageToContextText(message: GroupMessage, steps: AgentMessageStep[]): string {
+        const payload = message.payload ?? {}
+        if (message.kind === 'task-list') {
+            const heading = typeof payload.heading === 'string' ? payload.heading : ''
+            const tasks = Array.isArray(payload.tasks) ? (payload.tasks as TaskItem[]) : []
+            return [heading, ...tasks.map((task) => `- ${task.title} [${task.status}]`)]
+                .filter(Boolean)
+                .join('\n')
+        }
+        if (message.kind === 'options') {
+            const options = Array.isArray(payload.options)
+                ? (payload.options as Array<{ label?: unknown }>)
+                : []
+            return [
+                message.text ?? '',
+                ...options
+                    .map((option) => (typeof option.label === 'string' ? `- ${option.label}` : ''))
+                    .filter(Boolean)
+            ]
+                .filter(Boolean)
+                .join('\n')
+        }
+        if (message.kind === 'agent-question') {
+            const questions = Array.isArray(payload.questions)
+                ? (payload.questions as Array<{ header?: unknown; question?: unknown }>)
+                : []
+            return [
+                message.text ?? '',
+                ...questions
+                    .map((question) => {
+                        const header =
+                            typeof question.header === 'string' ? question.header : undefined
+                        const text =
+                            typeof question.question === 'string' ? question.question : undefined
+                        return header || text ? `- ${header || text}` : ''
+                    })
+                    .filter(Boolean)
+            ]
+                .filter(Boolean)
+                .join('\n')
+        }
+        if (message.kind === 'deploy') {
+            const manifest = payload.manifest as { mode?: unknown } | undefined
+            return manifest?.mode === 'service' ? '可运行的项目' : '可预览的产物'
+        }
+        const text = message.text?.trim()
+        if (text) return text
+        return steps.map((step) => this.stepLabel(step)).filter(Boolean).join('\n')
+    }
+
+    private stepLabel(step: AgentMessageStep): string {
+        if (step.type === 'thinking') return step.seq === 0 ? '思考中' : '继续思考'
+        if (step.type === 'progress') return '过程输出'
+        if (step.type === 'tool') return `正在调用 ${step.toolName ?? '工具'}`
+        if (step.type === 'todo') {
+            const todos = step.todos ?? []
+            const done = todos.filter((todo) => todo.status === 'completed').length
+            return `计划 · ${done}/${todos.length}`
+        }
+        if (step.type === 'plan') return '计划'
+        return ''
+    }
+
+    private senderLabel(message: GroupMessage): string {
+        if (message.senderRole === 'user') return '用户'
+        if (message.senderRole === 'orchestrator') return 'Orchestrator'
+        if (message.senderRole === 'system') return '系统'
+        return message.senderAgentId ? `Agent ${message.senderAgentId}` : 'Agent'
     }
 
     private async loadStepsByAgentMessage(

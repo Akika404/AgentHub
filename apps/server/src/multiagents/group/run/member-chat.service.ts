@@ -107,7 +107,8 @@ export class MemberChatService {
     async chat(params: MemberChatParams): Promise<MemberChatResult> {
         const { group, userId, runId, agent, instruction } = params
         const session = await this.prepareMemberSession(group, params.member, agent)
-        const prompt = this.buildPrompt(instruction)
+        const pinnedContext = await this.groupMessages.pinnedContext(group.id)
+        const prompt = this.buildPrompt(instruction, pinnedContext)
         this.debug.log('group.member_chat.instruction', {
             groupId: group.id,
             runId,
@@ -163,14 +164,17 @@ export class MemberChatService {
         return result
     }
 
-    private buildPrompt(instruction: string): string {
+    private buildPrompt(instruction: string, pinnedContext: string): string {
         return [
+            pinnedContext,
             '这是群聊中的轻量回复，不是任务交付。',
             '非必要情况下不要使用工具、不要读取或修改文件、不要创建计划或待办。',
             '但如果需要读取文件确认细节/信息等场景，请忽略以上限制，可以使用各种工具获取你所需要的信息。',
             '只用你自己的角色身份，直接给出一条符合用户提问/编排器（Orchestrator）指令的回复。',
             `用户/编排器的指令：${instruction}`
-        ].join('\n')
+        ]
+            .filter(Boolean)
+            .join('\n')
     }
 
     private async runMemberChatTurn(

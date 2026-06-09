@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
-import type { MessageReplyRef } from '@agenthub/shared'
+import type { MessageReplyRef, UpdateAgentChatMessagePayload } from '@agenthub/shared'
 import type { AgentEvent, AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { AgentMessage } from '../entities/agent-message.entity.js'
 import { AgentMessageStep } from '../entities/agent-message-step.entity.js'
 import { toAgentChatMessageView } from '../mappers/agent-message.mapper.js'
+import { BusinessException } from '../../common/index.js'
+import {
+    renderPinnedMessagesContext,
+    type PinnedMessageContextItem
+} from '../context/pinned-message-context.js'
 
 export interface StepDraft {
     type: AgentMessageStep['type']
@@ -66,9 +71,35 @@ export class AgentMessageHistoryService {
                 sessionId,
                 role,
                 text: trimmed,
-                replyTo
+                replyTo,
+                pinned: false
             })
         )
+    }
+
+    async updateChatMessage(
+        userId: string,
+        sessionId: string,
+        messageId: string,
+        payload: UpdateAgentChatMessagePayload
+    ): Promise<AgentChatMessageView> {
+        const message = await this.messageRepo.findOne({
+            where: { id: messageId, userId, sessionId }
+        })
+        if (!message) throw BusinessException.notFound(`Message ${messageId} not found`)
+
+        if (payload.pinned !== undefined) message.pinned = payload.pinned
+        const saved = await this.messageRepo.save(message)
+        const steps = await this.stepRepo.find({
+            where: { messageId: saved.id, sessionId },
+            order: { seq: 'ASC' }
+        })
+        return toAgentChatMessageView(saved, steps)
+    }
+
+    async pinnedContext(userId: string, sessionId: string): Promise<string> {
+        const items = await this.listPinnedContextItems(userId, sessionId)
+        return renderPinnedMessagesContext('Pinned messages (会话内全局上下文)', items)
     }
 
     /**
@@ -84,6 +115,28 @@ export class AgentMessageHistoryService {
             where: { id: messageId, userId, sessionId }
         })
         return row?.text ?? null
+    }
+
+    private async listPinnedContextItems(
+        userId: string,
+        sessionId: string
+    ): Promise<PinnedMessageContextItem[]> {
+        const rows = await this.messageRepo.find({
+            where: { userId, sessionId, pinned: true },
+            order: { createdAt: 'ASC', id: 'ASC' }
+        })
+        return rows.map((row) => ({
+            sender: this.senderLabel(row.role),
+            kind: row.role,
+            text: row.text,
+            createdAt: row.createdAt
+        }))
+    }
+
+    private senderLabel(role: AgentMessage['role']): string {
+        if (role === 'user') return '用户'
+        if (role === 'agent') return 'Agent'
+        return '系统'
     }
 
     async saveSteps(messageId: string, sessionId: string, drafts: StepDraft[]): Promise<void> {

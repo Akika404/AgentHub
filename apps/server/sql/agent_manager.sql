@@ -73,6 +73,7 @@ CREATE TABLE `agent_message`
   `role`      varchar(16) NOT NULL COMMENT 'user / agent / system',
   `text`      text        NOT NULL COMMENT '主聊天区可见文本',
   `replyTo`   json                 DEFAULT NULL COMMENT '引用消息快照 {messageId,senderName,excerpt}；非引用为 NULL',
+  `pinned`    tinyint     NOT NULL DEFAULT 0 COMMENT '消息是否 Pin 到当前会话后续上下文',
   `createdAt` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `IDX_agent_message_userId` (`userId`),
