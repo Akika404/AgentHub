@@ -45,6 +45,7 @@ import ChatList from '../components/ChatList.vue'
 import ChatHeader from '../components/ChatHeader.vue'
 import MessageList from '../components/MessageList.vue'
 import MessageInput from '../components/MessageInput.vue'
+import WorkspaceDiffPanel from '../components/WorkspaceDiffPanel.vue'
 import RightInspector from '../components/RightInspector.vue'
 import PinnedBar from '../components/PinnedBar.vue'
 import AgentChatCreateDialog from '../components/AgentChatCreateDialog.vue'
@@ -2456,6 +2457,16 @@ onUnmounted(() => {
         @preview-artifact="previewArtifact = $event"
         @run-deployment="runDeployment"
       />
+      <WorkspaceDiffPanel
+        class="mx-4"
+        :diff="activeWorkspaceDiff"
+        :loading="workspaceDiffLoading"
+        :error="workspaceDiffError"
+        :committing="workspaceDiffCommitting"
+        :disabled="streaming || activeArchived"
+        @refresh="refreshActiveWorkspaceDiff"
+        @commit="commitActiveWorkspaceDiff"
+      />
       <MessageInput
         ref="messageInputRef"
         :reply-to="pendingReply"
@@ -2463,16 +2474,9 @@ onUnmounted(() => {
         :disabled-reason="activeInputDisabledReason"
         :streaming="streaming"
         :mention-targets="activeMentionTargets"
-        :workspace-diff="activeWorkspaceDiff"
-        :workspace-diff-loading="workspaceDiffLoading"
-        :workspace-diff-error="workspaceDiffError"
-        :workspace-diff-committing="workspaceDiffCommitting"
-        :workspace-diff-disabled="streaming || activeArchived"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
         @stop="stopCurrentTurn"
-        @refresh-workspace-diff="refreshActiveWorkspaceDiff"
-        @commit-workspace-diff="commitActiveWorkspaceDiff"
       />
     </main>
     <div class="relative z-20 h-full w-0 flex-shrink-0">

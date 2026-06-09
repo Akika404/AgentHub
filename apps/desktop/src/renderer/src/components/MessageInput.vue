@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { MessageReplyRef } from '../api'
-import type { WorkspaceDiffSummary } from '../api'
 import type { MentionTarget } from '../types/mentions'
 import AgentAvatar from './AgentAvatar.vue'
 import BaseButton from './ui/BaseButton.vue'
-import WorkspaceDiffPanel from './WorkspaceDiffPanel.vue'
 
 const props = defineProps<{
   replyTo?: MessageReplyRef | null
@@ -13,19 +11,12 @@ const props = defineProps<{
   disabledReason?: string
   streaming?: boolean
   mentionTargets?: MentionTarget[]
-  workspaceDiff?: WorkspaceDiffSummary | null
-  workspaceDiffLoading?: boolean
-  workspaceDiffError?: string | null
-  workspaceDiffCommitting?: boolean
-  workspaceDiffDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'send', payload: { text: string; replyTo?: MessageReplyRef; mentions?: string[] }): void
   (e: 'cancel-reply'): void
   (e: 'stop'): void
-  (e: 'refresh-workspace-diff'): void
-  (e: 'commit-workspace-diff'): void
 }>()
 
 const text = ref('')
@@ -255,15 +246,6 @@ defineExpose({ insertMentionById })
           <span class="material-symbols-outlined text-2xl">close</span>
         </button>
       </div>
-      <WorkspaceDiffPanel
-        :diff="workspaceDiff"
-        :loading="workspaceDiffLoading"
-        :error="workspaceDiffError"
-        :committing="workspaceDiffCommitting"
-        :disabled="workspaceDiffDisabled"
-        @refresh="emit('refresh-workspace-diff')"
-        @commit="emit('commit-workspace-diff')"
-      />
       <div class="relative p-1">
         <Transition name="pop">
           <div
