@@ -29,6 +29,7 @@ import {
 } from '../routing/continuity-resolver.service.js'
 import { GroupMessageService } from '../group-message.service.js'
 import { GroupWorkspaceService } from '../group-workspace.service.js'
+import { GroupAttachmentService } from '../group-attachment.service.js'
 import { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupChatMember } from '../entities/group-chat-member.entity.js'
 import { GroupRunStream } from './group-run-stream.service.js'
@@ -97,7 +98,7 @@ const REPORT_INSTRUCTION = `
 \`\`\`report
 {"summary":"面向用户的交付摘要：详细说明完成了什么、产物/入口在哪里、关键能力与验证结果；如有偏差或注意事项也要写清楚。不要在 summary 里写 JSON/report/code fence。","affected":{"artifacts":[],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
 \`\`\`
-summary 会作为群聊里该成员最终消息的正文展示给用户，应该比一句话更有信息量，但不要粘贴完整文件、日志或内部 report。
+summary 会作为群聊里该成员最终消息的正文展示给用户，所以你要把最终输出的信息再从这里写一遍，然后在最后加上总结，但不要粘贴完整文件、日志或内部 report。
 只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。
 
 # 需要向用户确认信息时（重要）
@@ -141,6 +142,7 @@ export class DispatchService {
         private readonly memberRepo: Repository<GroupChatMember>,
         private readonly assembler: ContextAssembler,
         private readonly workspace: GroupWorkspaceService,
+        private readonly attachments: GroupAttachmentService,
         private readonly agentWorkspace: AgentWorkspaceService,
         private readonly providers: PlatformProviderService,
         private readonly blackboard: BlackboardService,
@@ -205,6 +207,52 @@ export class DispatchService {
             group.workspaceDir
         )
         const session = await this.prepareMemberSession(group, member, agent, worktree)
+        let finalText = ''
+        let fatal: string | null = null
+        let agentMessageId: string | null = null
+        let mirroredAttachmentCount = 0
+        let attachmentMirrorsCleaned = false
+        let attachmentMirrorCleanupError: string | null = null
+
+        const cleanupAttachmentMirrors = async (): Promise<boolean> => {
+            if (mirroredAttachmentCount === 0 || attachmentMirrorsCleaned) return true
+            try {
+                await this.attachments.cleanupWorktreeAttachmentMirrors(worktree, runId)
+                attachmentMirrorsCleaned = true
+                this.debug.log('group.dispatch.attachments_mirror_cleaned', {
+                    groupId: group.id,
+                    runId,
+                    taskId,
+                    worktree,
+                    count: mirroredAttachmentCount
+                })
+                return true
+            } catch (err) {
+                attachmentMirrorCleanupError = this.errMsg(err)
+                this.logger.error(
+                    `Failed to clean attachment mirrors for task ${taskId}: ${attachmentMirrorCleanupError}`
+                )
+                return false
+            }
+        }
+
+        try {
+            mirroredAttachmentCount = await this.attachments.mirrorRunAttachmentsToWorktree(
+                userId,
+                group,
+                runId,
+                worktree
+            )
+            this.debug.log('group.dispatch.attachments_mirrored', {
+                groupId: group.id,
+                runId,
+                taskId,
+                worktree,
+                count: mirroredAttachmentCount
+            })
+        } catch (err) {
+            fatal = `附件准备失败：${this.errMsg(err)}`
+        }
 
         // 3. 跑成员 turn（复用适配层 + 消息历史）
         const prompt = `${assembled.prompt}${REPORT_INSTRUCTION}`
@@ -229,16 +277,15 @@ export class DispatchService {
             worktree,
             prompt
         })
-        let finalText = ''
-        let fatal: string | null = null
-        let agentMessageId: string | null = null
-        try {
-            const result = await this.runMemberTurn(params, session, agent, prompt)
-            finalText = result.finalText
-            fatal = result.fatal
-            agentMessageId = result.agentMessageId
-        } catch (err) {
-            fatal = this.errMsg(err)
+        if (!fatal) {
+            try {
+                const result = await this.runMemberTurn(params, session, agent, prompt)
+                finalText = result.finalText
+                fatal = result.fatal
+                agentMessageId = result.agentMessageId
+            } catch (err) {
+                fatal = this.errMsg(err)
+            }
         }
 
         const report = this.parseReport(finalText)
@@ -257,55 +304,63 @@ export class DispatchService {
         // 3.5 成员主动挂起：把问题抛给用户，任务等待答复。跳过完成态收口（writeback/合并/applyReport），
         //     只把问题发到群里并写热缓冲；返回 suspended，由 executor 计 waiting_input（不放行/不阻塞下游）。
         if (!fatal && report.awaiting_user_input === true) {
-            const questions = (report.questions ?? []).filter(
-                (q): q is AgentQuestion => !!q && typeof q.question === 'string'
-            )
-            const question = (report.question || summary || finalText).trim() || '（需要你的确认）'
-            // 有结构化问题 → 提问卡片；否则回退为纯文本提问
-            if (questions.length > 0) {
-                await this.groupMessages.appendAgentQuestion(
-                    group.id,
-                    userId,
-                    agent.id,
-                    taskId,
-                    questions,
-                    question
-                )
+            if (!(await cleanupAttachmentMirrors())) {
+                fatal = `附件镜像清理失败：${attachmentMirrorCleanupError ?? 'unknown error'}`
             } else {
-                await this.groupMessages.appendText(
-                    group.id,
-                    userId,
-                    'agent',
-                    question,
-                    agent.id,
-                    null,
-                    agentMessageId
+                const questions = (report.questions ?? []).filter(
+                    (q): q is AgentQuestion => !!q && typeof q.question === 'string'
                 )
-            }
-            await this.writeHotBuffer(params, question, [])
-            const suspended: DispatchResult = {
-                success: false,
-                summary: question,
-                rawOutput: finalText,
-                suspended: {
-                    question,
-                    ...(questions.length > 0 ? { questions, hasQuestionCard: true } : {})
+                const question =
+                    (report.question || summary || finalText).trim() || '（需要你的确认）'
+                // 有结构化问题 → 提问卡片；否则回退为纯文本提问
+                if (questions.length > 0) {
+                    await this.groupMessages.appendAgentQuestion(
+                        group.id,
+                        userId,
+                        agent.id,
+                        taskId,
+                        questions,
+                        question
+                    )
+                } else {
+                    await this.groupMessages.appendText(
+                        group.id,
+                        userId,
+                        'agent',
+                        question,
+                        agent.id,
+                        null,
+                        agentMessageId
+                    )
                 }
+                await this.writeHotBuffer(params, question, [])
+                const suspended: DispatchResult = {
+                    success: false,
+                    summary: question,
+                    rawOutput: finalText,
+                    suspended: {
+                        question,
+                        ...(questions.length > 0 ? { questions, hasQuestionCard: true } : {})
+                    }
+                }
+                this.debug.log('group.dispatch.suspended', {
+                    groupId: group.id,
+                    runId,
+                    taskId,
+                    agentId: agent.id,
+                    question,
+                    questionCount: questions.length
+                })
+                return suspended
             }
-            this.debug.log('group.dispatch.suspended', {
-                groupId: group.id,
-                runId,
-                taskId,
-                agentId: agent.id,
-                question,
-                questionCount: questions.length
-            })
-            return suspended
         }
 
         // 4. 收口：git → 黑板；成功才提交/合并，失败仅清理 worktree
         const updates: BlackboardUpdate[] = []
         const escalations: DispatchEscalation[] = []
+        if (!(await cleanupAttachmentMirrors()) && !fatal) {
+            fatal = `附件镜像清理失败：${attachmentMirrorCleanupError ?? 'unknown error'}`
+        }
         if (!fatal) {
             try {
                 const changed = await this.workspace.diffArtifacts(
