@@ -81,7 +81,8 @@
 
 隐藏交接判断：即使成员没有按 report 格式设置 `awaiting_user_input`，只要它成功返回后实际是在用
 普通文本向用户澄清/提问，`group-run.executor.ts` 会先调用无状态 `ChatClient` handoff review
-确认是否可以释放下游；它不复用 `group_chat.orchestratorSessionId`，避免污染 Orchestrator 的连续会话。
+确认是否可以释放下游；它会携带成员 `roleInGroup` / `capabilitySummary`、Orchestrator 分配的任务目标、
+成员最终输出和直接下游任务，且不复用 `group_chat.orchestratorSessionId`，避免污染 Orchestrator 的连续会话。
 若判定仍在等待用户输入，则同样把当前 task 标为 `waiting_input`；该判断不写展示消息、不推
 `orchestrator_report`，因此用户只会看到成员自己的提问，然后直接回复即可继续。
 

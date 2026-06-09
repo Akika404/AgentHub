@@ -19,6 +19,8 @@ export interface OrchestratorTaskHandoffReviewRequest {
         objective: string
         agentId: string | null
         agentName: string | null
+        roleInGroup: string | null
+        capabilitySummary: string | null
         summary: string
     }
     downstreamTasks: Array<
@@ -147,11 +149,14 @@ export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffRe
             '# 用户原始需求',
             req.originalUserText || '(未提供)',
             '',
-            '# 刚结束的成员任务',
+            '# 刚结束的成员身份与 Orchestrator 分配任务',
+            `- agentId=${req.task.agentId ?? '(unknown)'}`,
+            `- agentName=${req.task.agentName ?? '(unknown)'}`,
+            `- roleInGroup=${req.task.roleInGroup ?? '(未设定)'}`,
+            `- capabilitySummary=${req.task.capabilitySummary ?? '(未设定)'}`,
             `- taskId=${req.task.id}`,
-            `- name=${req.task.name}`,
-            `- agent=${req.task.agentName ?? req.task.agentId ?? '(unknown)'}`,
-            `- objective=${req.task.objective}`,
+            `- taskName=${req.task.name}`,
+            `- assignedObjective=${req.task.objective}`,
             '',
             '# 成员最终输出',
             req.task.summary || '(无输出)',

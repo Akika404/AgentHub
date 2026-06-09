@@ -67,6 +67,8 @@ test('LlmOrchestratorHandoffReviewer uses stateless ChatClient with enough conte
             objective: '确认目标平台和范围',
             agentId: 'agent-1',
             agentName: '产品经理',
+            roleInGroup: '产品',
+            capabilitySummary: '擅长需求澄清、范围定义和用户问题收敛。',
             summary: '我需要你先确认：网页版还是桌面版？'
         },
         downstreamTasks: [
@@ -89,6 +91,8 @@ test('LlmOrchestratorHandoffReviewer uses stateless ChatClient with enough conte
     assert.equal(captured.model, 'claude-test')
     assert.equal(captured.systemPrompt?.includes('无状态的一次性判断器'), true)
     assert.equal(captured.messages[0]?.content.includes('做一个网页版工具'), true)
+    assert.equal(captured.messages[0]?.content.includes('roleInGroup=产品'), true)
+    assert.equal(captured.messages[0]?.content.includes('需求澄清、范围定义'), true)
     assert.equal(captured.messages[0]?.content.includes('我需要你先确认'), true)
     assert.equal(captured.messages[0]?.content.includes('实现前端'), true)
     assert.equal(captured.messages[0]?.content.includes('黑板：已有需求草案。'), true)

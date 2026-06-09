@@ -1038,6 +1038,8 @@ export class GroupRunExecutor implements OnModuleInit {
                     objective: node.objective,
                     agentId: node.agentId,
                     agentName: pair.agent.name,
+                    roleInGroup: pair.member.roleInGroup,
+                    capabilitySummary: pair.agent.capabilitySummary ?? null,
                     summary: result.rawOutput?.trim() || result.summary
                 },
                 downstreamTasks
