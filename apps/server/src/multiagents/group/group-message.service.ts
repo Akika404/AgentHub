@@ -84,11 +84,13 @@ export class GroupMessageService {
         senderAgentId: string | null = null,
         replyTo: MessageReplyRef | null = null,
         agentMessageId: string | null = null,
-        attachments: GroupAttachmentView[] = []
+        attachments: GroupAttachmentView[] = [],
+        artifacts: BlackboardArtifact[] = []
     ): Promise<GroupMessageView> {
         const payload = {
             ...(agentMessageId ? { agentMessageId } : {}),
-            ...(attachments.length ? { attachments } : {})
+            ...(attachments.length ? { attachments } : {}),
+            ...(artifacts.length ? { artifacts } : {})
         }
         const saved = await this.messageRepo.save(
             this.messageRepo.create({

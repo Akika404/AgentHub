@@ -35,6 +35,8 @@ export interface AgentRunMessage {
   status: 'thinking' | 'tool' | 'responding' | 'done' | 'error'
   steps: AgentRunStep[]
   text: string
+  /** inline artifact preview cards produced by this run (group chats only) */
+  artifacts?: BlackboardArtifact[]
 }
 
 /** 部署卡片（渲染层）：群聊总结后展示可预览/可运行的交付物。 */

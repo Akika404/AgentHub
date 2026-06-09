@@ -96,7 +96,8 @@ export function groupMessageToDisplay(
       sender,
       status: 'done',
       steps,
-      text: view.text
+      text: view.text,
+      ...(view.artifacts?.length ? { artifacts: view.artifacts } : {})
     }
   }
   return {

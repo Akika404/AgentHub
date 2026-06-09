@@ -7,7 +7,8 @@ import type {
     AgentMemoryType,
     AgentQuestion,
     BlackboardArtifactType,
-    BlackboardUpdate
+    BlackboardUpdate,
+    BlackboardArtifact
 } from '@agenthub/shared'
 import { createAgent, type AgentEvent } from '../../adapter/index.js'
 import { Agent } from '../../entities/agent.entity.js'
@@ -357,6 +358,8 @@ export class DispatchService {
 
         // 4. 收口：git → 黑板；成功才提交/合并，失败仅清理 worktree
         const updates: BlackboardUpdate[] = []
+        /** 本回合产出/更新的产物快照，按 update 顺序记录，供内联预览卡片使用（key=artifact.id） */
+        const producedArtifacts = new Map<string, BlackboardArtifact>()
         const escalations: DispatchEscalation[] = []
         if (!(await cleanupAttachmentMirrors()) && !fatal) {
             fatal = `附件镜像清理失败：${attachmentMirrorCleanupError ?? 'unknown error'}`
@@ -396,6 +399,7 @@ export class DispatchService {
                             op: artifact.version === 1 ? 'created' : 'updated',
                             summary: `${file.path} -> v${artifact.version}`
                         })
+                        producedArtifacts.set(artifact.id, artifact)
                     } catch (err) {
                         if (this.isBlackboardConflict(err)) {
                             const detail = `产出物 ${file.path} 版本冲突（已被其它任务更新），需重读后重写`
@@ -444,7 +448,16 @@ export class DispatchService {
         }
 
         for (const update of updates) {
-            await this.runStream.publish(runId, { type: 'blackboard_update', runId, update })
+            await this.runStream.publish(runId, {
+                type: 'blackboard_update',
+                runId,
+                taskId,
+                agentId: agent.id,
+                update,
+                ...(update.kind === 'artifact' && producedArtifacts.has(update.targetId)
+                    ? { artifact: producedArtifacts.get(update.targetId) }
+                    : {})
+            })
         }
         this.debug.log('group.dispatch.blackboard_updates', {
             groupId: group.id,
@@ -462,7 +475,9 @@ export class DispatchService {
             summary,
             agent.id,
             null,
-            agentMessageId
+            agentMessageId,
+            [],
+            [...producedArtifacts.values()]
         )
         await this.writeHotBuffer(params, summary, updates)
 

@@ -174,7 +174,21 @@ export type GroupRunEvent =
       agentId: string
       event: AgentEvent
     }
-  | { type: 'blackboard_update'; runId: string; update: BlackboardUpdate }
+  | {
+      type: 'blackboard_update'
+      runId: string
+      /** task that produced the change; null for member-chat / orchestrator-driven changes */
+      taskId: string | null
+      /** member agent that produced the change; null for orchestrator/system-driven changes */
+      agentId: string | null
+      update: BlackboardUpdate
+      /**
+       * Full artifact snapshot when `update.kind === 'artifact'`, so the renderer can
+       * attach an inline preview card to the producing member's run bubble without an
+       * extra fetch. Omitted for non-artifact updates.
+       */
+      artifact?: BlackboardArtifact
+    }
   | { type: 'orchestrator_report'; runId: string; text: string }
   | {
       /**

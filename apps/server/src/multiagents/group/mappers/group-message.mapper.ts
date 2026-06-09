@@ -106,11 +106,15 @@ export function toGroupMessageView(
         case 'text':
         default: {
             const replyTo = toReplyRef(message.replyTo)
+            const artifacts = Array.isArray(payload.artifacts)
+                ? (payload.artifacts as BlackboardArtifact[])
+                : undefined
             return {
                 ...base,
                 kind: 'text',
                 text: message.text ?? '',
                 ...(steps.length > 0 ? { steps } : {}),
+                ...(artifacts && artifacts.length > 0 ? { artifacts } : {}),
                 ...(replyTo ? { replyTo } : {})
             }
         }

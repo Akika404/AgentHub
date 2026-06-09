@@ -406,6 +406,19 @@ interface AgentRunMessage {
 
 Codex 特例：Codex 的 `todo_list` 不会把各项标记为 `completed`（始终是 `pending`/`completed` 两态且常停留在 pending），适配器在 turn 成功结束时把残留 pending 视觉上补成 `completed`，详见 `agent-manager-spec.md`。
 
+## 内联产物卡片（Agent 运行回复卡片内嵌，仅群聊）
+
+PRD ART-2。`agent-run` 卡片正文下方渲染本回合产出的可预览产物占位卡，点击展开全屏预览。spec 见 `doc/spec/inline-artifact-preview.md`。
+
+- 数据来源：`AgentRunMessage.artifacts`（`BlackboardArtifact[]`），仅群聊成员回合产出。
+  - Live：`blackboard_update` 事件带完整 `artifact` + `taskId`/`agentId`，`ChatView` 按成员气泡 key 去重追加。
+  - 历史复原：持久化在 `group_message.payload.artifacts`，`groupMessageToDisplay` 还原回气泡。
+- 展示规则：
+  - 仅可内联预览类型入卡（html/pdf/image/audio/video/文本类，见 `utils/artifactPreview.ts`）；office/binary 跳过。
+  - 占位卡显示类型图标 + 文件名 + `类型 · v版本 · 点击预览`，不内嵌 live iframe。
+  - 点击 emit `preview-artifact` → `MessageList` 透传 → `ChatView` 打开全屏 `ArtifactPreviewOverlay`（复用 ART-1 的 `getArtifactPreview` + `ArtifactPreviewBody`）。
+- 与黑板侧栏预览（ART-1）区别：侧栏入口仍打开 460px `ArtifactPreviewDrawer`；内联卡 / deploy 卡打开全屏 overlay。
+
 ## 流式事件到 Agent 运行回复卡片的映射
 
 `AgentRunMessage` 由 `ChatView.vue` 根据 `AgentEvent` 动态维护：

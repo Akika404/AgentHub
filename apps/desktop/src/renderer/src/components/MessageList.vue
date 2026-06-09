@@ -208,7 +208,11 @@ watch(scrollSignature, async () => {
           :disabled="interactionDisabled"
           @submit="emit('submit-question', $event)"
         />
-        <AgentRunMessageView v-else-if="isAgentRunMessage(msg)" :message="msg" />
+        <AgentRunMessageView
+          v-else-if="isAgentRunMessage(msg)"
+          :message="msg"
+          @preview-artifact="emit('preview-artifact', $event)"
+        />
         <DeployMessageView
           v-else-if="isDeployMessage(msg)"
           :message="msg"

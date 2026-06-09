@@ -1,17 +1,31 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { AgentTodoItem } from '../../api'
+import type { AgentTodoItem, BlackboardArtifact } from '../../api'
 import type { AgentRunMessage, AgentRunStep } from '../../types/chatDisplay'
 import { formatTime } from '../../utils/format'
 import { renderMarkdown } from '../../utils/markdown'
+import {
+  isInlinePreviewable,
+  artifactFileName,
+  artifactIcon,
+  artifactKindLabel
+} from '../../utils/artifactPreview'
 import SenderAvatar from './SenderAvatar.vue'
 
 const props = defineProps<{ message: AgentRunMessage }>()
+
+const emit = defineEmits<{
+  (e: 'preview-artifact', artifact: BlackboardArtifact): void
+}>()
 
 const expanded = ref(false)
 
 const hasText = computed(() => props.message.text.trim().length > 0)
 const renderedText = computed(() => renderMarkdown(props.message.text))
+/** Inline preview cards: only artifacts whose type can render in-app. */
+const previewArtifacts = computed<BlackboardArtifact[]>(() =>
+  (props.message.artifacts ?? []).filter((a) => isInlinePreviewable(a.path))
+)
 // 取最后一条快照：todo 每次更新都作为全量快照，历史数据里可能存有多条，
 // 最新的那条才是最终状态（旧逻辑取 find 第一条会退化成只含首个 pending 任务）。
 const planStep = computed(() => props.message.steps.filter((step) => step.type === 'todo').at(-1))
@@ -300,6 +314,36 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
         </Transition>
 
         <div v-if="hasText" class="markdown-body font-medium text-text-main" v-html="renderedText"></div>
+      </div>
+
+      <!-- 内联产物预览卡片：点击打开全屏预览 -->
+      <div v-if="previewArtifacts.length" class="mt-2 flex flex-col gap-2">
+        <button
+          v-for="artifact in previewArtifacts"
+          :key="artifact.id"
+          type="button"
+          class="group flex items-center gap-3 rounded-xl border border-surface-border bg-surface px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-surface-hover"
+          @click="emit('preview-artifact', artifact)"
+        >
+          <span
+            class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+          >
+            <span class="material-symbols-outlined text-xl">{{ artifactIcon(artifact.path) }}</span>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium text-text-main">
+              {{ artifactFileName(artifact.path) }}
+            </span>
+            <span class="block truncate text-xs text-text-muted">
+              {{ artifactKindLabel(artifact.path) }} · v{{ artifact.version }} · 点击预览
+            </span>
+          </span>
+          <span
+            class="material-symbols-outlined flex-shrink-0 text-xl text-text-muted transition-colors group-hover:text-primary"
+          >
+            open_in_full
+          </span>
+        </button>
       </div>
     </div>
   </div>

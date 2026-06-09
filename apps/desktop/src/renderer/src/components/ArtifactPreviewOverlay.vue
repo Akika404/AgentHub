@@ -83,33 +83,54 @@ watch(
 
 <template>
   <Teleport to="body">
-    <Transition name="drawer-slide">
-      <aside
+    <Transition name="overlay-fade">
+      <div
         v-if="open"
-        class="fixed inset-y-0 right-0 z-30 flex w-[460px] max-w-[calc(100vw-72px)] flex-col border-l border-surface-border bg-white shadow-[-12px_0_32px_rgba(31,35,41,0.12)]"
+        class="fixed inset-0 z-40 flex flex-col bg-black/60 backdrop-blur-sm"
+        @click.self="emit('close')"
       >
-        <header
-          class="flex h-14 flex-shrink-0 items-center gap-3 border-b border-surface-border px-4"
-        >
-          <span class="material-symbols-outlined text-2xl text-primary">draft</span>
-          <div class="min-w-0 flex-1">
-            <h3 class="truncate text-md font-semibold text-text-main">{{ title }}</h3>
-            <p class="truncate text-xs text-text-muted">
-              {{ preview ? `${kindLabel} · ${formatBytes(preview.size)}` : '准备预览' }}
-            </p>
-          </div>
-          <button
-            type="button"
-            class="rounded p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-main"
-            title="关闭预览"
-            @click="emit('close')"
+        <div class="m-6 flex flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+          <header
+            class="flex h-14 flex-shrink-0 items-center gap-3 border-b border-surface-border px-5"
           >
-            <span class="material-symbols-outlined text-2xl">close</span>
-          </button>
-        </header>
+            <span class="material-symbols-outlined text-2xl text-primary">preview</span>
+            <div class="min-w-0 flex-1">
+              <h3 class="truncate text-md font-semibold text-text-main">{{ title }}</h3>
+              <p class="truncate text-xs text-text-muted">
+                {{ preview ? `${kindLabel} · ${formatBytes(preview.size)}` : '准备预览' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="rounded p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-main"
+              title="关闭预览"
+              @click="emit('close')"
+            >
+              <span class="material-symbols-outlined text-2xl">close</span>
+            </button>
+          </header>
 
-        <ArtifactPreviewBody :preview="preview" :loading="loading" :error-text="errorText" />
-      </aside>
+          <ArtifactPreviewBody :preview="preview" :loading="loading" :error-text="errorText" />
+        </div>
+      </div>
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade-enter-active,
+  .overlay-fade-leave-active {
+    transition: none;
+  }
+}
+</style>

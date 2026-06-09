@@ -42,6 +42,7 @@ import {
 import type { MentionTarget } from '../types/mentions'
 import { agentInitials } from '../utils/avatar'
 import { formatTime } from '../utils/format'
+import { isInlinePreviewable } from '../utils/artifactPreview'
 import ChatList from '../components/ChatList.vue'
 import ChatHeader from '../components/ChatHeader.vue'
 import MessageList from '../components/MessageList.vue'
@@ -54,6 +55,7 @@ import GroupChatCreateDialog from '../components/GroupChatCreateDialog.vue'
 import GroupDetailPanel from '../components/GroupDetailPanel.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ArtifactPreviewDrawer from '../components/ArtifactPreviewDrawer.vue'
+import ArtifactPreviewOverlay from '../components/ArtifactPreviewOverlay.vue'
 import DeploymentDrawer from '../components/DeploymentDrawer.vue'
 
 type RuntimePhase = 'idle' | 'thinking' | 'tool' | 'streaming' | 'error' | 'done'
@@ -109,6 +111,8 @@ const activeSessionKey = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
 const activeGroupBlackboard = ref<BlackboardView | null>(null)
 const previewArtifact = ref<BlackboardArtifact | null>(null)
+/** inline-card / deploy-card preview opens a fullscreen overlay (vs. the sidebar drawer) */
+const overlayArtifact = ref<BlackboardArtifact | null>(null)
 const activeDeployment = ref<ActiveDeploymentState | null>(null)
 const deploymentStarting = ref(false)
 const groupBlackboards = new Map<string, BlackboardView | null>()
@@ -859,6 +863,17 @@ function updateAgentRunText(chatId: string, text: string): void {
   updateAgentRunMessage(chatId, (message) => ({ ...message, status: 'responding', text }))
 }
 
+/** Attach an inline artifact preview card to a member's run bubble (dedup by id). */
+function appendRunArtifact(runKey: string, artifact: BlackboardArtifact): void {
+  updateAgentRunMessage(runKey, (message) => {
+    const existing = message.artifacts ?? []
+    const next = existing.some((a) => a.id === artifact.id)
+      ? existing.map((a) => (a.id === artifact.id ? artifact : a))
+      : [...existing, artifact]
+    return { ...message, artifacts: next }
+  })
+}
+
 function finishAgentRun(chatId: string, success: boolean): void {
   completeActiveRunStep(chatId, !success)
   updateAgentRunMessage(chatId, (message) => ({
@@ -1403,6 +1418,7 @@ async function selectChat(key: string): Promise<void> {
   activeSessionKey.value = key
   pendingReply.value = null
   previewArtifact.value = null
+  overlayArtifact.value = null
   runtime.value = idleRuntime()
   activeGroupBlackboard.value =
     sessionKind(key) === 'group' ? (groupBlackboards.get(key) ?? null) : null
@@ -1924,6 +1940,15 @@ function buildGroupRunHandlers(
       } else if (event.type === 'orchestrator_report') {
         const orchestratorKey = ensureGroupOrchestratorRunMessage(group, runId)
         updateAgentRunText(orchestratorKey, event.text)
+      } else if (event.type === 'blackboard_update') {
+        // Attach an inline preview card to the producing member's run bubble.
+        if (event.artifact && event.agentId && isInlinePreviewable(event.artifact.path)) {
+          const memberKey =
+            event.taskId === null
+              ? groupRunMemberChatKey(groupId, runId, event.agentId)
+              : groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
+          appendRunArtifact(memberKey, event.artifact)
+        }
       } else if (event.type === 'deploy_card') {
         appendDeployCard(group, event.manifest, event.artifacts)
       } else if (event.type === 'done') {
@@ -2484,7 +2509,7 @@ onUnmounted(() => {
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"
         @mention-sender="onMentionSender"
-        @preview-artifact="previewArtifact = $event"
+        @preview-artifact="overlayArtifact = $event"
         @run-deployment="runDeployment"
       />
       <WorkspaceDiffPanel
@@ -2539,6 +2564,11 @@ onUnmounted(() => {
       :group-id="activeGroup?.id ?? null"
       :artifact="previewArtifact"
       @close="previewArtifact = null"
+    />
+    <ArtifactPreviewOverlay
+      :group-id="activeGroup?.id ?? null"
+      :artifact="overlayArtifact"
+      @close="overlayArtifact = null"
     />
     <DeploymentDrawer
       :group-id="activeDeployment?.groupId ?? null"

@@ -193,6 +193,11 @@ export interface GroupTextMessageView extends GroupMessageBase {
   text: string
   /** member Agent run steps when this text came from a group member turn */
   steps?: AgentRunStepView[]
+  /**
+   * Artifacts this member turn produced/updated, surfaced as inline preview cards
+   * in the agent-run bubble. Persisted as a snapshot so cards survive history reload.
+   */
+  artifacts?: BlackboardArtifact[]
   /** when present, this message is a reply that quotes another message */
   replyTo?: MessageReplyRef
 }
