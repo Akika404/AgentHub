@@ -1,4 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type { ImportLocalSkillFolderPayload } from '@agenthub/shared'
 
 /** Request forwarded to the main-process HTTP proxy. */
 export interface ApiRequest {
@@ -43,6 +44,7 @@ export interface RendererApi {
   streamCancel(streamId: string): Promise<void>
   selectDirectory(): Promise<string | null>
   selectDirectories(): Promise<string[]>
+  importLocalSkillFolder(): Promise<ImportLocalSkillFolderPayload | null>
   /** Register self-contained preview HTML; returns an `agent-preview://` URL to load in an iframe. */
   registerPreviewHtml(html: string): Promise<string>
   /** Release a previously registered preview URL so its HTML can be garbage-collected. */

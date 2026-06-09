@@ -29,3 +29,28 @@ export interface ServerDirectoryListing {
   parentPath: string | null
   entries: ServerDirectoryEntry[]
 }
+
+/** One file collected from a user-selected local skill folder by the desktop app. */
+export interface LocalSkillFolderFile {
+  /** POSIX-style path relative to the selected local folder. */
+  relativePath: string
+  /** File bytes encoded as base64 for transport through the JSON API proxy. */
+  contentBase64: string
+  size: number
+}
+
+/** Upload payload for importing a user-selected local skill folder into server-side skills. */
+export interface ImportLocalSkillFolderPayload {
+  /** Display/source folder name; the server sanitizes it before creating a destination directory. */
+  folderName: string
+  files: LocalSkillFolderFile[]
+}
+
+/** Server-side result after a local skill folder is written under the current user's skills root. */
+export interface ImportedSkillFolderView {
+  /** Absolute server-side directory path that can be passed as a skillSourceDirectory. */
+  directory: string
+  /** Skill names detected from the uploaded folder. */
+  skills: string[]
+  fileCount: number
+}

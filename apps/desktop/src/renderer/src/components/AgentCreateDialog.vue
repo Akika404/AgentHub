@@ -9,7 +9,7 @@ import {
   type UpdateAgentPayload,
   type PlatformProviderView
 } from '@agenthub/shared'
-import { ApiError, agentApi } from '../api'
+import { ApiError, agentApi, workspaceFsApi } from '../api'
 import { DEFAULT_AGENT_COLOR, createAvatarDataUrl, isHexColor } from '../utils/avatar'
 import { vendorLabel } from '../utils/vendor'
 import AgentAvatar from './AgentAvatar.vue'
@@ -61,6 +61,7 @@ const form = reactive({
 const error = ref<string | null>(null)
 const avatarError = ref<string | null>(null)
 const submitting = ref(false)
+const importingLocalSkills = ref(false)
 const directoryPickerTarget = ref<'agent' | 'skills' | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const suspendDependentWatchers = ref(false)
@@ -276,6 +277,28 @@ function chooseAgentDirectory(): void {
 function chooseSkillDirectory(): void {
   if (!caps.value.supportsSkills) return
   directoryPickerTarget.value = 'skills'
+}
+
+async function importLocalSkillDirectory(): Promise<void> {
+  if (!caps.value.supportsSkills || importingLocalSkills.value) return
+  error.value = null
+  importingLocalSkills.value = true
+  try {
+    const payload = await window.api.importLocalSkillFolder()
+    if (!payload) return
+    const imported = await workspaceFsApi.importLocalSkillFolder(payload)
+    form.skillSourceDirectories = appendListValue(form.skillSourceDirectories, imported.directory)
+    form.skills = appendListValues(form.skills, imported.skills)
+  } catch (err) {
+    error.value =
+      err instanceof ApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : '导入本地 Skill 文件夹失败'
+  } finally {
+    importingLocalSkills.value = false
+  }
 }
 
 function closeDirectoryPicker(): void {
@@ -540,11 +563,21 @@ async function onSubmit(): Promise<void> {
             class="shrink-0 whitespace-nowrap"
             variant="secondary"
             size="lg"
-            :disabled="!caps.supportsSkills"
+            :disabled="!caps.supportsSkills || importingLocalSkills"
             @click="chooseSkillDirectory"
           >
             <span class="material-symbols-outlined text-xl">folder_open</span>
-            选择目录
+            服务器目录
+          </BaseButton>
+          <BaseButton
+            class="shrink-0 whitespace-nowrap"
+            variant="secondary"
+            size="lg"
+            :disabled="!caps.supportsSkills || importingLocalSkills"
+            @click="importLocalSkillDirectory"
+          >
+            <span class="material-symbols-outlined text-xl">drive_folder_upload</span>
+            {{ importingLocalSkills ? '上传中…' : '上传本地' }}
           </BaseButton>
         </div>
         <p class="mt-1 text-xs text-text-muted">

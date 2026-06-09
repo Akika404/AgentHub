@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import type {
+    ImportedSkillFolderView,
     ServerDirectoryEntry,
     ServerDirectoryListing,
     ServerDirectoryRoot,
@@ -51,4 +52,17 @@ export class ServerDirectoryListingDto implements ServerDirectoryListing {
 
     @ApiProperty({ type: [ServerDirectoryEntryDto], description: '子目录列表' })
     entries!: ServerDirectoryEntryDto[]
+}
+
+export class ImportedSkillFolderViewDto implements ImportedSkillFolderView {
+    @ApiProperty({
+        description: '上传后写入的服务器端目录，可作为 Agent skillSourceDirectories 使用'
+    })
+    directory!: string
+
+    @ApiProperty({ type: [String], description: '从上传目录中识别出的 Skill 名称' })
+    skills!: string[]
+
+    @ApiProperty({ description: '写入的文件数量' })
+    fileCount!: number
 }

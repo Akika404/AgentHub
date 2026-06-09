@@ -1,12 +1,82 @@
 import { app, shell, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
-import { join } from 'path'
+import { basename, join, relative, sep } from 'path'
+import { readdir, readFile, stat } from 'fs/promises'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import type { ImportLocalSkillFolderPayload, LocalSkillFolderFile } from '@agenthub/shared'
 import icon from '../../resources/icon.png?asset'
 import { registerApiProxy } from './api-proxy'
 import { registerPreviewProtocol, registerPreviewScheme } from './preview-protocol'
 
 // Must run before app `ready`: privileged schemes can only be declared early.
 registerPreviewScheme()
+
+const MAX_LOCAL_SKILL_IMPORT_BYTES = 20 * 1024 * 1024
+const MAX_LOCAL_SKILL_IMPORT_FILE_BYTES = 5 * 1024 * 1024
+const MAX_LOCAL_SKILL_IMPORT_FILES = 300
+const SKIPPED_LOCAL_SKILL_DIRECTORIES = new Set([
+  '.git',
+  '.hg',
+  '.svn',
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  'target',
+  '.gradle',
+  '.idea'
+])
+const SKIPPED_LOCAL_SKILL_FILES = new Set(['.DS_Store'])
+
+async function collectLocalSkillFolder(
+  directory: string
+): Promise<ImportLocalSkillFolderPayload> {
+  const root = directory
+  const files: LocalSkillFolderFile[] = []
+  let totalSize = 0
+
+  async function visit(current: string): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue
+      const path = join(current, entry.name)
+      if (entry.isDirectory()) {
+        if (SKIPPED_LOCAL_SKILL_DIRECTORIES.has(entry.name)) continue
+        await visit(path)
+        continue
+      }
+      if (!entry.isFile() || SKIPPED_LOCAL_SKILL_FILES.has(entry.name)) continue
+
+      const info = await stat(path)
+      if (info.size > MAX_LOCAL_SKILL_IMPORT_FILE_BYTES) {
+        throw new Error(`文件过大，无法导入：${entry.name}`)
+      }
+      totalSize += info.size
+      if (totalSize > MAX_LOCAL_SKILL_IMPORT_BYTES) {
+        throw new Error('Skill 文件夹过大，无法导入')
+      }
+      if (files.length >= MAX_LOCAL_SKILL_IMPORT_FILES) {
+        throw new Error('Skill 文件夹文件数量过多，无法导入')
+      }
+
+      const relativePath = relative(root, path).split(sep).join('/')
+      const data = await readFile(path)
+      files.push({
+        relativePath,
+        contentBase64: data.toString('base64'),
+        size: data.length
+      })
+    }
+  }
+
+  await visit(root)
+  if (files.length === 0) {
+    throw new Error('所选文件夹没有可导入的文件')
+  }
+  return {
+    folderName: basename(root),
+    files
+  }
+}
 
 function registerDialogHandlers(): void {
   ipcMain.handle('dialog:select-directory', async (event): Promise<string | null> => {
@@ -30,6 +100,22 @@ function registerDialogHandlers(): void {
       : await dialog.showOpenDialog(options)
     return result.canceled ? [] : result.filePaths
   })
+
+  ipcMain.handle(
+    'dialog:import-local-skill-folder',
+    async (event): Promise<ImportLocalSkillFolderPayload | null> => {
+      const owner = BrowserWindow.fromWebContents(event.sender)
+      const options: OpenDialogOptions = {
+        properties: ['openDirectory']
+      }
+      const result = owner
+        ? await dialog.showOpenDialog(owner, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled) return null
+      const directory = result.filePaths[0]
+      return directory ? collectLocalSkillFolder(directory) : null
+    }
+  )
 }
 
 function createWindow(): void {

@@ -135,6 +135,11 @@ export class UserWorkspaceService {
         return this.resolvePathInsideRoot(rawPath, root, label)
     }
 
+    async rootDirectory(userId: string, kind: UserWorkspaceKind): Promise<string> {
+        const paths = await this.ensureUserWorkspace(userId)
+        return this.rootForKind(paths, kind)
+    }
+
     async assertSkillSourceDirectories(
         userId: string,
         sourceDirectories: string[]

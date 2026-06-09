@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { ImportLocalSkillFolderPayload } from '@agenthub/shared'
 
 /** Mirror of the main-process `ApiRequest` shape (kept local to avoid coupling). */
 interface ApiRequest {
@@ -37,6 +38,8 @@ const api = {
   streamCancel: (streamId: string) => ipcRenderer.invoke('api:stream:cancel', streamId),
   selectDirectory: () => ipcRenderer.invoke('dialog:select-directory') as Promise<string | null>,
   selectDirectories: () => ipcRenderer.invoke('dialog:select-directories') as Promise<string[]>,
+  importLocalSkillFolder: () =>
+    ipcRenderer.invoke('dialog:import-local-skill-folder') as Promise<ImportLocalSkillFolderPayload | null>,
   registerPreviewHtml: (html: string) =>
     ipcRenderer.invoke('preview:register-html', html) as Promise<string>,
   releasePreviewHtml: (url: string) =>

@@ -141,6 +141,25 @@ export class AgentWorkspaceService {
         return importedNames
     }
 
+    async listSkillNames(sourceDirectory: string): Promise<string[]> {
+        const sourceRoot = this.normalizeDirectoryPath(sourceDirectory)
+        const skillDirs = await this.collectSkillDirectories(sourceRoot)
+        const names: string[] = []
+        const seen = new Set<string>()
+        for (const skillDir of skillDirs) {
+            const skill = await this.readSkillMetadata(skillDir)
+            if (seen.has(skill.name)) {
+                throw BusinessException.badRequest(`Duplicate skill name "${skill.name}"`, {
+                    skillName: skill.name,
+                    sourceDirectory: skillDir
+                })
+            }
+            seen.add(skill.name)
+            names.push(skill.name)
+        }
+        return names
+    }
+
     private async copyMissingSkillDirectories(
         sourceRoot: string,
         destinationRoot: string
