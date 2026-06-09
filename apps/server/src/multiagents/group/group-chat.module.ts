@@ -10,6 +10,7 @@ import { AgentMessage } from '../entities/agent-message.entity.js'
 import { AgentMessageStep } from '../entities/agent-message-step.entity.js'
 import { AgentPolicyService } from '../agents/agent-policy.service.js'
 import { AgentWorkspaceService } from '../workspace/agent-workspace.service.js'
+import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { AgentMessageHistoryService } from '../messages/agent-message-history.service.js'
 import { GroupChat } from './entities/group-chat.entity.js'
 import { GroupChatMember } from './entities/group-chat-member.entity.js'
@@ -120,6 +121,7 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         // 复用单聊的无状态服务（按本模块的 repo 作用域重新提供）
         AgentPolicyService,
         AgentWorkspaceService,
+        WorkspaceDiffService,
         AgentMessageHistoryService
     ],
     exports: [GroupChatManager]

@@ -14,7 +14,10 @@ import {
   type GroupRunEvent,
   type StartDeploymentPayload,
   type StartGroupRunResult,
-  type UpdateGroupChatPayload
+  type UpdateGroupChatPayload,
+  type WorkspaceCommitPayload,
+  type WorkspaceCommitResult,
+  type WorkspaceDiffSummary
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
 import { ApiError, http } from './http'
@@ -179,6 +182,10 @@ export const groupChatApi = {
     http.patch<GroupChatView>(`/group-chats/${id}`, payload),
   delete: (id: string) => http.delete<{ deleted: true }>(`/group-chats/${id}`),
   listMessages: (id: string) => http.get<GroupMessageView[]>(`/group-chats/${id}/messages`),
+  getWorkspaceDiff: (id: string) =>
+    http.get<WorkspaceDiffSummary>(`/group-chats/${id}/workspace-diff`),
+  commitWorkspace: (id: string, payload?: WorkspaceCommitPayload) =>
+    http.post<WorkspaceCommitResult>(`/group-chats/${id}/workspace-commit`, payload ?? {}),
   /** Start a group run (detached) and subscribe to its event stream. */
   converse: converseStream,
   /** Subscribe to an already-running run's stream (replay + tail). */

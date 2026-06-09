@@ -3,7 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { randomUUID } from 'node:crypto'
 import { In, Repository } from 'typeorm'
 import { getCapabilities, type AgentEvent } from '../adapter/index.js'
-import type { MessageReplyRef } from '@agenthub/shared'
+import type {
+    MessageReplyRef,
+    WorkspaceCommitPayload,
+    WorkspaceCommitResult,
+    WorkspaceDiffSummary
+} from '@agenthub/shared'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
 import type { AgentChatView } from '../dto/agent-chat-view.dto.js'
@@ -16,6 +21,7 @@ import { BusinessException } from '../../common/index.js'
 import { AgentConfigService } from '../agents/agent-config.service.js'
 import { AgentPolicyService } from '../agents/agent-policy.service.js'
 import { AgentWorkspaceService } from '../workspace/agent-workspace.service.js'
+import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { AgentRuntimeService } from '../runtime/agent-runtime.service.js'
 import { AgentMessageHistoryService } from '../messages/agent-message-history.service.js'
 import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
@@ -32,6 +38,7 @@ export class AgentChatService {
         private readonly agents: AgentConfigService,
         private readonly policy: AgentPolicyService,
         private readonly workspace: AgentWorkspaceService,
+        private readonly workspaceDiff: WorkspaceDiffService,
         private readonly userWorkspace: UserWorkspaceService,
         private readonly runtime: AgentRuntimeService,
         private readonly messages: AgentMessageHistoryService
@@ -101,6 +108,9 @@ export class AgentChatService {
             lastTurnAt: null
         })
         const saved = await this.sessionRepo.save(session)
+        await this.workspaceDiff
+            .markCheckpoint(saved.workingDirectory, 'agent-chat', saved.id)
+            .catch(() => undefined)
         return toAgentChatView(saved, agent, null)
     }
 
@@ -154,6 +164,31 @@ export class AgentChatService {
     async listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
         const { session } = await this.loadChat(userId, chatId)
         return this.messages.listChatMessages(userId, session.id)
+    }
+
+    async getWorkspaceDiff(userId: string, chatId: string): Promise<WorkspaceDiffSummary> {
+        const { session } = await this.loadChat(userId, chatId)
+        return this.workspaceDiff.summarize(session.workingDirectory, 'agent-chat', session.id)
+    }
+
+    async commitWorkspace(
+        userId: string,
+        chatId: string,
+        payload: WorkspaceCommitPayload
+    ): Promise<WorkspaceCommitResult> {
+        const { session } = await this.loadChat(userId, chatId)
+        const activeTurnId = await this.runtime.getActiveTurn(session.id)
+        if (activeTurnId) {
+            throw BusinessException.agentBusy(
+                `Chat ${chatId} is busy with active turn ${activeTurnId}`
+            )
+        }
+        return this.workspaceDiff.commit(
+            session.workingDirectory,
+            'agent-chat',
+            session.id,
+            payload
+        )
     }
 
     async startTurn(

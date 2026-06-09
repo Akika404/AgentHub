@@ -21,10 +21,7 @@ function userWorkspaceFor(root: string): UserWorkspaceService {
 
 function isForbidden(err: unknown): boolean {
     return (
-        typeof err === 'object' &&
-        err !== null &&
-        'code' in err &&
-        err.code === ErrorCode.FORBIDDEN
+        typeof err === 'object' && err !== null && 'code' in err && err.code === ErrorCode.FORBIDDEN
     )
 }
 
@@ -190,6 +187,11 @@ test('AgentChatService allocates chat workspace and session home in the user spa
         { loadAgent: async () => loadedAgent } as never,
         new AgentPolicyService(),
         workspace as never,
+        {
+            markCheckpoint: async () => undefined,
+            summarize: async () => null,
+            commit: async () => null
+        } as never,
         userWorkspace,
         { getActiveTurns: async () => new Map(), getActiveTurn: async () => null } as never,
         { listChatMessages: async () => [], deleteChatHistory: async () => undefined } as never
@@ -238,6 +240,7 @@ test('GroupChatService allocates group workspaces in the current user agent_work
         repo(),
         repo({ find: async () => [memberAgent] }),
         workspace as never,
+        { markCheckpoint: async () => undefined } as never,
         userWorkspace,
         new AgentPolicyService(),
         providerService() as never,
@@ -271,6 +274,7 @@ test('GroupChatService allocates group workspaces in the current user agent_work
         repo(),
         repo({ find: async () => [memberAgent] }),
         workspace as never,
+        { markCheckpoint: async () => undefined } as never,
         userWorkspace,
         new AgentPolicyService(),
         providerService() as never,

@@ -24,6 +24,7 @@ import { BlackboardTaskEntity } from './blackboard/entities/blackboard-task.enti
 import { BlackboardEventEntity } from './blackboard/entities/blackboard-event.entity.js'
 import { AgentMemoryItemEntity } from './memory/entities/agent-memory-item.entity.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
+import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { toGroupChatView } from './mappers/group-chat.mapper.js'
 import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
@@ -45,6 +46,7 @@ export class GroupChatService {
         @InjectRepository(Agent)
         private readonly agentRepo: Repository<Agent>,
         private readonly workspace: GroupWorkspaceService,
+        private readonly workspaceDiff: WorkspaceDiffService,
         private readonly userWorkspace: UserWorkspaceService,
         private readonly policy: AgentPolicyService,
         private readonly providers: PlatformProviderService,
@@ -104,6 +106,7 @@ export class GroupChatService {
                 saved.id,
                 requestedWorkspaceDir
             )
+            await this.workspaceDiff.markCheckpoint(saved.workspaceDir, 'group-chat', saved.id)
             await this.groupRepo.save(saved)
         } catch (err) {
             await this.groupRepo.delete({ id: saved.id, userId })

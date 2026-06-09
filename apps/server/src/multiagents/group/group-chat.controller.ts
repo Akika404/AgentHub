@@ -19,7 +19,9 @@ import type {
     BlackboardView,
     DeploymentView,
     GroupChatView,
-    GroupMessageView
+    GroupMessageView,
+    WorkspaceCommitResult,
+    WorkspaceDiffSummary
 } from '@agenthub/shared'
 import { SkipEnvelope } from '../../common/decorators/skip-envelope.decorator.js'
 import { ApiEnvelope } from '../../common/swagger/api-envelope.decorator.js'
@@ -42,7 +44,16 @@ import {
     BlackboardEventViewDto,
     BlackboardViewDto
 } from './dto/blackboard-response.dto.js'
-import { DeploymentViewDto, StartDeploymentDto, StopDeploymentResultDto } from './dto/deployment-response.dto.js'
+import {
+    DeploymentViewDto,
+    StartDeploymentDto,
+    StopDeploymentResultDto
+} from './dto/deployment-response.dto.js'
+import { WorkspaceCommitDto } from '../dto/workspace-commit.dto.js'
+import {
+    WorkspaceCommitResultDto,
+    WorkspaceDiffSummaryDto
+} from '../dto/workspace-diff-response.dto.js'
 
 @ApiTags('group-chats')
 @ApiBearerAuth()
@@ -90,7 +101,9 @@ export class GroupChatController {
     }
 
     @Delete(':id')
-    @ApiOperation({ summary: '删除群聊（级联删数据库记录；工作区 ACTIVE 标记置 false，不删除目录）' })
+    @ApiOperation({
+        summary: '删除群聊（级联删数据库记录；工作区 ACTIVE 标记置 false，不删除目录）'
+    })
     @ApiEnvelope(DeleteGroupChatResultDto)
     remove(@CurrentUser() user: User, @Param('id') id: string): Promise<{ deleted: true }> {
         return this.manager.deleteGroupChat(user.id, id)
@@ -101,11 +114,32 @@ export class GroupChatController {
     @Get(':id/messages')
     @ApiOperation({ summary: '查询群聊展示层消息历史（升序，多发言者）' })
     @ApiEnvelope(GroupMessageViewDto, { isArray: true })
-    listMessages(
+    listMessages(@CurrentUser() user: User, @Param('id') id: string): Promise<GroupMessageView[]> {
+        return this.manager.listMessages(user.id, id)
+    }
+
+    @Get(':id/workspace-diff')
+    @ApiOperation({ summary: '获取群聊共享工作区当前未提交变更' })
+    @ApiEnvelope(WorkspaceDiffSummaryDto)
+    workspaceDiff(
         @CurrentUser() user: User,
         @Param('id') id: string
-    ): Promise<GroupMessageView[]> {
-        return this.manager.listMessages(user.id, id)
+    ): Promise<WorkspaceDiffSummary> {
+        return this.manager.getWorkspaceDiff(user.id, id)
+    }
+
+    @Post(':id/workspace-commit')
+    @ApiOperation({
+        summary: '提交群聊共享工作区当前未提交变更',
+        description: '群聊运行中会拒绝提交，避免把成员正在写入或合并的中间状态提交进 git。'
+    })
+    @ApiEnvelope(WorkspaceCommitResultDto, { status: 201 })
+    workspaceCommit(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Body() dto: WorkspaceCommitDto
+    ): Promise<WorkspaceCommitResult> {
+        return this.manager.commitWorkspace(user.id, id, dto)
     }
 
     @Post(':id/converse')

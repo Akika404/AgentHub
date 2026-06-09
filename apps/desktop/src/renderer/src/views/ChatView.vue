@@ -21,7 +21,8 @@ import type {
   OptionItem,
   OptionsMessage,
   SenderInfo,
-  TextMessage
+  TextMessage,
+  WorkspaceDiffSummary
 } from '../api'
 import { ApiError, agentApi } from '../api'
 import { agentChatApi, type AgentConverseHandlers, type AgentConverseStream } from '../api/agents'
@@ -109,6 +110,7 @@ const previewArtifact = ref<BlackboardArtifact | null>(null)
 const activeDeployment = ref<ActiveDeploymentState | null>(null)
 const deploymentStarting = ref(false)
 const groupBlackboards = new Map<string, BlackboardView | null>()
+const workspaceDiffCache = new Map<string, WorkspaceDiffSummary | null>()
 const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST_DEFAULT_WIDTH))
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
 const resizingPane = ref<'chat-list' | 'inspector' | null>(null)
@@ -121,6 +123,7 @@ const groupRunTasks = new Map<string, BlackboardTaskNode[]>()
 const notifiedTurnIds = new Set<string>()
 const notifiedGroupRunIds = new Set<string>()
 let activeLoadId = 0
+let workspaceDiffLoadId = 0
 let dragStartX = 0
 let dragStartWidth = 0
 let previousBodyCursor = ''
@@ -143,6 +146,10 @@ const pendingReply = ref<MessageReplyRef | null>(null)
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
 const runtime = ref<AgentRuntimeState>(idleRuntime())
+const activeWorkspaceDiff = ref<WorkspaceDiffSummary | null>(null)
+const workspaceDiffLoading = ref(false)
+const workspaceDiffError = ref<string | null>(null)
+const workspaceDiffCommitting = ref(false)
 
 const activeChat = computed(() =>
   activeSessionKey.value
@@ -486,6 +493,10 @@ function clearChatWorkspace(): void {
   activeSessionKey.value = null
   messages.value = []
   activeGroupBlackboard.value = null
+  activeWorkspaceDiff.value = null
+  workspaceDiffLoading.value = false
+  workspaceDiffError.value = null
+  workspaceDiffCommitting.value = false
   messagesLoading.value = false
   pendingReply.value = null
   runtime.value = idleRuntime()
@@ -1267,6 +1278,77 @@ async function loadGroupBlackboard(groupId: string): Promise<void> {
   }
 }
 
+async function loadWorkspaceDiff(sessionKey: string, silent = false): Promise<void> {
+  const kind = sessionKind(sessionKey)
+  if (!kind) return
+
+  const id = sessionRawId(sessionKey)
+  const updatesActiveChat = activeSessionKey.value === sessionKey
+  const loadId = updatesActiveChat ? ++workspaceDiffLoadId : workspaceDiffLoadId
+  if (updatesActiveChat) {
+    workspaceDiffError.value = null
+    if (!silent) workspaceDiffLoading.value = true
+  }
+
+  try {
+    const diff =
+      kind === 'agent'
+        ? await agentChatApi.getWorkspaceDiff(id)
+        : await groupChatApi.getWorkspaceDiff(id)
+    workspaceDiffCache.set(sessionKey, diff)
+    if (
+      updatesActiveChat &&
+      loadId === workspaceDiffLoadId &&
+      activeSessionKey.value === sessionKey
+    ) {
+      activeWorkspaceDiff.value = diff
+    }
+  } catch (err) {
+    if (
+      updatesActiveChat &&
+      loadId === workspaceDiffLoadId &&
+      activeSessionKey.value === sessionKey
+    ) {
+      workspaceDiffError.value = err instanceof ApiError ? err.message : '读取工作区变更失败'
+    }
+  } finally {
+    if (updatesActiveChat && loadId === workspaceDiffLoadId) {
+      workspaceDiffLoading.value = false
+    }
+  }
+}
+
+function refreshActiveWorkspaceDiff(): void {
+  const key = activeSessionKey.value
+  if (!key) return
+  void loadWorkspaceDiff(key)
+}
+
+async function commitActiveWorkspaceDiff(): Promise<void> {
+  const key = activeSessionKey.value
+  if (!key || workspaceDiffCommitting.value || streaming.value || activeArchived.value) return
+  const kind = sessionKind(key)
+  const id = sessionRawId(key)
+  if (!kind) return
+
+  workspaceDiffCommitting.value = true
+  workspaceDiffError.value = null
+  try {
+    const result =
+      kind === 'agent'
+        ? await agentChatApi.commitWorkspace(id)
+        : await groupChatApi.commitWorkspace(id)
+    workspaceDiffCache.set(key, result.diff)
+    if (activeSessionKey.value === key) activeWorkspaceDiff.value = result.diff
+  } catch (err) {
+    if (activeSessionKey.value === key) {
+      workspaceDiffError.value = err instanceof ApiError ? err.message : '提交工作区变更失败'
+    }
+  } finally {
+    if (activeSessionKey.value === key) workspaceDiffCommitting.value = false
+  }
+}
+
 async function detachTurn(chatId: string): Promise<void> {
   const key = agentSessionKey(chatId)
   const stream = turnStreams.get(key)
@@ -1299,6 +1381,16 @@ async function selectChat(key: string): Promise<void> {
   runtime.value = idleRuntime()
   activeGroupBlackboard.value =
     sessionKind(key) === 'group' ? (groupBlackboards.get(key) ?? null) : null
+  workspaceDiffError.value = null
+  workspaceDiffCommitting.value = false
+  if (workspaceDiffCache.has(key)) {
+    activeWorkspaceDiff.value = workspaceDiffCache.get(key) ?? null
+    workspaceDiffLoading.value = false
+    void loadWorkspaceDiff(key, true)
+  } else {
+    activeWorkspaceDiff.value = null
+    void loadWorkspaceDiff(key)
+  }
 
   const cached = messageCache.get(key)
   if (cached) {
@@ -1423,6 +1515,7 @@ async function confirmDeleteChat(): Promise<void> {
     }
 
     messageCache.delete(chat.id)
+    workspaceDiffCache.delete(chat.id)
     reconcileRunningIndicators()
 
     deleteChatConfirmOpen.value = false
@@ -1558,8 +1651,9 @@ function buildConverseHandlers(chat: AgentChatView, turnId: string): AgentConver
 
 /** turn 结束后用 DB 权威历史覆盖本地乐观态，确保多端最终一致 */
 async function reloadAfterTurn(chatId: string): Promise<void> {
+  const key = agentSessionKey(chatId)
   await refreshChats()
-  await loadMessages(agentSessionKey(chatId), true)
+  await Promise.all([loadMessages(key, true), loadWorkspaceDiff(key, true)])
 }
 
 /** 订阅意外断开时恢复围观；若后端已结束，则回落为一次普通历史刷新 */
@@ -1847,7 +1941,11 @@ function buildGroupRunHandlers(
 async function reloadAfterGroupRun(groupId: string): Promise<void> {
   const key = groupSessionKey(groupId)
   await refreshChats()
-  await Promise.all([loadMessages(key, true), loadGroupBlackboard(groupId)])
+  await Promise.all([
+    loadMessages(key, true),
+    loadGroupBlackboard(groupId),
+    loadWorkspaceDiff(key, true)
+  ])
 }
 
 async function reloadAfterGroupStreamDrop(groupId: string): Promise<void> {
@@ -2350,9 +2448,16 @@ onUnmounted(() => {
         :disabled-reason="activeInputDisabledReason"
         :streaming="streaming"
         :mention-targets="activeMentionTargets"
+        :workspace-diff="activeWorkspaceDiff"
+        :workspace-diff-loading="workspaceDiffLoading"
+        :workspace-diff-error="workspaceDiffError"
+        :workspace-diff-committing="workspaceDiffCommitting"
+        :workspace-diff-disabled="streaming || activeArchived"
         @send="sendMessage"
         @cancel-reply="onCancelReply"
         @stop="stopCurrentTurn"
+        @refresh-workspace-diff="refreshActiveWorkspaceDiff"
+        @commit-workspace-diff="commitActiveWorkspaceDiff"
       />
     </main>
     <div class="relative z-20 h-full w-0 flex-shrink-0">

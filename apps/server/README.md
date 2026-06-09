@@ -254,7 +254,8 @@ src/multiagents/
 ├── messages/
 │   └── agent-message-history.service.ts # UI 消息与运行步骤的读取/落库/清理
 ├── workspace/
-│   └── agent-workspace.service.ts    # 工作目录、vendor 配置同步、skill 导入
+│   ├── agent-workspace.service.ts    # 工作目录、vendor 配置同步、skill 导入
+│   └── workspace-diff.service.ts     # 会话工作区累计 diff / 提交 checkpoint
 ├── entities/
 │   ├── agent.entity.ts               # Agent 配置
 │   ├── agent-session.entity.ts       # 单 Agent 聊天会话
@@ -296,6 +297,8 @@ src/multiagents/
 | GET        | `/api/agent-chats/:chatId`                      | 查询聊天详情                                                                           |
 | PATCH      | `/api/agent-chats/:chatId`                      | 修改聊天列表状态（`isPinned` / `archived`）                                            |
 | GET        | `/api/agent-chats/:chatId/messages`             | 查询聊天消息历史                                                                       |
+| GET        | `/api/agent-chats/:chatId/workspace-diff`       | 查询本聊天工作区相对 AgentHub checkpoint 的累计文件变更                                |
+| POST       | `/api/agent-chats/:chatId/workspace-commit`     | 提交/确认本聊天工作区变更并推进 checkpoint；运行中拒绝提交                             |
 | POST       | `/api/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
 | GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流（回放+追尾），遇 `done` 结束                                            |
 | POST       | `/api/agent-chats/:chatId/turns/:turnId/abort`  | 中止该轮（跨实例广播）                                                                 |
@@ -303,6 +306,8 @@ src/multiagents/
 | DELETE     | `/api/agent-chats/:chatId`                      | 删除聊天                                                                               |
 
 Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入，创建 Agent 时必须提供非空值。创建 Agent 时，`workingDirectory` 必须位于当前用户 `agent_workspace`，`agentHomeDirectory` 必须位于当前用户 `agent_home`；未传 Agent Home 时后端分配到 `agent_home/<agentId>`。创建聊天时 `workingDirectory` 可选；留空时后端分配到当前用户 `agent_workspace/chat-<sessionId>`，会话私有 home 固定在 `session/<sessionId>`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；skill 来源必须位于当前用户 `skills`。MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
+
+工作区 diff 面板使用 `refs/agenthub/workspace-diff/agent-chat/<chatId>` 作为本聊天的累计变更 checkpoint。`workspace-diff` 返回 checkpoint 之后的文件变更（含新增/修改/删除、行数与可展开 diff）；`workspace-commit` 会提交可见未提交变更（如果存在）并推进 checkpoint，后续变更重新累计。
 
 ## 服务端目录浏览模块（`src/workspace-fs/`）
 
@@ -381,6 +386,8 @@ src/multiagents/group/
 | POST       | `/api/group-chats/:id/converse`                                 | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}`                                  |
 | GET `@Sse` | `/api/group-chats/:id/runs/:runId/events`                       | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束）                                        |
 | POST       | `/api/group-chats/:id/runs/:runId/abort`                        | 中止整个群运行（跨实例广播）                                                                       |
+| GET        | `/api/group-chats/:id/workspace-diff`                           | 查询共享工作区相对 AgentHub checkpoint 的累计文件变更                                              |
+| POST       | `/api/group-chats/:id/workspace-commit`                         | 提交/确认共享工作区变更并推进 checkpoint；运行中拒绝提交                                           |
 | GET        | `/api/group-chats/:id/blackboard`                               | 黑板状态快照                                                                                       |
 | GET        | `/api/group-chats/:id/blackboard/artifacts/:artifactId/preview` | 读取黑板产出物对应工作区文件的预览内容                                                             |
 | GET        | `/api/group-chats/:id/blackboard/events`                        | 黑板事件流（审计/调试，分页）                                                                      |
@@ -396,6 +403,7 @@ src/multiagents/group/
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。
 - 最终汇报默认先调用 Orchestrator 最终审查器，读取黑板摘要与可安全预览的文本/HTML 产物，对照原始需求和任务状态确认完成、失败、阻塞或等待输入；只有审查器调用失败时才退回模板拼接。全成功但审查发现缺口时，会继续派发后续任务，直到审查通过或达到续编排上限。
 - 共享工作区：创建群聊时可传 `workspaceDir`，但必须位于当前用户 `agent_workspace`；未传时分配到当前用户 `agent_workspace/group-<groupId>`。成员 task worktree、成员 SDK home、Orchestrator SDK home 都挂在共享仓库下的 `.agenthub/groups/<groupId>/`，因此 `.codex` / `.claude` 等运行态会出现在群聊项目工作区目录树内。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。
+- 群聊工作区 diff 面板使用 `refs/agenthub/workspace-diff/group-chat/<groupId>` 作为累计变更 checkpoint。成员任务 worktree 合并回共享仓库时即使已经产生内部 git commit，只要用户还没点击提交按钮，`workspace-diff` 仍会展示 checkpoint 之后的累计变更；点击提交会按需提交当前未提交变更并推进 checkpoint。
 - 环境变量：`AGENTHUB_USER_SPACE_ROOT`（用户文件空间总根）、`GROUP_RECLAIM_ON_BOOT`（默认开，重启清理残留活跃轮；多实例应设 `false`）、`GROUP_MAX_ORCHESTRATION_STAGES`（默认 `4`，限制同一群运行内的续编排阶段数）、`GROUP_DEBUG_LOGS`（默认开，输出群聊运行时 debug 日志；生产可设 `false`）、`GROUP_DEBUG_LOG_MAX_CHARS`（默认 `4000`，控制单个长文本字段截断长度）。
 - Debug 日志：`GroupDebugLogger` 会输出结构化 JSON，覆盖用户输入、路由结果、Orchestrator prompt/输出/任务分配、黑板快照、ContextAssembler trace、每个成员 Agent 收到的 prompt、memory 检索/保留/丢弃、turn 事件、report、git diff、黑板更新与 hot buffer。日志会递归脱敏 `apiKey` / `token` / `secret` / `password` 等字段。
 

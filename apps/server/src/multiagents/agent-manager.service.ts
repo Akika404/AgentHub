@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import type { AgentEvent } from './adapter/index.js'
-import type { MessageReplyRef } from '@agenthub/shared'
+import type {
+    MessageReplyRef,
+    WorkspaceCommitPayload,
+    WorkspaceCommitResult,
+    WorkspaceDiffSummary
+} from '@agenthub/shared'
 import { AgentConfigService } from './agents/agent-config.service.js'
 import { AgentChatService } from './chats/agent-chat.service.js'
 import { CreateAgentDto } from './dto/create-agent.dto.js'
@@ -63,6 +68,18 @@ export class AgentManager {
 
     listChatMessages(userId: string, chatId: string): Promise<AgentChatMessageView[]> {
         return this.chats.listChatMessages(userId, chatId)
+    }
+
+    getWorkspaceDiff(userId: string, chatId: string): Promise<WorkspaceDiffSummary> {
+        return this.chats.getWorkspaceDiff(userId, chatId)
+    }
+
+    commitWorkspace(
+        userId: string,
+        chatId: string,
+        payload: WorkspaceCommitPayload
+    ): Promise<WorkspaceCommitResult> {
+        return this.chats.commitWorkspace(userId, chatId, payload)
     }
 
     startTurn(

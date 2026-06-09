@@ -26,6 +26,12 @@ import { AgentChatViewDto, DeleteAgentChatResultDto } from './dto/agent-chat-res
 import { StartTurnResultDto, AbortTurnResultDto } from './dto/turn-response.dto.js'
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
 import { AgentChatMessageViewDto } from './dto/agent-message-response.dto.js'
+import { WorkspaceCommitDto } from './dto/workspace-commit.dto.js'
+import {
+    WorkspaceCommitResultDto,
+    WorkspaceDiffSummaryDto
+} from './dto/workspace-diff-response.dto.js'
+import type { WorkspaceCommitResult, WorkspaceDiffSummary } from '@agenthub/shared'
 
 @ApiTags('agent-chats')
 @ApiBearerAuth()
@@ -78,6 +84,30 @@ export class AgentChatsController {
         @Param('chatId') chatId: string
     ): Promise<AgentChatMessageView[]> {
         return this.manager.listChatMessages(user.id, chatId)
+    }
+
+    @Get(':chatId/workspace-diff')
+    @ApiOperation({ summary: '获取单 Agent 聊天工作区当前未提交变更' })
+    @ApiEnvelope(WorkspaceDiffSummaryDto)
+    workspaceDiff(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string
+    ): Promise<WorkspaceDiffSummary> {
+        return this.manager.getWorkspaceDiff(user.id, chatId)
+    }
+
+    @Post(':chatId/workspace-commit')
+    @ApiOperation({
+        summary: '提交单 Agent 聊天工作区当前未提交变更',
+        description: '会话运行中会拒绝提交，避免把 Agent 正在写入的中间状态提交进 git。'
+    })
+    @ApiEnvelope(WorkspaceCommitResultDto, { status: 201 })
+    workspaceCommit(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Body() dto: WorkspaceCommitDto
+    ): Promise<WorkspaceCommitResult> {
+        return this.manager.commitWorkspace(user.id, chatId, dto)
     }
 
     @Post(':chatId/converse')

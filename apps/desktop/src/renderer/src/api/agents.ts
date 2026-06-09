@@ -11,7 +11,10 @@ import {
   type MessageReplyRef,
   type StartTurnResult,
   type UpdateAgentChatPayload,
-  type UpdateAgentPayload
+  type UpdateAgentPayload,
+  type WorkspaceCommitPayload,
+  type WorkspaceCommitResult,
+  type WorkspaceDiffSummary
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
 import { ApiError, http } from './http'
@@ -170,6 +173,10 @@ export const agentChatApi = {
     http.patch<AgentChatView>(`/agent-chats/${chatId}`, payload),
   listMessages: (chatId: string) =>
     http.get<AgentChatMessageView[]>(`/agent-chats/${chatId}/messages`),
+  getWorkspaceDiff: (chatId: string) =>
+    http.get<WorkspaceDiffSummary>(`/agent-chats/${chatId}/workspace-diff`),
+  commitWorkspace: (chatId: string, payload?: WorkspaceCommitPayload) =>
+    http.post<WorkspaceCommitResult>(`/agent-chats/${chatId}/workspace-commit`, payload ?? {}),
   clear: (chatId: string) => http.post<AgentChatView>(`/agent-chats/${chatId}/clear`),
   delete: (chatId: string) => http.delete<{ deleted: true }>(`/agent-chats/${chatId}`),
   /** Start a turn (runs server-side, detached) and subscribe to its event stream. */

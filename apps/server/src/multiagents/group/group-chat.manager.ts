@@ -11,7 +11,10 @@ import type {
     GroupChatView,
     GroupMessageView,
     GroupRunEvent,
-    UpdateGroupChatPayload
+    UpdateGroupChatPayload,
+    WorkspaceCommitPayload,
+    WorkspaceCommitResult,
+    WorkspaceDiffSummary
 } from '@agenthub/shared'
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { GroupChatService } from './group-chat.service.js'
@@ -20,6 +23,7 @@ import { GroupRunStream } from './run/group-run-stream.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
 import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
+import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { DeploymentService } from './deployment/deployment.service.js'
 import { BusinessException } from '../../common/index.js'
 
@@ -35,6 +39,7 @@ export class GroupChatManager {
         private readonly blackboard: BlackboardService,
         private readonly artifactPreview: GroupArtifactPreviewService,
         private readonly workspace: GroupWorkspaceService,
+        private readonly workspaceDiff: WorkspaceDiffService,
         private readonly deployments: DeploymentService,
         private readonly runStream: GroupRunStream,
         private readonly executor: GroupRunExecutor
@@ -69,6 +74,29 @@ export class GroupChatManager {
     async listMessages(userId: string, groupId: string): Promise<GroupMessageView[]> {
         await this.groupChat.loadGroup(userId, groupId)
         return this.groupMessages.listMessages(groupId)
+    }
+
+    async getWorkspaceDiff(userId: string, groupId: string): Promise<WorkspaceDiffSummary> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        const repoDir = this.workspace.repoDir(group.id, group.workspaceDir)
+        return this.workspaceDiff.summarize(repoDir, 'group-chat', group.id)
+    }
+
+    async commitWorkspace(
+        userId: string,
+        groupId: string,
+        payload: WorkspaceCommitPayload
+    ): Promise<WorkspaceCommitResult> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        const activeRunId = await this.runStream.getActiveRun(group.id)
+        if (activeRunId) {
+            throw BusinessException.conflict(
+                `Group ${group.id} is busy with active run ${activeRunId}`,
+                { reason: 'GROUP_BUSY', activeRunId }
+            )
+        }
+        const repoDir = this.workspace.repoDir(group.id, group.workspaceDir)
+        return this.workspaceDiff.commit(repoDir, 'group-chat', group.id, payload)
     }
 
     converse(
