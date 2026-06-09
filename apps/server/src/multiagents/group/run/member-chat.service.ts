@@ -129,17 +129,27 @@ export class MemberChatService {
 
         let finalText = ''
         let fatal: string | null = null
+        let agentMessageId: string | null = null
         try {
             const result = await this.runMemberChatTurn(params, session, agent, prompt)
             finalText = result.finalText
             fatal = result.fatal
+            agentMessageId = result.agentMessageId
         } catch (err) {
             fatal = this.errMsg(err)
         }
 
         const summary = finalText.trim() || '(无输出)'
         if (!fatal && finalText.trim()) {
-            await this.groupMessages.appendText(group.id, userId, 'agent', finalText, agent.id)
+            await this.groupMessages.appendText(
+                group.id,
+                userId,
+                'agent',
+                finalText,
+                agent.id,
+                null,
+                agentMessageId
+            )
         }
         const result = { success: !fatal, summary: fatal ? `失败：${fatal}` : summary }
         this.debug.log('group.member_chat.finished', {
@@ -168,7 +178,7 @@ export class MemberChatService {
         session: AgentSession,
         agent: Agent,
         prompt: string
-    ): Promise<{ finalText: string; fatal: string | null }> {
+    ): Promise<{ finalText: string; fatal: string | null; agentMessageId: string | null }> {
         const provider = await this.resolveProvider(params.userId, agent)
         const config = agentToConfig(agent, session, provider.apiKey, provider.baseUrl, session.id)
         config.allowedTools = []
@@ -253,6 +263,7 @@ export class MemberChatService {
             parseJsonTextField(rawFinalText) ??
             rawFinalText
         ).trim()
+        let agentMessageId: string | null = null
         this.debug.log('group.member_chat.turn_finished', {
             groupId: params.group.id,
             runId: params.runId,
@@ -271,7 +282,10 @@ export class MemberChatService {
                     'agent',
                     finalText
                 )
-                if (msg) await this.messages.saveSteps(msg.id, session.id, stepDrafts)
+                if (msg) {
+                    agentMessageId = msg.id
+                    await this.messages.saveSteps(msg.id, session.id, stepDrafts)
+                }
             }
             session.sdkSessionId = adapter.sessionId ?? session.sdkSessionId
             session.status = 'active'
@@ -281,7 +295,7 @@ export class MemberChatService {
             this.logger.error(`Failed to persist member chat turn: ${this.errMsg(err)}`)
         }
 
-        return { finalText, fatal }
+        return { finalText, fatal, agentMessageId }
     }
 
     private async publishMemberEvent(params: MemberChatParams, ev: AgentEvent): Promise<void> {

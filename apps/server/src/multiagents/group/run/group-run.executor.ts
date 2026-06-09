@@ -501,7 +501,8 @@ export class GroupRunExecutor implements OnModuleInit {
             runId,
             taskId: node.id,
             status,
-            agentId
+            agentId,
+            summary: reviewed.summary
         })
         return { success: reviewed.success, suspended: !!reviewed.suspended }
     }
@@ -711,7 +712,8 @@ export class GroupRunExecutor implements OnModuleInit {
         const setStatus = async (
             taskId: string,
             status: BlackboardTaskStatus,
-            agentId: string | null
+            agentId: string | null,
+            summary?: string
         ): Promise<void> => {
             statusById.set(taskId, status)
             await this.blackboard.setTaskStatus(group.id, taskId, status)
@@ -725,7 +727,8 @@ export class GroupRunExecutor implements OnModuleInit {
                 runId,
                 taskId,
                 status,
-                agentId
+                agentId,
+                ...(summary ? { summary } : {})
             })
         }
 
@@ -735,7 +738,7 @@ export class GroupRunExecutor implements OnModuleInit {
             escalation: DispatchResult['escalation'],
             agentId: string | null
         ): Promise<void> => {
-            await setStatus(node.id, 'failed', agentId)
+            await setStatus(node.id, 'failed', agentId, summary)
             outcomesById.set(node.id, {
                 name: node.name,
                 summary,
@@ -754,7 +757,8 @@ export class GroupRunExecutor implements OnModuleInit {
                     runId,
                     taskId: id,
                     status: 'blocked',
-                    agentId: child.agentId ?? null
+                    agentId: child.agentId ?? null,
+                    summary: '上游任务失败，未执行'
                 })
                 outcomesById.set(id, {
                     name: child.name,
@@ -780,7 +784,7 @@ export class GroupRunExecutor implements OnModuleInit {
             hasQuestionCard = false
         ): Promise<void> => {
             suspended = true
-            await setStatus(node.id, 'waiting_input', agentId)
+            await setStatus(node.id, 'waiting_input', agentId, question)
             outcomesById.set(node.id, {
                 name: node.name,
                 summary: question,
@@ -810,7 +814,7 @@ export class GroupRunExecutor implements OnModuleInit {
                     result.suspended.hasQuestionCard === true
                 )
             } else if (result.success) {
-                await setStatus(node.id, 'done', agentId)
+                await setStatus(node.id, 'done', agentId, result.summary)
                 outcomesById.set(node.id, {
                     name: node.name,
                     summary: result.summary,

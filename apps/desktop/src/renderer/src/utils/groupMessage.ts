@@ -1,4 +1,6 @@
-import type { ChatMessage, GroupMessageView, SenderInfo } from '../api'
+import type { GroupMessageView, SenderInfo } from '../api'
+import type { ChatDisplayMessage } from '../types/chatDisplay'
+import { runStepsFromViews } from './agentRunSteps'
 
 export interface GroupSenderMeta {
   name: string
@@ -40,7 +42,7 @@ export function groupMessageToDisplay(
   view: GroupMessageView,
   members: Map<string, GroupSenderMeta>,
   currentUserName: string
-): ChatMessage {
+): ChatDisplayMessage {
   const base = { id: view.id, chatId: view.groupChatId, timestamp: view.createdAt }
   if (view.kind === 'system') {
     return { ...base, kind: 'system', text: view.text }
@@ -69,6 +71,17 @@ export function groupMessageToDisplay(
       summary: view.summary,
       answered: view.answered,
       answerText: view.answerText
+    }
+  }
+  const steps = runStepsFromViews(view.steps)
+  if (view.senderRole === 'agent' && steps.length > 0) {
+    return {
+      ...base,
+      kind: 'agent-run',
+      sender,
+      status: 'done',
+      steps,
+      text: view.text
     }
   }
   return {

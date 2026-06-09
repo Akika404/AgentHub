@@ -155,6 +155,8 @@ export type GroupRunEvent =
       taskId: string
       status: BlackboardTaskStatus
       agentId: string | null
+      /** Clean display text for terminal task states; raw member reports stay internal. */
+      summary?: string
     }
   | {
       type: 'member_turn_event'

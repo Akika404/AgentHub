@@ -3,6 +3,8 @@
  * (mock or real) fulfills it.
  */
 
+import type { AgentRunStepView } from './agent.js'
+
 export type ChatKind = 'group' | 'agent' | 'user' | 'team'
 
 export interface ChatAvatar {
@@ -155,6 +157,7 @@ export type ChatMessage =
  * outward shape for `GET /group-chats/:id/messages`. It unifies the existing
  * card kinds (text / task-list / options / system) and adds the sender's role +
  * member agent id so the renderer can map each message to its own bubble.
+ * Agent text messages may also include their persisted run steps.
  */
 export type GroupSenderRole = 'user' | 'orchestrator' | 'agent' | 'system'
 
@@ -170,6 +173,8 @@ interface GroupMessageBase {
 export interface GroupTextMessageView extends GroupMessageBase {
   kind: 'text'
   text: string
+  /** member Agent run steps when this text came from a group member turn */
+  steps?: AgentRunStepView[]
   /** when present, this message is a reply that quotes another message */
   replyTo?: MessageReplyRef
 }

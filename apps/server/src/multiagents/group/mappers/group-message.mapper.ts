@@ -1,5 +1,6 @@
 import type {
     AgentQuestion,
+    AgentRunStepView,
     GroupMessageView,
     MessageReplyRef,
     OptionItem,
@@ -22,7 +23,10 @@ function toReplyRef(ref: MessageReplyRef | null): MessageReplyRef | undefined {
 }
 
 /** GroupMessage 实体 -> GroupMessageView（按 kind 还原结构化负载） */
-export function toGroupMessageView(message: GroupMessage): GroupMessageView {
+export function toGroupMessageView(
+    message: GroupMessage,
+    steps: AgentRunStepView[] = []
+): GroupMessageView {
     const base = {
         id: message.id,
         groupChatId: message.groupChatId,
@@ -72,6 +76,7 @@ export function toGroupMessageView(message: GroupMessage): GroupMessageView {
                 ...base,
                 kind: 'text',
                 text: message.text ?? '',
+                ...(steps.length > 0 ? { steps } : {}),
                 ...(replyTo ? { replyTo } : {})
             }
         }

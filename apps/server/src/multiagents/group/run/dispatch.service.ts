@@ -95,8 +95,9 @@ const REPORT_INSTRUCTION = `
 # 收尾报告（必须）
 完成实际工作后（用你的文件工具 read→plan→patch→test），在输出最后给出一个 JSON 报告，放在 \`\`\`report 代码块里：
 \`\`\`report
-{"summary":"一句话说明做了什么","affected":{"artifacts":[],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
+{"summary":"面向用户的交付摘要：用 2-4 句话说明完成了什么、产物/入口在哪里、关键能力与验证结果；如有偏差或注意事项也要写清楚。不要在 summary 里写 JSON/report/code fence。","affected":{"artifacts":[],"contracts":[],"decisions":[]},"decisions":[],"contracts":[],"memory_candidate":null}
 \`\`\`
+summary 会作为群聊里该成员最终消息的正文展示给用户，应该比一句话更有信息量，但不要粘贴完整文件、日志或内部 report。
 只有确有内容才填 decisions / contracts / memory_candidate。不要修改他人 owner 的 approvalRequired 契约。
 
 # 需要向用户确认信息时（重要）
@@ -230,10 +231,12 @@ export class DispatchService {
         })
         let finalText = ''
         let fatal: string | null = null
+        let agentMessageId: string | null = null
         try {
             const result = await this.runMemberTurn(params, session, agent, prompt)
             finalText = result.finalText
             fatal = result.fatal
+            agentMessageId = result.agentMessageId
         } catch (err) {
             fatal = this.errMsg(err)
         }
@@ -269,7 +272,15 @@ export class DispatchService {
                     question
                 )
             } else {
-                await this.groupMessages.appendText(group.id, userId, 'agent', question, agent.id)
+                await this.groupMessages.appendText(
+                    group.id,
+                    userId,
+                    'agent',
+                    question,
+                    agent.id,
+                    null,
+                    agentMessageId
+                )
             }
             await this.writeHotBuffer(params, question, [])
             const suspended: DispatchResult = {
@@ -389,7 +400,15 @@ export class DispatchService {
         })
 
         // 6. 展示层成员发言 + 写热缓冲
-        await this.groupMessages.appendText(group.id, userId, 'agent', summary, agent.id)
+        await this.groupMessages.appendText(
+            group.id,
+            userId,
+            'agent',
+            summary,
+            agent.id,
+            null,
+            agentMessageId
+        )
         await this.writeHotBuffer(params, summary, updates)
 
         const escalation = this.foldEscalations(escalations)
@@ -418,7 +437,7 @@ export class DispatchService {
         session: AgentSession,
         agent: Agent,
         prompt: string
-    ): Promise<{ finalText: string; fatal: string | null }> {
+    ): Promise<{ finalText: string; fatal: string | null; agentMessageId: string | null }> {
         const provider = await this.resolveProvider(params.userId, agent)
         const config = agentToConfig(agent, session, provider.apiKey, provider.baseUrl, session.id)
         const adapter = createAgent(agent.vendor, config)
@@ -490,6 +509,7 @@ export class DispatchService {
         }
 
         const finalText = (finalFromDone ?? textParts.join('')).trim()
+        let agentMessageId: string | null = null
         this.debug.log('group.dispatch.turn_finished', {
             groupId: params.group.id,
             runId: params.runId,
@@ -510,7 +530,10 @@ export class DispatchService {
                     'agent',
                     finalText
                 )
-                if (msg) await this.messages.saveSteps(msg.id, session.id, stepDrafts)
+                if (msg) {
+                    agentMessageId = msg.id
+                    await this.messages.saveSteps(msg.id, session.id, stepDrafts)
+                }
             }
             session.sdkSessionId = adapter.sessionId ?? session.sdkSessionId
             session.status = 'active'
@@ -520,7 +543,7 @@ export class DispatchService {
             this.logger.error(`Failed to persist member turn: ${this.errMsg(err)}`)
         }
 
-        return { finalText, fatal }
+        return { finalText, fatal, agentMessageId }
     }
 
     private async publishMemberEvent(params: DispatchParams, ev: AgentEvent): Promise<void> {

@@ -45,7 +45,7 @@ MVP 闭环跑通后，复盘发现 4 处与设计文档 P0 目标背离或存在
 type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 'blocked'
 ```
 
-- `GroupRunEvent` 的 `task_status` 事件随之可携带 `status: 'blocked'`（`packages/shared/src/group-chat.ts`，类型自动收窄，无需额外字段）。
+- `GroupRunEvent` 的 `task_status` 事件可携带 `status: 'blocked'`，并在终态用可选 `summary` 收口成员运行气泡正文（`packages/shared/src/group-chat.ts`）。
 - `TaskItem`（`chat.ts`，task-list 气泡用）现在同步 `failed` / `blocked`，避免群运行结束刷新后任务卡片退回为待办态。
 
 ### 服务端内部类型（不跨端）

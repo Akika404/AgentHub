@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger'
-import type { AgentQuestion, GroupSenderRole, OptionItem, TaskItem } from '@agenthub/shared'
+import type {
+    AgentQuestion,
+    AgentRunStepView,
+    GroupSenderRole,
+    OptionItem,
+    TaskItem
+} from '@agenthub/shared'
 
 const SENDER_ROLES: GroupSenderRole[] = ['user', 'orchestrator', 'agent', 'system']
 const MESSAGE_KINDS = ['text', 'system', 'task-list', 'options', 'agent-question'] as const
@@ -30,6 +36,14 @@ export class GroupMessageViewDto {
 
     @ApiProperty({ required: false, description: 'text/system/options 的正文' })
     text?: string
+
+    @ApiProperty({
+        required: false,
+        type: 'array',
+        items: { type: 'object', additionalProperties: true },
+        description: 'agent 成员 text 消息对应的运行步骤'
+    })
+    steps?: AgentRunStepView[]
 
     @ApiProperty({ required: false, description: 'task-list 标题' })
     heading?: string

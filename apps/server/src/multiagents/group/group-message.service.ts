@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
 import type {
     AgentQuestion,
     GroupMessageView,
@@ -8,6 +8,8 @@ import type {
     MessageReplyRef,
     TaskItem
 } from '@agenthub/shared'
+import { AgentMessageStep } from '../entities/agent-message-step.entity.js'
+import { toAgentRunStepView } from '../mappers/agent-message.mapper.js'
 import { GroupMessage } from './entities/group-message.entity.js'
 import { toGroupMessageView } from './mappers/group-message.mapper.js'
 
@@ -20,7 +22,9 @@ import { toGroupMessageView } from './mappers/group-message.mapper.js'
 export class GroupMessageService {
     constructor(
         @InjectRepository(GroupMessage)
-        private readonly messageRepo: Repository<GroupMessage>
+        private readonly messageRepo: Repository<GroupMessage>,
+        @InjectRepository(AgentMessageStep)
+        private readonly stepRepo: Repository<AgentMessageStep>
     ) {}
 
     async listMessages(groupId: string): Promise<GroupMessageView[]> {
@@ -28,7 +32,12 @@ export class GroupMessageService {
             where: { groupChatId: groupId },
             order: { createdAt: 'ASC' }
         })
-        return rows.map(toGroupMessageView)
+        const stepsByMessage = await this.loadStepsByAgentMessage(rows)
+        return rows.map((row) => {
+            const agentMessageId = this.agentMessageIdFromPayload(row.payload)
+            const steps = agentMessageId ? (stepsByMessage.get(agentMessageId) ?? []) : []
+            return toGroupMessageView(row, steps.map(toAgentRunStepView))
+        })
     }
 
     async appendText(
@@ -37,7 +46,8 @@ export class GroupMessageService {
         senderRole: GroupSenderRole,
         text: string,
         senderAgentId: string | null = null,
-        replyTo: MessageReplyRef | null = null
+        replyTo: MessageReplyRef | null = null,
+        agentMessageId: string | null = null
     ): Promise<GroupMessageView> {
         const saved = await this.messageRepo.save(
             this.messageRepo.create({
@@ -47,7 +57,7 @@ export class GroupMessageService {
                 senderRole,
                 senderAgentId,
                 text,
-                payload: null,
+                payload: agentMessageId ? { agentMessageId } : null,
                 replyTo
             })
         )
@@ -191,5 +201,35 @@ export class GroupMessageService {
         if (typeof value !== 'object' || value === null) return false
         const rec = value as Record<string, unknown>
         return typeof rec.id === 'string' && typeof rec.title === 'string'
+    }
+
+    private async loadStepsByAgentMessage(
+        messages: GroupMessage[]
+    ): Promise<Map<string, AgentMessageStep[]>> {
+        const agentMessageIds = [
+            ...new Set(
+                messages
+                    .map((message) => this.agentMessageIdFromPayload(message.payload))
+                    .filter((id): id is string => id !== null)
+            )
+        ]
+        const stepsByMessage = new Map<string, AgentMessageStep[]>()
+        if (agentMessageIds.length === 0) return stepsByMessage
+
+        const steps = await this.stepRepo.find({
+            where: { messageId: In(agentMessageIds) },
+            order: { messageId: 'ASC', seq: 'ASC' }
+        })
+        for (const step of steps) {
+            const list = stepsByMessage.get(step.messageId)
+            if (list) list.push(step)
+            else stepsByMessage.set(step.messageId, [step])
+        }
+        return stepsByMessage
+    }
+
+    private agentMessageIdFromPayload(payload: Record<string, unknown> | null): string | null {
+        const value = payload?.agentMessageId
+        return typeof value === 'string' && value.length > 0 ? value : null
     }
 }

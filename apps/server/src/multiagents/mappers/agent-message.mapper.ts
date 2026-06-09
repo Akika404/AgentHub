@@ -2,7 +2,7 @@ import type { AgentChatMessageView, AgentRunStepView } from '../dto/agent-messag
 import type { AgentMessage } from '../entities/agent-message.entity.js'
 import type { AgentMessageStep } from '../entities/agent-message-step.entity.js'
 
-function toAgentRunStepView(step: AgentMessageStep): AgentRunStepView {
+export function toAgentRunStepView(step: AgentMessageStep): AgentRunStepView {
     return {
         id: step.id,
         seq: step.seq,

@@ -4,7 +4,6 @@ import type {
   AgentChatMessageView,
   AgentChatView,
   AgentEvent,
-  AgentRunStepView,
   AgentTodoItem,
   AgentView,
   BlackboardArtifact,
@@ -28,6 +27,7 @@ import { groupChatApi, type GroupRunStream } from '../api/group-chats'
 import { authState } from '../stores/auth'
 import { groupMessageToDisplay, type GroupSenderMeta } from '../utils/groupMessage'
 import { vendorLabel } from '../utils/vendor'
+import { runStepFromView } from '../utils/agentRunSteps'
 import {
   isAgentRunMessage,
   type AgentRunMessage,
@@ -504,62 +504,6 @@ function agentSender(chat: AgentChatView): SenderInfo {
     avatarDataUrl: chat.agent.avatar ?? undefined,
     accent: chat.agent.vendor === 'claude' ? 'green' : 'neutral'
   }
-}
-
-function runStepFromView(view: AgentRunStepView): AgentRunStep | null {
-  const status: AgentRunStep['status'] =
-    view.isError || view.toolStatus === 'failed' ? 'failed' : 'completed'
-  if (view.type === 'thinking') {
-    return {
-      id: view.id,
-      type: 'thinking',
-      label: view.seq === 0 ? '思考中' : '继续思考',
-      status,
-      text: view.text ?? undefined
-    }
-  }
-  if (view.type === 'progress') {
-    return {
-      id: view.id,
-      type: 'progress',
-      label: '过程输出',
-      status,
-      text: view.text ?? undefined
-    }
-  }
-  if (view.type === 'tool') {
-    return {
-      id: view.id,
-      type: 'tool',
-      label: `正在调用 ${view.toolName ?? '工具'}`,
-      status,
-      toolName: view.toolName ?? undefined,
-      toolUseId: view.toolUseId ?? undefined,
-      input: view.input,
-      output: view.output,
-      isError: view.isError ?? undefined
-    }
-  }
-  if (view.type === 'todo') {
-    const todos = view.todos ?? []
-    return {
-      id: view.id,
-      type: 'todo',
-      label: planLabel(todos),
-      status: 'completed',
-      todos
-    }
-  }
-  if (view.type === 'plan') {
-    return {
-      id: view.id,
-      type: 'plan',
-      label: '计划',
-      status: 'completed',
-      text: view.text ?? undefined
-    }
-  }
-  return null
 }
 
 function agentRunFromView(view: AgentChatMessageView, chat: AgentChatView): AgentRunMessage {
@@ -1745,15 +1689,22 @@ function buildGroupRunHandlers(
           const memberKey = groupRunMemberKey(groupId, runId, event.taskId, event.agentId)
           if (!completedMemberKeys.has(memberKey)) {
             ensureGroupMemberRunMessage(group, runId, event.taskId, event.agentId)
+            const summary = event.summary?.trim()
             if (event.status === 'doing') {
               startRunStep(memberKey, 'thinking', '执行任务中', 'thinking')
             } else if (event.status === 'ready') {
               startRunStep(memberKey, 'thinking', '等待执行', 'thinking')
+            } else if (event.status === 'waiting_input') {
+              if (summary) updateAgentRunText(memberKey, summary)
+              finishAgentRun(memberKey, true)
+              completedMemberKeys.add(memberKey)
             } else if (event.status === 'done' || event.status === 'failed') {
+              if (summary) updateAgentRunText(memberKey, summary)
               finishAgentRun(memberKey, event.status === 'done')
               completedMemberKeys.add(memberKey)
             } else if (event.status === 'blocked') {
               // 上游失败导致本任务从未派发：收尾该成员运行卡片，避免 UI 一直转圈
+              if (summary) updateAgentRunText(memberKey, summary)
               finishAgentRun(memberKey, false)
               completedMemberKeys.add(memberKey)
             }

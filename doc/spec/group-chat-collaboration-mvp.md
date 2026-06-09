@@ -58,7 +58,7 @@
 | ---------------------- | ---------------------------------------------------------------------------- | -------------------------- |
 | **GroupChat**          | 一个群聊：标题、所属用户、Orchestrator 配置、共享工作区、状态                | `group_chat`               |
 | **GroupChatMember**    | 群成员：关联 Agent、群内角色、加入时间                                       | `group_chat_member`        |
-| **GroupMessage**       | 展示层 presentation_log：多发言者消息（text / task-list / options / system） | `group_message`            |
+| **GroupMessage**       | 展示层 presentation_log：多发言者消息（text / task-list / options / system）；成员 text 可通过 payload 关联 `agent_message` 并在视图里返回运行步骤 | `group_message`            |
 | **BlackboardArtifact** | 产出物索引                                                                   | `blackboard_artifact`      |
 | **BlackboardDecision** | 决策（带 status / supersedes / rationale）                                   | `blackboard_decision`      |
 | **BlackboardContract** | 共享契约（带 owner / consumers / approval_required / version）               | `blackboard_contract`      |
@@ -178,6 +178,7 @@ interface AgentMemoryItem {
 // —— 群聊消息（presentation_log）——
 // 复用现有 shared/chat.ts 的 SenderInfo(role: orchestrator)/TaskListMessage/OptionsMessage/TextMessage/SystemMessage。
 // 新增 GroupMessageView 把上述 kind 统一为群聊消息，并带 senderAgentId。
+// senderRole=agent 的 text 消息可返回 steps?: AgentRunStepView[]，用于刷新后复原运行过程折叠条。
 ```
 
 > 现有 `packages/shared/src/chat.ts` 已预留 `ChatKind: 'group'`、`SenderInfo.role: 'orchestrator'`、`TaskListMessage`、`OptionsMessage`、`NetworkNode`——这些是前端 mock 阶段铺底，本 spec 将其升级为真实契约（mock 仅作业务意图参考，非后端契约；后端 API 设计优先）。
@@ -297,7 +298,7 @@ dispatch(groupId, task, mode):
   4. turn 结束后服务端收口：
        - git：对比 worktree diff，识别改动文件 → 更新/新增 blackboard_artifact（version+1, updatedBy/At, status）
        - 合并：worktree 分支合并回主分支（本 spec 串行执行，无并发冲突）
-       - 成员结构化报告 report_completion：{ summary, affected{artifacts,contracts,decisions}, decisions?, memory_candidate? }
+       - 成员结构化报告 report_completion：{ summary, affected{artifacts,contracts,decisions}, decisions?, memory_candidate? }，其中 summary 是面向用户展示的交付摘要，应覆盖产物、关键能力、验证结果和注意事项。
             · 若 affected.contracts 命中非本成员 owner 且 approvalRequired → 拒绝该项写入，记 system 提示并上报 Orchestrator（最小升级）
             · 合法 decisions 写入黑板（带 supersedes 使旧决策 superseded）
             · memory_candidate 经 AgentMemoryService 去重后写入 agent_memory_item
@@ -321,7 +322,7 @@ dispatch(groupId, task, mode):
 
 ### 订阅与围观
 
-- `GET /runs/:runId/events`：复用单聊 turn-stream 模式——`XRANGE` 回放 + `XREAD BLOCK` 追尾，多消费者各自游标，天然多端围观。事件类型：`orchestrator_plan` / `task_status` / `member_turn_event`（透传成员 turn 的 thinking/tool/text）/ `blackboard_update` / `orchestrator_report` / `done`。
+- `GET /runs/:runId/events`：复用单聊 turn-stream 模式——`XRANGE` 回放 + `XREAD BLOCK` 追尾，多消费者各自游标，天然多端围观。事件类型：`orchestrator_plan` / `task_status` / `member_turn_event`（透传成员 turn 的 thinking/tool/text）/ `blackboard_update` / `orchestrator_report` / `done`。`task_status` 在终态可携带 `summary`，用于把成员运行气泡从 raw finalText 收口为干净展示文本。
 - 断开 SSE 只取消订阅，不中止群运行；`activeRunId` 暴露给前端用于打开群时自动订阅进行中运行。
 - 一次群运行一条 Redis Stream（含其下所有成员 turn 事件，按发生序 XADD），设 TTL（默认 1h）。
 
