@@ -269,21 +269,25 @@ private fun MainShell(state: AppUiState, viewModel: AppViewModel, snackbar: Snac
     var showCreateAgent by rememberSaveable { mutableStateOf(false) }
     var showCreateChat by rememberSaveable { mutableStateOf(false) }
     var showCreateGroup by rememberSaveable { mutableStateOf(false) }
+    val showBottomBar = state.mainTab != MainTab.Chats || state.activeKey == null
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    BottomItem(MainTab.Chats, state.mainTab, "聊天", Icons.Default.ChatBubble) { viewModel.setMainTab(MainTab.Chats) }
-                    BottomItem(MainTab.Groups, state.mainTab, "群聊", Icons.Default.Groups) { viewModel.setMainTab(MainTab.Groups) }
-                    BottomItem(MainTab.Agents, state.mainTab, "Agent", Icons.Default.Person) { viewModel.setMainTab(MainTab.Agents) }
+            if (showBottomBar) {
+                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        BottomItem(MainTab.Chats, state.mainTab, "聊天", Icons.Default.ChatBubble) { viewModel.setMainTab(MainTab.Chats) }
+                        BottomItem(MainTab.Groups, state.mainTab, "群聊", Icons.Default.Groups) { viewModel.setMainTab(MainTab.Groups) }
+                        BottomItem(MainTab.Agents, state.mainTab, "Agent", Icons.Default.Person) { viewModel.setMainTab(MainTab.Agents) }
+                    }
                 }
             }
         }
@@ -451,6 +455,7 @@ private fun ChatDetailScreen(state: AppUiState, viewModel: AppViewModel, activeK
     val running = state.runningKeys.contains(activeKey)
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             TopAppBar(
                 title = {
@@ -501,6 +506,7 @@ private fun ConversationPage(state: AppUiState, viewModel: AppViewModel, activeK
         Row(
             Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(10.dp),
             verticalAlignment = Alignment.Bottom
         ) {
