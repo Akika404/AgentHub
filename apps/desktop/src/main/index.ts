@@ -6,6 +6,7 @@ import type { ImportLocalSkillFolderPayload, LocalSkillFolderFile } from '@agent
 import icon from '../../resources/icon.png?asset'
 import { registerApiProxy } from './api-proxy'
 import { registerPreviewProtocol, registerPreviewScheme } from './preview-protocol'
+import { registerLocalRunner } from './local-runner'
 
 // Must run before app `ready`: privileged schemes can only be declared early.
 registerPreviewScheme()
@@ -170,6 +171,7 @@ app.whenReady().then(() => {
   registerApiProxy()
   registerPreviewProtocol()
   registerDialogHandlers()
+  registerLocalRunner()
 
   createWindow()
 

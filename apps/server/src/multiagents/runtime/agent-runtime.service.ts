@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
 import { createAgent, type AgentEvent, type AgentVendor } from '../adapter/index.js'
-import type { MessageReplyRef } from '@agenthub/shared'
+import type { LocalRunConfig, MessageReplyRef } from '@agenthub/shared'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
 import type { LiveAgent } from '../live-agent.js'
@@ -12,6 +12,8 @@ import { agentToConfig } from '../mappers/agent.mapper.js'
 import { TurnStream } from './turn-stream.service.js'
 import { BusinessException } from '../../common/index.js'
 import { PlatformProviderService } from '../../platform-provider/platform-provider.service.js'
+import { LocalRunnerGateway } from '../local-runner/local-runner.gateway.js'
+import { RemoteAgentAdapter } from '../local-runner/remote-agent.adapter.js'
 import {
     AgentMessageHistoryService,
     type StepDraft
@@ -46,7 +48,8 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         private readonly providerService: PlatformProviderService,
         private readonly turnStream: TurnStream,
         private readonly messages: AgentMessageHistoryService,
-        private readonly config: ConfigService
+        private readonly config: ConfigService,
+        private readonly localRunner: LocalRunnerGateway
     ) {
         this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
         this.maxLiveCodex = this.config.get<number>('AGENT_MAX_LIVE_CODEX', 8)
@@ -329,6 +332,11 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
     private async persistHandle(session: AgentSession, live: LiveAgent): Promise<void> {
         const latest = live.adapter.sessionId
         if (latest && latest !== session.sdkSessionId) session.sdkSessionId = latest
+        // local 会话：记录本轮执行所在设备，用于下次 resume 的设备亲和判断。
+        if (session.executionMode === 'local') {
+            const deviceId = this.localRunner.deviceId(session.userId)
+            if (deviceId && deviceId !== session.deviceId) session.deviceId = deviceId
+        }
         session.status = 'active'
         session.lastTurnAt = new Date()
         await this.sessionRepo.save(session)
@@ -365,6 +373,31 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
             )
         }
 
+        const adapter =
+            agent.executionMode === 'local'
+                ? this.buildLocalAdapter(agent, session)
+                : await this.buildServerAdapter(agent, session)
+
+        if (session.sdkSessionId) adapter.resumeWith(session.sdkSessionId)
+
+        return {
+            sessionId: session.id,
+            agentId: agent.id,
+            vendor: agent.vendor,
+            adapter,
+            busy: false,
+            abort: null,
+            lastUsedAt: Date.now()
+        }
+    }
+
+    /** server 执行模式：在服务器进程内通过 SDK 子进程跑（现状）。 */
+    private async buildServerAdapter(agent: Agent, session: AgentSession) {
+        if (!agent.platformProviderId) {
+            throw BusinessException.agentUnavailable(
+                `Agent ${agent.id} has no platform provider for server execution`
+            )
+        }
         let provider
         try {
             provider = await this.providerService.resolveRuntimeConfig(
@@ -378,26 +411,41 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         }
 
         const config = agentToConfig(agent, session, provider.apiKey, provider.baseUrl, session.id)
-
-        let adapter
         try {
-            adapter = createAgent(agent.vendor, config)
+            return createAgent(agent.vendor, config)
         } catch (err) {
             throw BusinessException.agentUnavailable(
                 `Failed to create ${agent.vendor} adapter: ${this.errMsg(err)}`
             )
         }
-        if (session.sdkSessionId) adapter.resumeWith(session.sdkSessionId)
+    }
 
-        return {
-            sessionId: session.id,
-            agentId: agent.id,
-            vendor: agent.vendor,
-            adapter,
-            busy: false,
-            abort: null,
-            lastUsedAt: Date.now()
+    /**
+     * local 执行模式：把 turn 转发到用户桌面端本机执行（RemoteAgentAdapter）。
+     * 设备未连接 / 未提供该 vendor 引擎时拒绝，提示用户打开桌面端。
+     *
+     * TODO(安全): 本地模式下服务器仍可让本机 agent 在 bypassPermissions / danger-full-access
+     * 下跑任意命令（等于服务器对用户机器有 RCE 能力）。v1 沿用 Agent 配置的 permissionMode，
+     * 后续应在桌面端加本地权限审批，并对 local 模式收紧默认权限。
+     */
+    private buildLocalAdapter(agent: Agent, session: AgentSession): RemoteAgentAdapter {
+        if (!this.localRunner.isConnected(session.userId, agent.vendor)) {
+            throw BusinessException.agentUnavailable(
+                `本地 runner 未连接或未提供 ${agent.vendor} 引擎；请在桌面端打开 AgentHub 并确认本机已安装对应 CLI`
+            )
         }
+        const runConfig: LocalRunConfig = {
+            id: session.id,
+            model: agent.model,
+            workingDirectory: session.workingDirectory,
+            reasoningEffort: (agent.reasoningEffort as LocalRunConfig['reasoningEffort']) ?? undefined,
+            systemPrompt: agent.systemPrompt ?? undefined,
+            skills: session.skills ?? undefined,
+            mcpServers: session.mcpServers ?? undefined,
+            allowedTools: agent.allowedTools ?? undefined,
+            permissionMode: agent.permissionMode ?? undefined
+        }
+        return new RemoteAgentAdapter(agent.vendor, this.localRunner, session.userId, runConfig)
     }
 
     private evictIfNeeded(incomingVendor: AgentVendor): void {

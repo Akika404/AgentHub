@@ -1,4 +1,5 @@
 import type { AgentCapabilities, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 import type { AgentSessionStatus } from '../entities/agent-session.entity.js'
 
 export interface AgentChatAgentSummary {
@@ -7,6 +8,8 @@ export interface AgentChatAgentSummary {
     avatar: string | null
     color: string
     vendor: AgentVendor
+    /** 执行位置；客户端据此决定 diff/commit 走服务器还是本机。 */
+    executionMode: AgentExecutionMode
     model: string
     capabilities: AgentCapabilities
 }

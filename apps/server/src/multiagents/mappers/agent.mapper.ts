@@ -45,6 +45,7 @@ export function toAgentView(agent: Agent): AgentView {
         color: agent.color,
         capabilitySummary: agent.capabilitySummary ?? null,
         vendor: agent.vendor,
+        executionMode: agent.executionMode,
         platformProviderId: agent.platformProviderId,
         model: agent.model,
         agentHomeDirectory: agent.agentHomeDirectory,
@@ -75,6 +76,7 @@ export function toAgentChatView(
             avatar: agent.avatar,
             color: agent.color,
             vendor: agent.vendor,
+            executionMode: agent.executionMode,
             model: agent.model,
             capabilities: getCapabilities(agent.vendor)
         },

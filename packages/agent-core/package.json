@@ -1,0 +1,27 @@
+{
+  "name": "@agenthub/agent-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic agent execution core (vendor adapters + workspace git) shared by server and desktop",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agenthub/shared": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.150",
+    "@openai/codex-sdk": "^0.133.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3"
+  }
+}

@@ -10,8 +10,10 @@ import {
     MaxLength
 } from 'class-validator'
 import type { AgentPermissionMode, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
+const EXECUTION_MODES: AgentExecutionMode[] = ['server', 'local']
 const AVATAR_MAX_LENGTH = 256 * 1024 // 256 KiB compact data URL
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 const PERMISSION_MODES: AgentPermissionMode[] = [
@@ -61,10 +63,23 @@ export class CreateAgentDto {
     @IsIn(VENDORS)
     vendor!: AgentVendor
 
-    /** 引用的模型平台 id（platform_provider.id）；运行时据此取 baseUrl + apiKey */
+    /**
+     * 执行位置；省略时默认 server（保持既有行为）。
+     * local 模式下 Agent 接入用户本机的 Claude Code / Codex，platformProviderId 省略，
+     * workingDirectory 是用户本机绝对路径。
+     */
+    @IsOptional()
+    @IsIn(EXECUTION_MODES)
+    executionMode?: AgentExecutionMode
+
+    /**
+     * 引用的模型平台 id（platform_provider.id）；运行时据此取 baseUrl + apiKey。
+     * server 模式必填；local 模式省略（语义校验在 AgentPolicyService）。
+     */
+    @IsOptional()
     @IsString()
     @IsNotEmpty()
-    platformProviderId!: string
+    platformProviderId?: string
 
     /** 选定的模型名，须属于所引用 Provider 的 modelList */
     @IsString()

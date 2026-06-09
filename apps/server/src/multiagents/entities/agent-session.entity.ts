@@ -7,6 +7,7 @@ import {
     UpdateDateColumn
 } from 'typeorm'
 import type { AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 
 /** 会话状态：活跃 / 已暂存（从内存驱逐，可恢复）/ 已清空（句柄丢弃，下次开新会话） */
 export type AgentSessionStatus = 'active' | 'suspended' | 'cleared'
@@ -39,6 +40,20 @@ export class AgentSession {
     /** 冗余 vendor，免去重建时为取 vendor 而 join agent */
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
+
+    /**
+     * 冗余 executionMode，免去重建 LiveAgent 时为取执行位置而 join agent。
+     * local 会话的 turn 转发到 deviceId 标记的设备执行。
+     */
+    @Column({ type: 'varchar', length: 16, default: 'server' })
+    executionMode!: AgentExecutionMode
+
+    /**
+     * 本会话上次成功执行所在的设备 id（仅 local 模式有意义）。底层 SDK 会话状态
+     * （CODEX_HOME / Claude 会话）落在该设备本机，换设备时无法 resume，需优雅降级新建会话。
+     */
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    deviceId!: string | null
 
     /** 用户单聊 / 群聊内部成员会话；内部会话不暴露在单聊 API 中 */
     @Index()

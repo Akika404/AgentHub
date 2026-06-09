@@ -41,7 +41,8 @@ const menuItems = computed<MenuItem[]>(() => [
   { id: 'delete', label: '删除', icon: 'delete' }
 ])
 
-function providerName(id: string): string {
+function providerName(id: string | null): string {
+  if (!id) return '本机（接入本地 CLI）'
   return providers.value.find((p) => p.id === id)?.platformName ?? id
 }
 

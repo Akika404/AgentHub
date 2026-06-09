@@ -1,4 +1,5 @@
 import type { AgentCapabilities, AgentPermissionMode, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 
 /** 推理 effort 取值集（与 create-agent.dto / adapter config 对齐）。 */
 export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -19,8 +20,10 @@ export interface AgentView {
     /** 面向 Orchestrator / 用户的能力摘要；未配置为 null */
     capabilitySummary: string | null
     vendor: AgentVendor
-    /** 引用的模型平台 id */
-    platformProviderId: string
+    /** 执行位置；local 表示接入用户本机的 Claude Code / Codex。默认 server。 */
+    executionMode: AgentExecutionMode
+    /** 引用的模型平台 id；server 必填，local 为 null（用本机登录态） */
+    platformProviderId: string | null
     model: string
     /** Agent 私有持久目录；单聊时默认也作为工作目录 */
     agentHomeDirectory: string

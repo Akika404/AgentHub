@@ -49,6 +49,10 @@ export interface RendererApi {
   registerPreviewHtml(html: string): Promise<string>
   /** Release a previously registered preview URL so its HTML can be garbage-collected. */
   releasePreviewHtml(url: string): Promise<void>
+  /** Start/restart the local-execution runner reverse channel with the current JWT. */
+  runnerStart(token: string): Promise<void>
+  /** Stop the local-execution runner. */
+  runnerStop(): Promise<void>
   onStream(name: 'event' | 'error' | 'done', callback: (payload: unknown) => void): () => void
 }
 

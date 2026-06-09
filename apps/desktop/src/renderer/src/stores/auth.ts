@@ -54,16 +54,26 @@ export function isAuthenticated(): boolean {
   return Boolean(authState.token && authState.user)
 }
 
+/** 让本地执行 runner 的反向通道与当前登录态同步（非 Electron 环境下安全跳过）。 */
+function syncRunner(): void {
+  const runner = globalThis.window?.api
+  if (!runner) return
+  if (authState.token) void runner.runnerStart(authState.token)?.catch(() => undefined)
+  else void runner.runnerStop()?.catch(() => undefined)
+}
+
 function setSession(token: string, user: UserView): void {
   authState.token = token
   authState.user = user
   writePersisted({ token, user })
+  syncRunner()
 }
 
 function clearSession(): void {
   authState.token = null
   authState.user = null
   writePersisted(null)
+  syncRunner()
 }
 
 /** Called by the HTTP layer when the server reports the token is invalid. */
@@ -108,6 +118,7 @@ export async function initAuth(): Promise<void> {
       const user = await authApi.getMe()
       authState.user = user
       writePersisted({ token: authState.token, user })
+      syncRunner()
     } catch {
       clearSession()
     }

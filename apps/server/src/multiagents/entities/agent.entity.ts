@@ -7,6 +7,7 @@ import {
     UpdateDateColumn
 } from 'typeorm'
 import type { AgentPermissionMode, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 
 /**
  * Agent — 用户创建的一个虚拟员工（持久化配置，进入该用户的 AgentList）。
@@ -46,10 +47,20 @@ export class Agent {
     @Column({ type: 'varchar', length: 16 })
     vendor!: AgentVendor
 
-    /** 引用的模型平台 id（逻辑外键到 platform_provider.id）；运行时据此取 baseUrl + apiKey */
+    /**
+     * 执行位置。'server'（默认）在服务器进程内通过 SDK 执行；'local' 转发到用户桌面端，
+     * 由本机已安装的 Claude Code / Codex 执行并使用本机登录态。仅单聊支持 local。
+     */
+    @Column({ type: 'varchar', length: 16, default: 'server' })
+    executionMode!: AgentExecutionMode
+
+    /**
+     * 引用的模型平台 id（逻辑外键到 platform_provider.id）；运行时据此取 baseUrl + apiKey。
+     * server 模式必填；local 模式为 null（用本机 CLI 自己的登录态）。
+     */
     @Index()
-    @Column({ type: 'varchar', length: 36 })
-    platformProviderId!: string
+    @Column({ type: 'varchar', length: 36, nullable: true })
+    platformProviderId!: string | null
 
     /** 选定的模型名，取自所引用 Provider 的 modelList */
     @Column({ type: 'varchar', length: 128 })

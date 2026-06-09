@@ -44,6 +44,10 @@ const api = {
     ipcRenderer.invoke('preview:register-html', html) as Promise<string>,
   releasePreviewHtml: (url: string) =>
     ipcRenderer.invoke('preview:release-html', url) as Promise<void>,
+  /** 启动/重启本地执行 runner 的反向通道（登录后调用，传当前 JWT）。 */
+  runnerStart: (token: string) => ipcRenderer.invoke('runner:start', token) as Promise<void>,
+  /** 停止本地 runner（登出时调用）。 */
+  runnerStop: () => ipcRenderer.invoke('runner:stop') as Promise<void>,
   onStream: (name: StreamEventName, callback: (payload: unknown) => void) => {
     const channel = `api:stream:${name}`
     const listener = (_event: IpcRendererEvent, payload: unknown): void => callback(payload)

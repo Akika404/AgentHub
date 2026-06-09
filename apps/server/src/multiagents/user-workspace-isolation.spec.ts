@@ -69,6 +69,7 @@ function agent(userId: string, agentHomeDirectory: string, workingDirectory: str
         color: '#3370ff',
         capabilitySummary: null,
         vendor: 'claude',
+        executionMode: 'server',
         platformProviderId: 'provider-1',
         model: 'model-1',
         agentHomeDirectory,
@@ -194,7 +195,8 @@ test('AgentChatService allocates chat workspace and session home in the user spa
         } as never,
         userWorkspace,
         { getActiveTurns: async () => new Map(), getActiveTurn: async () => null } as never,
-        { listChatMessages: async () => [], deleteChatHistory: async () => undefined } as never
+        { listChatMessages: async () => [], deleteChatHistory: async () => undefined } as never,
+        { isConnected: () => false, rpc: async () => null } as never
     )
 
     const view = await service.createChat('user-a', { agentId: loadedAgent.id })

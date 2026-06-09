@@ -1,8 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger'
 import type { AgentCapabilities, AgentPermissionMode, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 import type { AgentReasoningEffort, AgentView } from './agent-view.dto.js'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
+const EXECUTION_MODES: AgentExecutionMode[] = ['server', 'local']
 const PERMISSION_MODES: AgentPermissionMode[] = [
     'default',
     'acceptEdits',
@@ -69,8 +71,18 @@ export class AgentViewDto implements AgentView {
     @ApiProperty({ enum: VENDORS, description: '厂商' })
     vendor!: AgentVendor
 
-    @ApiProperty({ description: '引用的模型平台 id（platform_provider.id）' })
-    platformProviderId!: string
+    @ApiProperty({
+        enum: EXECUTION_MODES,
+        description: '执行位置；local 表示接入用户本机的 Claude Code / Codex。默认 server'
+    })
+    executionMode!: AgentExecutionMode
+
+    @ApiProperty({
+        type: String,
+        nullable: true,
+        description: '引用的模型平台 id（platform_provider.id）；server 必填，local 为 null'
+    })
+    platformProviderId!: string | null
 
     @ApiProperty({ description: '模型名' })
     model!: string

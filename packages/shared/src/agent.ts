@@ -7,6 +7,16 @@ import type { MessageReplyRef } from './chat.js'
 
 export type AgentVendor = 'claude' | 'codex'
 
+/**
+ * 执行位置。
+ * - `server`（默认）：Agent 在服务器进程内通过 SDK 子进程执行，操作服务器文件系统。
+ *   现有的全部行为。
+ * - `local`：Agent 通过反向通道转发到用户桌面端，由本机已安装的 Claude Code / Codex
+ *   执行，操作用户本机文件系统，并使用用户本机的登录态（ambient auth）。
+ *   仅单聊（scope=user）支持；群聊成员仍强制 server。
+ */
+export type AgentExecutionMode = 'server' | 'local'
+
 export type AgentChatStatus = 'active' | 'suspended' | 'cleared'
 
 export interface AgentUsage {
@@ -169,8 +179,13 @@ export interface AgentView {
   /** short human-authored capability summary for routing/group orchestration */
   capabilitySummary: string | null
   vendor: AgentVendor
-  /** referenced platform_provider.id */
-  platformProviderId: string
+  /** 执行位置；local 表示接入用户本机的 Claude Code / Codex。默认 server。 */
+  executionMode: AgentExecutionMode
+  /**
+   * referenced platform_provider.id。server 模式必填；local 模式为 null
+   * （用本机 CLI 自己的登录态，不引用服务器 Provider）。
+   */
+  platformProviderId: string | null
   model: string
   /** Agent-private persisted home directory. */
   agentHomeDirectory: string
@@ -196,6 +211,8 @@ export interface AgentChatAgentSummary {
   avatar: string | null
   color: string
   vendor: AgentVendor
+  /** 执行位置；客户端据此决定 diff/commit 走服务器还是本机。 */
+  executionMode: AgentExecutionMode
   model: string
   capabilities: AgentCapabilities
 }
@@ -244,6 +261,10 @@ export interface StartTurnResult {
 /**
  * Create Agent input. baseUrl/apiKey are not passed here: referenced via
  * `platformProviderId`; `model` must belong to that provider's modelList.
+ *
+ * 当 `executionMode === 'local'` 时：`platformProviderId` 省略（用本机 CLI 登录态），
+ * `workingDirectory` 是用户**本机**的绝对路径（不校验服务器 workspace 根），
+ * `skillSourceDirectories` 不适用（本机 skills 由用户本机配置发现）。
  */
 export interface CreateAgentPayload {
   name: string
@@ -251,11 +272,17 @@ export interface CreateAgentPayload {
   color?: string
   capabilitySummary: string
   vendor: AgentVendor
-  platformProviderId: string
+  /** 执行位置；省略时默认 server（保持既有行为）。 */
+  executionMode?: AgentExecutionMode
+  /** server 模式必填；local 模式省略。 */
+  platformProviderId?: string
   model: string
   /** Optional Agent-private home; omitted values are allocated under the user's agent_home. */
   agentHomeDirectory?: string
-  /** Agent default workspace; must be under the current user's agent_workspace. */
+  /**
+   * Agent default workspace。server 模式须在当前用户的 agent_workspace 下；
+   * local 模式是用户本机的绝对路径。
+   */
   workingDirectory: string
   systemPrompt?: string
   /** Server-side skill directories under the current user's skills root. */

@@ -39,6 +39,66 @@ export class AgentConfigService {
         if (!capabilitySummary) {
             throw BusinessException.badRequest('Agent capabilitySummary is required')
         }
+        const executionMode = dto.executionMode ?? 'server'
+        return executionMode === 'local'
+            ? this.createLocalAgent(userId, dto, capabilitySummary)
+            : this.createServerAgent(userId, dto, capabilitySummary)
+    }
+
+    /**
+     * 本地执行模式的 Agent：不引用服务器 Provider（用本机 CLI 登录态），workingDirectory 是
+     * 用户**本机**绝对路径（不校验服务器 workspace 根，也不在服务器建目录），skills 由本机配置
+     * 发现（不导入服务器 skill 目录）。agentHomeDirectory 由桌面端本机解析，服务器存空串占位。
+     */
+    private async createLocalAgent(
+        userId: string,
+        dto: CreateAgentDto,
+        capabilitySummary: string
+    ): Promise<AgentView> {
+        const workingDirectory = dto.workingDirectory?.trim()
+        if (!workingDirectory) {
+            throw BusinessException.badRequest('Local agent workingDirectory is required')
+        }
+        if (dto.skillSourceDirectories && dto.skillSourceDirectories.length > 0) {
+            throw BusinessException.badRequest(
+                'Local agents discover skills on the user machine; skillSourceDirectories is not supported'
+            )
+        }
+        const agent = this.agentRepo.create({
+            id: randomUUID(),
+            userId,
+            name: dto.name,
+            avatar: dto.avatar ?? null,
+            color: this.policy.normalizeColor(dto.color),
+            capabilitySummary,
+            vendor: dto.vendor,
+            executionMode: 'local',
+            platformProviderId: null,
+            model: dto.model,
+            // 本机解析：服务器不管理 local agent 的 home 目录
+            agentHomeDirectory: '',
+            workingDirectory,
+            systemPrompt: dto.systemPrompt ?? null,
+            skills: this.policy.mergeSkills(dto.skills, []),
+            mcpServers: dto.mcpServers ?? null,
+            allowedTools: dto.allowedTools ?? null,
+            permissionMode: dto.permissionMode ?? null,
+            reasoningEffort: dto.reasoningEffort ?? null
+        })
+        const saved = await this.agentRepo.save(agent)
+        return toAgentView(saved)
+    }
+
+    private async createServerAgent(
+        userId: string,
+        dto: CreateAgentDto,
+        capabilitySummary: string
+    ): Promise<AgentView> {
+        if (!dto.platformProviderId) {
+            throw BusinessException.badRequest(
+                'Server-execution agents require platformProviderId'
+            )
+        }
         const caps = getCapabilities(dto.vendor)
 
         const provider = await this.providerService.resolveRuntimeConfig(
@@ -84,6 +144,7 @@ export class AgentConfigService {
             color: this.policy.normalizeColor(dto.color),
             capabilitySummary,
             vendor: dto.vendor,
+            executionMode: 'server',
             platformProviderId: dto.platformProviderId,
             model: dto.model,
             agentHomeDirectory,
@@ -113,12 +174,24 @@ export class AgentConfigService {
 
     async updateAgent(userId: string, agentId: string, dto: UpdateAgentDto): Promise<AgentView> {
         const agent = await this.loadAgent(userId, agentId)
+        // v1：本地执行 Agent 的编辑尚未支持（workingDirectory 是本机路径、无 Provider，
+        // 校验与目录同步逻辑都不同）。先拒绝，删除重建即可。
+        if (agent.executionMode === 'local') {
+            throw BusinessException.badRequest(
+                'Editing local-execution agents is not supported yet; delete and recreate instead'
+            )
+        }
         const sessions = await this.sessionRepo.find({ where: { agentId, userId } })
         for (const s of sessions) this.runtime.assertNotBusy(s.id)
 
         const vendor = dto.vendor ?? agent.vendor
         const caps = getCapabilities(vendor)
         const platformProviderId = dto.platformProviderId ?? agent.platformProviderId
+        if (!platformProviderId) {
+            throw BusinessException.badRequest(
+                'Server-execution agents require platformProviderId'
+            )
+        }
         const model = dto.model ?? agent.model
         const workingDirectory =
             dto.workingDirectory !== undefined

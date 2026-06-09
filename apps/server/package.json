@@ -15,6 +15,7 @@
     "test": "node --import tsx --test \"src/**/*.spec.ts\""
   },
   "dependencies": {
+    "@agenthub/agent-core": "workspace:*",
     "@agenthub/shared": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.3.150",
     "@anthropic-ai/sdk": "^0.102.0",
@@ -35,7 +36,8 @@
     "openai": "^6.42.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.20"
+    "typeorm": "^0.3.20",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -43,6 +45,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.19.1",
+    "@types/ws": "^8.5.13",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.2",

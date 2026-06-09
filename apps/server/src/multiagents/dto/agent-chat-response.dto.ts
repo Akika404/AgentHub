@@ -1,10 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger'
 import type { AgentCapabilities, AgentVendor } from '../adapter/index.js'
+import type { AgentExecutionMode } from '@agenthub/shared'
 import type { AgentSessionStatus } from '../entities/agent-session.entity.js'
 import { AgentCapabilitiesDto } from './agent-response.dto.js'
 import type { AgentChatAgentSummary, AgentChatView } from './agent-chat-view.dto.js'
 
 const VENDORS: AgentVendor[] = ['claude', 'codex']
+const EXECUTION_MODES: AgentExecutionMode[] = ['server', 'local']
 const SESSION_STATUSES: AgentSessionStatus[] = ['active', 'suspended', 'cleared']
 
 export class AgentChatAgentSummaryDto implements AgentChatAgentSummary {
@@ -26,6 +28,12 @@ export class AgentChatAgentSummaryDto implements AgentChatAgentSummary {
 
     @ApiProperty({ enum: VENDORS, description: '厂商' })
     vendor!: AgentVendor
+
+    @ApiProperty({
+        enum: EXECUTION_MODES,
+        description: '执行位置；客户端据此决定 diff/commit 走服务器还是本机'
+    })
+    executionMode!: AgentExecutionMode
 
     @ApiProperty({ description: '模型名' })
     model!: string

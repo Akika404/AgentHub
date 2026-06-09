@@ -26,6 +26,7 @@ import { WorkspaceDiffService } from '../workspace/workspace-diff.service.js'
 import { AgentRuntimeService } from '../runtime/agent-runtime.service.js'
 import { AgentMessageHistoryService } from '../messages/agent-message-history.service.js'
 import { UserWorkspaceService } from '../../user-workspace/user-workspace.service.js'
+import { LocalRunnerGateway } from '../local-runner/local-runner.gateway.js'
 
 @Injectable()
 export class AgentChatService {
@@ -42,11 +43,70 @@ export class AgentChatService {
         private readonly workspaceDiff: WorkspaceDiffService,
         private readonly userWorkspace: UserWorkspaceService,
         private readonly runtime: AgentRuntimeService,
-        private readonly messages: AgentMessageHistoryService
+        private readonly messages: AgentMessageHistoryService,
+        private readonly localRunner: LocalRunnerGateway
     ) {}
 
     async createChat(userId: string, dto: CreateAgentChatDto): Promise<AgentChatView> {
         const agent = await this.agents.loadAgent(userId, dto.agentId)
+        if (agent.executionMode === 'local') {
+            return this.createLocalChat(userId, agent, dto)
+        }
+        return this.createServerChat(userId, agent, dto)
+    }
+
+    /**
+     * 本地执行模式的聊天：工作目录是用户本机路径（不分配服务器目录、不导入服务器 skill、
+     * 不在服务器建 git checkpoint）。sessionHomeDirectory 留空，由桌面端本机解析。
+     * 若设备此刻在线，best-effort 让它确认目录存在并打 checkpoint。
+     */
+    private async createLocalChat(
+        userId: string,
+        agent: Agent,
+        dto: CreateAgentChatDto
+    ): Promise<AgentChatView> {
+        const sessionId = randomUUID()
+        const workingDirectory = dto.workingDirectory?.trim() || agent.workingDirectory
+        const session = this.sessionRepo.create({
+            id: sessionId,
+            userId,
+            agentId: agent.id,
+            vendor: agent.vendor,
+            executionMode: 'local',
+            scope: 'user',
+            title: this.policy.normalizeTitle(dto.title),
+            workingDirectory,
+            sessionHomeDirectory: '',
+            skills: agent.skills,
+            mcpServers: this.policy.mergeMcpServers(agent.mcpServers, dto.mcpServers),
+            sdkSessionId: null,
+            status: 'active',
+            isPinned: false,
+            archivedAt: null,
+            lastTurnAt: null
+        })
+        const saved = await this.sessionRepo.save(session)
+        if (this.localRunner.isConnected(userId)) {
+            await this.localRunner
+                .rpc(userId, 'dir.ensure', { workingDirectory })
+                .catch(() => undefined)
+            await this.localRunner
+                .rpc(userId, 'diff.commit', {
+                    workingDirectory,
+                    scope: 'agent-chat',
+                    ownerId: saved.id,
+                    payload: {}
+                })
+                .catch(() => undefined)
+        }
+        return toAgentChatView(saved, agent, null)
+    }
+
+    private async createServerChat(
+        userId: string,
+        agent: Agent,
+        dto: CreateAgentChatDto
+    ): Promise<AgentChatView> {
         this.policy.assertChatConfigSupported(agent.vendor, dto)
 
         const sessionId = randomUUID()
@@ -96,6 +156,7 @@ export class AgentChatService {
             userId,
             agentId: agent.id,
             vendor: agent.vendor,
+            executionMode: 'server',
             scope: 'user',
             title: this.policy.normalizeTitle(dto.title),
             workingDirectory,
@@ -179,6 +240,15 @@ export class AgentChatService {
 
     async getWorkspaceDiff(userId: string, chatId: string): Promise<WorkspaceDiffSummary> {
         const { session } = await this.loadChat(userId, chatId)
+        // local：diff 在用户本机仓库上算，经反向通道转发到桌面端执行。
+        if (session.executionMode === 'local') {
+            this.assertRunnerConnected(userId)
+            return this.localRunner.rpc(userId, 'diff.summarize', {
+                workingDirectory: session.workingDirectory,
+                scope: 'agent-chat',
+                ownerId: session.id
+            })
+        }
         return this.workspaceDiff.summarize(session.workingDirectory, 'agent-chat', session.id)
     }
 
@@ -194,12 +264,31 @@ export class AgentChatService {
                 `Chat ${chatId} is busy with active turn ${activeTurnId}`
             )
         }
+        // local：commit 在用户本机仓库上执行，经反向通道转发到桌面端。
+        if (session.executionMode === 'local') {
+            this.assertRunnerConnected(userId)
+            return this.localRunner.rpc(userId, 'diff.commit', {
+                workingDirectory: session.workingDirectory,
+                scope: 'agent-chat',
+                ownerId: session.id,
+                payload
+            })
+        }
         return this.workspaceDiff.commit(
             session.workingDirectory,
             'agent-chat',
             session.id,
             payload
         )
+    }
+
+    /** local 文件操作需要桌面端在线；不在线时给出明确错误而非超时。 */
+    private assertRunnerConnected(userId: string): void {
+        if (!this.localRunner.isConnected(userId)) {
+            throw BusinessException.agentUnavailable(
+                '本地 runner 未连接；请在桌面端打开 AgentHub 后重试'
+            )
+        }
     }
 
     async startTurn(

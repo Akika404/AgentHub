@@ -379,6 +379,12 @@ export class MemberChatService {
         userId: string,
         agent: Agent
     ): Promise<{ apiKey: string; baseUrl: string }> {
+        // 群聊成员一律 server 执行模式，platformProviderId 必有值（local 不进群）。
+        if (!agent.platformProviderId) {
+            throw BusinessException.agentUnavailable(
+                `Member ${agent.id} has no platform provider (local-execution agents cannot join group chats)`
+            )
+        }
         try {
             const provider = await this.providers.resolveRuntimeConfig(
                 userId,

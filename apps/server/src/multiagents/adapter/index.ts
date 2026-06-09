@@ -1,15 +1,10 @@
-export * from './types.js'
-export { ClaudeAdapter } from './claude.js'
-export { CodexAdapter } from './codex.js'
-export { getCapabilities, CLAUDE_CAPABILITIES, CODEX_CAPABILITIES } from './capabilities.js'
-
-import { ClaudeAdapter } from './claude.js'
-import { CodexAdapter } from './codex.js'
-import type { AgentAdapter, AgentAdapterConfig, AgentVendor } from './types.js'
-
-/** 工厂：按 vendor 名拉一个 adapter 出来 */
-export function createAgent(vendor: AgentVendor, config: AgentAdapterConfig): AgentAdapter {
-    if (vendor === 'claude') return new ClaudeAdapter(config)
-    if (vendor === 'codex') return new CodexAdapter(config)
-    throw new Error(`Unknown agent vendor: ${vendor}`)
-}
+/**
+ * 适配层 re-export barrel。
+ *
+ * 实现已抽到框架无关的 `@agenthub/agent-core`（types/claude/codex/capabilities/
+ * createAgent 工厂），以便服务器与桌面端本地 runner 共用同一套执行核心。
+ * 这里保留 barrel 仅为让现有 25+ 处 `'../adapter/index.js'` import 零改动继续可用。
+ *
+ * 新代码可直接 `import { ... } from '@agenthub/agent-core'`。
+ */
+export * from '@agenthub/agent-core'

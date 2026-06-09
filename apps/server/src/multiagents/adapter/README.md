@@ -1,5 +1,13 @@
 # AgentAdapter — Claude / Codex 统一适配层
 
+> **实现位置变更（2026-06）**：本适配层的实现已抽到框架无关的共享包
+> **`packages/agent-core`**（`src/adapter/*` + `src/workspace/workspace-git.ts` +
+> `src/logger.ts`），以便服务器与桌面端「本地执行模式」的 runner 共用同一套执行核心。
+> 本目录现在只保留 `index.ts` 这个 re-export barrel（`export * from '@agenthub/agent-core'`），
+> 让既有的 `'../adapter/index.js'` import 零改动继续可用。本文档描述的设计与事件契约依旧有效，
+> 下文 §10 的「文件清单」路径请以 `packages/agent-core/src/` 为准。原先依赖的 `@nestjs/common`
+> `Logger` 已替换为注入式 `CoreLogger`（默认 `NOOP_LOGGER` 静默）。
+
 > AgentHub 多 Agent 协作平台的底层抽象层。把 `@anthropic-ai/claude-agent-sdk` 和
 > `@openai/codex-sdk` 两个形态截然不同的 Agent SDK 归一成同一个**会话化事件流**接口，
 > 让上层群聊编排层不再关心底层是 Claude 还是 Codex。
