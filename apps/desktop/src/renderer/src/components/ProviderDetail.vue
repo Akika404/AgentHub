@@ -62,7 +62,15 @@ async function onRefresh(): Promise<void> {
     <div class="max-w-[600px] mx-auto p-6">
       <div class="flex items-start justify-between mb-6">
         <div>
-          <h2 class="text-2xl font-semibold text-text-main">{{ provider.platformName }}</h2>
+          <div class="flex items-center gap-2">
+            <h2 class="text-2xl font-semibold text-text-main">{{ provider.platformName }}</h2>
+            <span
+              v-if="provider.isDefault"
+              class="rounded bg-primary-soft px-2 py-0.5 text-xs font-medium text-primary"
+            >
+              默认
+            </span>
+          </div>
           <p class="text-sm text-text-muted mt-1">{{ PROVIDER_TYPE_LABELS[provider.type] }}</p>
         </div>
         <div class="flex items-center gap-2">
@@ -87,6 +95,12 @@ async function onRefresh(): Promise<void> {
         <div class="flex px-4 py-3">
           <span class="w-28 flex-shrink-0 text-sm text-text-muted">API Key</span>
           <span class="text-base text-text-main font-mono">{{ provider.apiKeyMasked ?? '—' }}</span>
+        </div>
+        <div class="flex px-4 py-3">
+          <span class="w-28 flex-shrink-0 text-sm text-text-muted">默认模型</span>
+          <span class="text-base text-text-main font-mono">
+            {{ provider.isDefault ? (provider.defaultModel ?? '—') : '未设为默认' }}
+          </span>
         </div>
       </section>
 

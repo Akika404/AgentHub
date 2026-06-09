@@ -40,7 +40,17 @@ const emit = defineEmits<{ (e: 'select', id: string): void; (e: 'add'): void }>(
         :class="p.id === selectedId ? 'bg-surface-active' : 'hover:bg-surface-hover'"
         @click="emit('select', p.id)"
       >
-        <div class="text-base font-medium text-text-main truncate">{{ p.platformName }}</div>
+        <div class="flex items-center gap-1.5">
+          <span class="min-w-0 flex-1 truncate text-base font-medium text-text-main">
+            {{ p.platformName }}
+          </span>
+          <span
+            v-if="p.isDefault"
+            class="rounded bg-primary-soft px-1.5 py-0.5 text-xs font-medium text-primary"
+          >
+            默认
+          </span>
+        </div>
         <div class="text-xs text-text-muted mt-0.5 truncate">
           {{ PROVIDER_TYPE_LABELS[p.type] }}
         </div>

@@ -153,7 +153,7 @@ src/user/
 用户自建「模型平台/供应商」的增删改查，外加连接测试与模型拉取。每个 Provider 归属创建它的用户，复用 `user` 模块导出的
 `JwtAuthGuard` 做鉴权（类比 Spring 中共享一个 Security filter bean）。与 `multiagents` 的 `agent`「不存
 apiKey」相反——本模块的语义就是用户自带密钥，故必须落库；`multiagents` 的 Agent 正是引用本模块的 Provider 取运行时凭证（
-`resolveRuntimeConfig`）。
+`resolveRuntimeConfig`），创建表单也可通过用户默认 Provider 预填运行时模型（`resolveDefaultRuntimeConfig`）。
 
 ### 目录结构
 
@@ -172,17 +172,25 @@ src/platform-provider/
 
 | 方法   | 路径                                         | 功能                                                      |
 | ------ | -------------------------------------------- | --------------------------------------------------------- |
-| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一）           |
-| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider                               |
+| POST   | `/api/platform-providers`                    | 添加 Provider（同一用户下 `platformName` 唯一，可设默认） |
+| GET    | `/api/platform-providers`                    | 列出当前用户的全部 Provider（默认项排在前面）             |
 | GET    | `/api/platform-providers/:id`                | 查询单个详情                                              |
-| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥）                     |
+| PATCH  | `/api/platform-providers/:id`                | 部分修改（`apiKey` 省略则保留原密钥，可改默认设置）       |
 | DELETE | `/api/platform-providers/:id`                | 删除（硬删除）                                            |
 | POST   | `/api/platform-providers/:id/test`           | 测试连接，返回 `{ ok, latencyMs, modelCount?, message? }` |
 | POST   | `/api/platform-providers/:id/models/refresh` | 拉取上游模型并整体覆盖 `modelList`                        |
 
-- 字段：`platformName` 展示名、`baseUrl` 上游地址、`apiKey` 密钥、`modelList` 模型名数组、`type` 协议类型。
+- 字段：`platformName` 展示名、`baseUrl` 上游地址、`apiKey` 密钥、`modelList` 模型名数组、`type` 协议类型、`isDefault` 用户默认 Provider 标记、`defaultModel` 默认模型。
 - `type` 取值：`openai-chat-completions` / `openai-responses` / `anthropic`（前端自行映射「OpenAI(Chat Completions)」等展示名）。
 - 所有接口需带 `Authorization: Bearer <token>`，且只能操作本人记录；非本人记录一律按 `NOT_FOUND` 处理（不泄露存在性）。
+
+### 默认 Provider / 默认模型
+
+- `POST` / `PATCH` 可传 `isDefault` 与 `defaultModel`；设置 `isDefault=true` 时必须提供非空 `defaultModel`。
+- 每个用户最多只有一个默认 Provider。设置新默认项时，service 在事务内清除同用户其它 Provider 的 `isDefault/defaultModel`。
+- 若 `modelList` 非空，`defaultModel` 必须存在于该列表；若 `modelList` 为空，允许填写任意非空模型名，和 Agent/Group 的现有模型校验保持一致。
+- 删除默认 Provider 后不会自动挑选替代项；用户会进入“无默认 Provider”状态。
+- 对外视图返回 `isDefault/defaultModel`，但仍只返回 `apiKeyMasked`，不返回明文密钥。
 
 ### 密钥与安全
 
@@ -200,7 +208,7 @@ src/platform-provider/
 
 ### 数据库
 
-仅一张 `platform_provider` 表，`(userId, platformName)` 唯一。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
+仅一张 `platform_provider` 表，`(userId, platformName)` 唯一，并保存 `isDefault/defaultModel` 作为用户级默认 Provider 信息。dev 环境 TypeORM `synchronize` 自动建表；结构存档见
 `sql/platform_provider.sql`，**真实结构以实体定义为准**。
 
 ### 错误码（复用 `common/exceptions/error-code.ts`，未新增）
@@ -219,7 +227,7 @@ src/platform-provider/
 - 测连接 / 拉模型只作用于**已保存**的 Provider（按 `:id`），不支持「未保存先测」的草稿校验。
 - `models/refresh` 会**整体覆盖** `modelList`（拉取即持久化），非预览。
 - `baseUrl` 仅校验 `http(s)://` 前缀，未做更严格的 URL 规范化；`modelList` 上限 200。
-- 未写单测（项目当前无测试框架）。
+- 默认 Provider 是用户级唯一，不按供应商协议类型分别维护多个默认项。
 
 ## 多 Agent 管理模块（`src/multiagents/`）
 

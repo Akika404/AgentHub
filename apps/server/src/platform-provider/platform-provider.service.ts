@@ -20,6 +20,12 @@ export interface ProviderRuntimeConfig {
     modelList: string[]
 }
 
+/** 用户默认 Provider 的运行时配置，额外携带 Provider id 与默认模型。 */
+export interface DefaultProviderRuntimeConfig extends ProviderRuntimeConfig {
+    providerId: string
+    model: string
+}
+
 /**
  * PlatformProviderService —— 用户自建 Provider 的全部业务逻辑与 DB 访问。
  *
@@ -38,15 +44,22 @@ export class PlatformProviderService {
     /** 添加 Provider：同一用户下 platformName 唯一。 */
     async create(userId: string, dto: CreatePlatformProviderDto): Promise<PlatformProviderView> {
         await this.assertNameAvailable(userId, dto.platformName)
+        const modelList = dto.modelList ?? []
+        const isDefault = dto.isDefault === true
+        const defaultModel = isDefault
+            ? this.normalizeAndValidateDefaultModel(dto.defaultModel, modelList)
+            : null
         const entity = this.providerRepo.create({
             userId,
             platformName: dto.platformName,
             type: dto.type,
             baseUrl: dto.baseUrl,
             apiKey: dto.apiKey,
-            modelList: dto.modelList ?? []
+            modelList,
+            isDefault,
+            defaultModel
         })
-        const saved = await this.providerRepo.save(entity)
+        const saved = await this.saveWithDefaultHandling(userId, entity)
         return toPlatformProviderView(saved)
     }
 
@@ -56,7 +69,8 @@ export class PlatformProviderService {
             .createQueryBuilder('p')
             .addSelect('p.apiKey')
             .where('p.userId = :userId', { userId })
-            .orderBy('p.createdAt', 'DESC')
+            .orderBy('p.isDefault', 'DESC')
+            .addOrderBy('p.createdAt', 'DESC')
             .getMany()
         return rows.map(toPlatformProviderView)
     }
@@ -83,8 +97,19 @@ export class PlatformProviderService {
         if (dto.baseUrl !== undefined) entity.baseUrl = dto.baseUrl
         if (dto.apiKey !== undefined) entity.apiKey = dto.apiKey
         if (dto.modelList !== undefined) entity.modelList = dto.modelList
+        const nextIsDefault = dto.isDefault ?? entity.isDefault
+        if (nextIsDefault) {
+            entity.isDefault = true
+            entity.defaultModel = this.normalizeAndValidateDefaultModel(
+                dto.defaultModel === undefined ? entity.defaultModel : dto.defaultModel,
+                entity.modelList
+            )
+        } else {
+            entity.isDefault = false
+            entity.defaultModel = null
+        }
 
-        const saved = await this.providerRepo.save(entity)
+        const saved = await this.saveWithDefaultHandling(userId, entity)
         return toPlatformProviderView(saved)
     }
 
@@ -104,7 +129,14 @@ export class PlatformProviderService {
     /** 拉取上游可用模型并整体覆盖 modelList，返回更新后的视图。上游不可达时抛 UPSTREAM_ERROR。 */
     async refreshModels(userId: string, id: string): Promise<PlatformProviderView> {
         const entity = await this.findOwned(userId, id)
-        entity.modelList = await this.probe.listModels(entity.type, entity.baseUrl, entity.apiKey)
+        const modelList = await this.probe.listModels(entity.type, entity.baseUrl, entity.apiKey)
+        if (entity.isDefault) {
+            entity.defaultModel = this.normalizeAndValidateDefaultModel(
+                entity.defaultModel,
+                modelList
+            )
+        }
+        entity.modelList = modelList
         const saved = await this.providerRepo.save(entity)
         return toPlatformProviderView(saved)
     }
@@ -120,6 +152,30 @@ export class PlatformProviderService {
             baseUrl: entity.baseUrl,
             apiKey: entity.apiKey,
             modelList: entity.modelList
+        }
+    }
+
+    /**
+     * 取当前用户默认 Provider 的运行时凭证与默认模型。
+     * 无默认 Provider → NOT_FOUND；apiKey 只在后端内部使用，不对外暴露。
+     */
+    async resolveDefaultRuntimeConfig(userId: string): Promise<DefaultProviderRuntimeConfig> {
+        const entity = await this.providerRepo
+            .createQueryBuilder('p')
+            .addSelect('p.apiKey')
+            .where('p.userId = :userId', { userId })
+            .andWhere('p.isDefault = :isDefault', { isDefault: true })
+            .getOne()
+        if (!entity || !entity.defaultModel) {
+            throw BusinessException.notFound('默认 Provider 不存在')
+        }
+        return {
+            providerId: entity.id,
+            type: entity.type,
+            baseUrl: entity.baseUrl,
+            apiKey: entity.apiKey,
+            modelList: entity.modelList,
+            model: entity.defaultModel
         }
     }
 
@@ -148,5 +204,47 @@ export class PlatformProviderService {
         if (existing) {
             throw BusinessException.conflict('同名 Provider 已存在')
         }
+    }
+
+    /** 保存默认 Provider 前，先清理同一用户下其它默认项。 */
+    private async saveWithDefaultHandling(
+        userId: string,
+        entity: PlatformProvider
+    ): Promise<PlatformProvider> {
+        if (!entity.isDefault) {
+            return this.providerRepo.save(entity)
+        }
+
+        return this.providerRepo.manager.transaction(async (manager) => {
+            const repo = manager.getRepository(PlatformProvider)
+            await repo.update(
+                { userId },
+                {
+                    isDefault: false,
+                    defaultModel: null
+                }
+            )
+            return repo.save(entity)
+        })
+    }
+
+    private normalizeAndValidateDefaultModel(
+        raw: string | null | undefined,
+        modelList: string[]
+    ): string {
+        const model = raw?.trim()
+        if (!model) {
+            throw BusinessException.badRequest('默认 Provider 必须设置默认模型')
+        }
+        if (model.length > 128) {
+            throw BusinessException.badRequest('默认模型不能超过 128 个字符')
+        }
+        if (modelList.length > 0 && !modelList.includes(model)) {
+            throw BusinessException.badRequest('默认模型必须存在于 Provider 的模型列表中', {
+                defaultModel: model,
+                modelList
+            })
+        }
+        return model
     }
 }

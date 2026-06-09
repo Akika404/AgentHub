@@ -25,6 +25,8 @@ export function toPlatformProviderView(entity: PlatformProvider): PlatformProvid
         type: entity.type,
         baseUrl: entity.baseUrl,
         modelList: entity.modelList ?? [],
+        isDefault: entity.isDefault,
+        defaultModel: entity.defaultModel ?? null,
         apiKeyMasked: maskApiKey(entity.apiKey),
         createdAt: entity.createdAt.toISOString(),
         updatedAt: entity.updatedAt.toISOString()

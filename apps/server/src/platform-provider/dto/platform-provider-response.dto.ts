@@ -25,6 +25,12 @@ export class PlatformProviderViewDto implements PlatformProviderView {
     @ApiProperty({ type: [String], description: '模型名列表' })
     modelList!: string[]
 
+    @ApiProperty({ description: '是否为当前用户默认 Provider' })
+    isDefault!: boolean
+
+    @ApiProperty({ type: String, nullable: true, description: '默认模型；非默认 Provider 为 null' })
+    defaultModel!: string | null
+
     @ApiProperty({
         type: String,
         nullable: true,

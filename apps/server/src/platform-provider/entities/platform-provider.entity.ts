@@ -63,6 +63,14 @@ export class PlatformProvider {
     @Column({ type: 'json' })
     modelList!: string[]
 
+    /** 是否为当前用户默认 Provider；服务层保证同一用户最多一条为 true */
+    @Column({ type: 'boolean', default: false })
+    isDefault!: boolean
+
+    /** 当前 Provider 作为默认项时使用的模型名 */
+    @Column({ type: 'varchar', length: 128, nullable: true })
+    defaultModel!: string | null
+
     @CreateDateColumn()
     createdAt!: Date
 

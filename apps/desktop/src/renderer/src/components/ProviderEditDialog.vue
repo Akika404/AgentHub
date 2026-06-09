@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   PROVIDER_TYPES,
   PROVIDER_TYPE_LABELS,
@@ -27,12 +27,15 @@ const form = reactive({
   type: 'openai-chat-completions' as ProviderType,
   baseUrl: '',
   apiKey: '',
-  modelList: ''
+  modelList: '',
+  isDefault: false,
+  defaultModel: ''
 })
 const error = ref<string | null>(null)
 const submitting = ref(false)
 
 const isEdit = (): boolean => props.provider !== null
+const modelOptions = computed(() => parseModels(form.modelList))
 
 function parseModels(value: string): string[] {
   return value
@@ -52,6 +55,8 @@ watch(
     form.baseUrl = p?.baseUrl ?? ''
     form.apiKey = ''
     form.modelList = p ? p.modelList.join('\n') : ''
+    form.isDefault = p?.isDefault ?? false
+    form.defaultModel = p?.defaultModel ?? ''
   }
 )
 
@@ -68,16 +73,27 @@ async function onSubmit(): Promise<void> {
     error.value = '请输入 API Key'
     return
   }
+  const models = parseModels(form.modelList)
+  const defaultModel = form.defaultModel.trim()
+  if (form.isDefault && !defaultModel) {
+    error.value = '默认 Provider 需要设置默认模型'
+    return
+  }
+  if (form.isDefault && models.length > 0 && !models.includes(defaultModel)) {
+    error.value = '默认模型必须存在于模型列表中'
+    return
+  }
   error.value = null
   submitting.value = true
   try {
-    const models = parseModels(form.modelList)
     if (isEdit() && props.provider) {
       const payload: UpdateProviderPayload = {
         platformName: form.platformName.trim(),
         type: form.type,
         baseUrl: form.baseUrl.trim(),
-        modelList: models
+        modelList: models,
+        isDefault: form.isDefault,
+        defaultModel: form.isDefault ? defaultModel : null
       }
       if (form.apiKey.trim()) payload.apiKey = form.apiKey.trim()
       await providerApi.update(props.provider.id, payload)
@@ -87,7 +103,9 @@ async function onSubmit(): Promise<void> {
         type: form.type,
         baseUrl: form.baseUrl.trim(),
         apiKey: form.apiKey.trim(),
-        ...(models.length ? { modelList: models } : {})
+        ...(models.length ? { modelList: models } : {}),
+        isDefault: form.isDefault,
+        defaultModel: form.isDefault ? defaultModel : null
       }
       await providerApi.create(payload)
     }
@@ -148,6 +166,33 @@ async function onSubmit(): Promise<void> {
           <span class="font-normal text-text-muted">（每行一个，可留空后用「刷新模型」拉取）</span>
         </label>
         <BaseTextarea v-model="form.modelList" mono rows="3" placeholder="gpt-4o&#10;gpt-4o-mini" />
+      </div>
+      <label class="flex items-start gap-2 rounded-md border border-surface-border bg-surface px-3 py-2.5">
+        <input
+          v-model="form.isDefault"
+          type="checkbox"
+          class="mt-1 h-4 w-4 rounded border-surface-border text-primary"
+        />
+        <span>
+          <span class="block text-sm font-medium text-text-main">设为默认 Provider</span>
+          <span class="block text-xs text-text-muted">
+            创建 Agent 或群聊时会优先使用这个 Provider 和默认模型。
+          </span>
+        </span>
+      </label>
+      <div v-if="form.isDefault">
+        <label class="block text-sm font-medium text-text-main mb-1.5">默认模型</label>
+        <BaseSelect v-if="modelOptions.length" v-model="form.defaultModel">
+          <option value="" disabled>请选择</option>
+          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+        </BaseSelect>
+        <BaseInput
+          v-else
+          v-model="form.defaultModel"
+          mono
+          type="text"
+          placeholder="如：gpt-4o-mini"
+        />
       </div>
       <p v-if="error" class="text-sm text-danger">{{ error }}</p>
     </div>

@@ -14,6 +14,7 @@
 -- Table: platform_provider —— 用户自建模型平台/供应商
 -- type 取值：openai-chat-completions / openai-responses / anthropic。
 -- modelList 为 JSON 字符串数组；可空数组，亦可经「拉取模型」接口刷新覆盖。
+-- isDefault/defaultModel 表示当前用户默认 Provider 与默认模型；服务层保证同一用户最多一条默认项。
 -- --------------------------------------------------------
 
 CREATE TABLE `platform_provider`
@@ -25,6 +26,8 @@ CREATE TABLE `platform_provider`
     `baseUrl`      varchar(512)  NOT NULL COMMENT '上游 base url（如 https://api.openai.com/v1、https://api.anthropic.com）',
     `apiKey`       varchar(1024) NOT NULL COMMENT 'API 密钥；明文存储但实体侧 select:false 默认不查出，对外仅回掩码',
     `modelList`    json          NOT NULL COMMENT '模型名列表；JSON 字符串数组，可为空数组',
+    `isDefault`    tinyint       NOT NULL DEFAULT 0 COMMENT '是否为当前用户默认 Provider；服务层保证同一用户最多一条',
+    `defaultModel` varchar(128)  NULL COMMENT '默认模型；非默认 Provider 为 NULL',
     `createdAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '创建时间（@CreateDateColumn，微秒精度）',
     `updatedAt`    datetime(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6) COMMENT '更新时间（@UpdateDateColumn，行更新时自动刷新）',
     PRIMARY KEY (`id`),

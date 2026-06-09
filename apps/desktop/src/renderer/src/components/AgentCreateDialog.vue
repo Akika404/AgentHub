@@ -81,6 +81,18 @@ const selectedProvider = computed(() =>
 
 const modelOptions = computed(() => selectedProvider.value?.modelList ?? [])
 
+function vendorForProvider(provider: PlatformProviderView): AgentVendor {
+  return provider.type === 'anthropic' ? 'claude' : 'codex'
+}
+
+function preferredModel(provider: PlatformProviderView): string {
+  return provider.defaultModel ?? provider.modelList[0] ?? ''
+}
+
+function defaultProviderForVendor(vendor: AgentVendor): PlatformProviderView | undefined {
+  return props.providers.find((p) => p.isDefault && isVendorProviderCompatible(vendor, p.type))
+}
+
 function stringifyConfig(value: unknown): string {
   if (value == null) return ''
   return JSON.stringify(value, null, 2)
@@ -98,9 +110,10 @@ function reset(): void {
   form.avatar = agent?.avatar ?? null
   form.color = agent?.color ?? DEFAULT_AGENT_COLOR
   form.capabilitySummary = agent?.capabilitySummary ?? ''
-  form.vendor = agent?.vendor ?? 'claude'
-  form.platformProviderId = agent?.platformProviderId ?? ''
-  form.model = agent?.model ?? ''
+  const defaultProvider = agent ? undefined : props.providers.find((p) => p.isDefault)
+  form.vendor = agent?.vendor ?? (defaultProvider ? vendorForProvider(defaultProvider) : 'claude')
+  form.platformProviderId = agent?.platformProviderId ?? defaultProvider?.id ?? ''
+  form.model = agent?.model ?? (defaultProvider ? preferredModel(defaultProvider) : '')
   form.workingDirectory = agent?.workingDirectory ?? ''
   form.skillSourceDirectories = ''
   form.systemPrompt = agent?.systemPrompt ?? ''
@@ -126,15 +139,16 @@ watch(
   () => form.vendor,
   () => {
     if (suspendDependentWatchers.value) return
-    form.platformProviderId = ''
-    form.model = ''
+    const defaultProvider = defaultProviderForVendor(form.vendor)
+    form.platformProviderId = defaultProvider?.id ?? ''
+    form.model = defaultProvider ? preferredModel(defaultProvider) : ''
   }
 )
 watch(
   () => form.platformProviderId,
   () => {
     if (suspendDependentWatchers.value) return
-    form.model = ''
+    form.model = selectedProvider.value ? preferredModel(selectedProvider.value) : ''
   }
 )
 
@@ -411,17 +425,25 @@ async function onSubmit(): Promise<void> {
 
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">模型</label>
-        <BaseSelect v-model="form.model" :disabled="modelOptions.length === 0">
+        <BaseSelect v-if="modelOptions.length" v-model="form.model">
           <option value="" disabled>
-            {{ modelOptions.length ? '请选择' : '该 Provider 暂无模型' }}
+            请选择
           </option>
           <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
         </BaseSelect>
+        <BaseInput
+          v-else
+          v-model="form.model"
+          mono
+          type="text"
+          :disabled="!selectedProvider"
+          placeholder="输入模型名"
+        />
         <p
           v-if="selectedProvider && modelOptions.length === 0"
           class="text-xs text-text-muted mt-1"
         >
-          该 Provider 的模型列表为空，可在「设置」中「刷新模型」后再试。
+          该 Provider 的模型列表为空，可先使用默认模型或手动输入。
         </p>
       </div>
 

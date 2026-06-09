@@ -12,6 +12,10 @@ export interface PlatformProviderView {
     baseUrl: string
     /** 模型名列表 */
     modelList: string[]
+    /** 是否为当前用户默认 Provider */
+    isDefault: boolean
+    /** 默认模型；非默认 Provider 为 null */
+    defaultModel: string | null
     /** API 密钥掩码，如 `sk-****wl7g`；无密钥时为 null。绝不回明文 */
     apiKeyMasked: string | null
     /** 创建时间，ISO8601 */

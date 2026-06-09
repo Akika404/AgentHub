@@ -28,6 +28,10 @@ export interface PlatformProviderView {
   baseUrl: string
   /** model name list */
   modelList: string[]
+  /** whether this provider is the user's default provider */
+  isDefault: boolean
+  /** default model for this provider; null when not default */
+  defaultModel: string | null
   /** masked api key, e.g. `sk-****wl7g`; null when no key. Never plaintext. */
   apiKeyMasked: string | null
   /** ISO8601 */
@@ -54,6 +58,8 @@ export interface CreateProviderPayload {
   baseUrl: string
   apiKey: string
   modelList?: string[]
+  isDefault?: boolean
+  defaultModel?: string | null
 }
 
 /**
@@ -66,4 +72,6 @@ export interface UpdateProviderPayload {
   baseUrl?: string
   apiKey?: string
   modelList?: string[]
+  isDefault?: boolean
+  defaultModel?: string | null
 }

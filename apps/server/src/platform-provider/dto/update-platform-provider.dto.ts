@@ -1,6 +1,7 @@
 import {
     ArrayMaxSize,
     IsArray,
+    IsBoolean,
     IsIn,
     IsNotEmpty,
     IsOptional,
@@ -45,4 +46,14 @@ export class UpdatePlatformProviderDto {
     @ArrayMaxSize(200)
     @IsString({ each: true })
     modelList?: string[]
+
+    @IsOptional()
+    @IsBoolean()
+    isDefault?: boolean
+
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(128)
+    defaultModel?: string | null
 }

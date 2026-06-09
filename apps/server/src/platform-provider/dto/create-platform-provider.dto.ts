@@ -1,6 +1,7 @@
 import {
     ArrayMaxSize,
     IsArray,
+    IsBoolean,
     IsIn,
     IsNotEmpty,
     IsOptional,
@@ -46,4 +47,16 @@ export class CreatePlatformProviderDto {
     @ArrayMaxSize(200)
     @IsString({ each: true })
     modelList?: string[]
+
+    /** 是否设置为当前用户默认 Provider */
+    @IsOptional()
+    @IsBoolean()
+    isDefault?: boolean
+
+    /** 设置为默认 Provider 时使用的默认模型 */
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(128)
+    defaultModel?: string | null
 }

@@ -61,6 +61,26 @@ const selectedProvider = computed(
 )
 const visibleError = computed(() => submitError.value ?? loadError.value ?? null)
 
+function vendorForProvider(provider: PlatformProviderView): AgentVendor {
+  return provider.type === 'anthropic' ? 'claude' : 'codex'
+}
+
+function preferredModel(provider: PlatformProviderView): string {
+  return provider.defaultModel ?? provider.modelList[0] ?? ''
+}
+
+function defaultProviderForVendor(vendor: AgentVendor): PlatformProviderView | undefined {
+  return providers.value.find((p) => p.isDefault && isVendorProviderCompatible(vendor, p.type))
+}
+
+function applyDefaultProvider(): void {
+  const provider = providers.value.find((p) => p.isDefault)
+  if (!provider) return
+  form.orchestratorVendor = vendorForProvider(provider)
+  form.orchestratorProviderId = provider.id
+  form.orchestratorModel = preferredModel(provider)
+}
+
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = null
@@ -68,6 +88,7 @@ async function load(): Promise<void> {
     const [agentList, providerList] = await Promise.all([agentApi.list(), providerApi.list()])
     agents.value = agentList
     providers.value = providerList
+    applyDefaultProvider()
   } catch (err) {
     loadError.value = err instanceof ApiError ? err.message : '加载 Agent / Provider 失败'
   } finally {
@@ -104,8 +125,9 @@ watch(
   () => form.orchestratorVendor,
   () => {
     if (!compatibleProviders.value.some((p) => p.id === form.orchestratorProviderId)) {
-      form.orchestratorProviderId = ''
-      form.orchestratorModel = ''
+      const provider = defaultProviderForVendor(form.orchestratorVendor)
+      form.orchestratorProviderId = provider?.id ?? ''
+      form.orchestratorModel = provider ? preferredModel(provider) : ''
     }
   }
 )
@@ -113,7 +135,7 @@ watch(
   () => form.orchestratorProviderId,
   () => {
     if (!selectedProvider.value?.modelList.includes(form.orchestratorModel)) {
-      form.orchestratorModel = selectedProvider.value?.modelList[0] ?? ''
+      form.orchestratorModel = selectedProvider.value ? preferredModel(selectedProvider.value) : ''
     }
   }
 )
@@ -259,12 +281,23 @@ function onWorkspacePicked(paths: string[]): void {
           </div>
           <div>
             <label class="mb-1 block text-xs text-text-muted">Model</label>
-            <BaseSelect v-model="form.orchestratorModel" :disabled="!selectedProvider">
+            <BaseSelect
+              v-if="(selectedProvider?.modelList ?? []).length > 0"
+              v-model="form.orchestratorModel"
+            >
               <option value="" disabled>请选择</option>
               <option v-for="m in selectedProvider?.modelList ?? []" :key="m" :value="m">
                 {{ m }}
               </option>
             </BaseSelect>
+            <BaseInput
+              v-else
+              v-model="form.orchestratorModel"
+              mono
+              type="text"
+              :disabled="!selectedProvider"
+              placeholder="输入模型名"
+            />
           </div>
         </div>
       </div>
