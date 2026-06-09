@@ -52,11 +52,11 @@ export class CreateAgentDto {
     @Matches(HEX_COLOR_RE)
     color?: string
 
-    /** 简短能力摘要，用于群聊 Orchestrator 判断该 Agent 擅长什么；可空 */
-    @IsOptional()
+    /** 简短能力摘要，用于群聊 Orchestrator 判断该 Agent 擅长什么；创建时必填 */
     @IsString()
+    @IsNotEmpty()
     @MaxLength(1000)
-    capabilitySummary?: string
+    capabilitySummary!: string
 
     @IsIn(VENDORS)
     vendor!: AgentVendor

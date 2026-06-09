@@ -35,6 +35,10 @@ export class AgentConfigService {
     async createAgent(userId: string, dto: CreateAgentDto): Promise<AgentView> {
         this.policy.assertConfigSupported(dto)
         this.policy.assertSkillsShape(dto.skills)
+        const capabilitySummary = dto.capabilitySummary?.trim() ?? ''
+        if (!capabilitySummary) {
+            throw BusinessException.badRequest('Agent capabilitySummary is required')
+        }
         const caps = getCapabilities(dto.vendor)
 
         const provider = await this.providerService.resolveRuntimeConfig(
@@ -68,7 +72,7 @@ export class AgentConfigService {
             ? await this.workspace.importSkillSourceDirectories(
                   skillSourceDirectories,
                   this.workspace.vendorSkillsRoot(agentHomeDirectory, dto.vendor)
-              )
+            )
             : []
         const skills = this.policy.mergeSkills(dto.skills, importedSkillNames)
 
@@ -78,7 +82,7 @@ export class AgentConfigService {
             name: dto.name,
             avatar: dto.avatar ?? null,
             color: this.policy.normalizeColor(dto.color),
-            capabilitySummary: this.policy.normalizeNullableText(dto.capabilitySummary, null),
+            capabilitySummary,
             vendor: dto.vendor,
             platformProviderId: dto.platformProviderId,
             model: dto.model,

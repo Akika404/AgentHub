@@ -172,11 +172,13 @@ function appendListValues(value: string, nextItems: string[]): string {
 function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (!form.name.trim()) return '请输入名称'
   if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
+  if (!isEdit.value && !form.capabilitySummary.trim()) return '请输入能力摘要'
   if (!form.platformProviderId) return '请选择 PlatformProvider'
   if (!form.model) return '请选择模型'
   if (!form.workingDirectory.trim()) return '请输入工作目录'
+  const capabilitySummary = form.capabilitySummary.trim()
 
-  const payload: CreateAgentPayload | UpdateAgentPayload = {
+  const payload: UpdateAgentPayload = {
     name: form.name.trim(),
     avatar: form.avatar,
     color: form.color.toLowerCase(),
@@ -185,8 +187,8 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
     model: form.model,
     workingDirectory: form.workingDirectory.trim()
   }
-  if (form.capabilitySummary.trim()) {
-    payload.capabilitySummary = form.capabilitySummary.trim()
+  if (capabilitySummary) {
+    payload.capabilitySummary = capabilitySummary
   } else if (isEdit.value) {
     payload.capabilitySummary = null
   }
@@ -225,6 +227,12 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (isEdit.value && !caps.value.supportsSkills) payload.skills = null
   if (isEdit.value && !caps.value.supportsMcp) payload.mcpServers = null
 
+  if (!isEdit.value) {
+    return {
+      ...payload,
+      capabilitySummary
+    } as CreateAgentPayload
+  }
   return payload
 }
 
@@ -390,7 +398,7 @@ async function onSubmit(): Promise<void> {
       <div>
         <label class="block text-sm font-medium text-text-main mb-1.5">
           能力摘要
-          <span class="font-normal text-text-muted">（给 Orchestrator 看，可选）</span>
+          <span class="font-normal text-text-muted">（创建时必填）</span>
         </label>
         <BaseTextarea
           v-model="form.capabilitySummary"

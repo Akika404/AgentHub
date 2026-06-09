@@ -115,6 +115,7 @@ test('AgentConfigService creates agents only inside the current user roots', asy
     const view = await service.createAgent('user-a', {
         name: 'A',
         color: '#3370ff',
+        capabilitySummary: '负责测试工作区隔离。',
         vendor: 'claude',
         platformProviderId: 'provider-1',
         model: 'model-1',
@@ -134,12 +135,31 @@ test('AgentConfigService creates agents only inside the current user roots', asy
             service.createAgent('user-a', {
                 name: 'A',
                 color: '#3370ff',
+                capabilitySummary: '负责测试工作区隔离。',
                 vendor: 'claude',
                 platformProviderId: 'provider-1',
                 model: 'model-1',
                 workingDirectory: join(userB.agentWorkspaceRoot, 'project-b')
             }),
         isForbidden
+    )
+
+    await assert.rejects(
+        () =>
+            service.createAgent('user-a', {
+                name: 'A',
+                color: '#3370ff',
+                capabilitySummary: '   ',
+                vendor: 'claude',
+                platformProviderId: 'provider-1',
+                model: 'model-1',
+                workingDirectory: join(userA.agentWorkspaceRoot, 'project-a')
+            }),
+        (err) =>
+            typeof err === 'object' &&
+            err !== null &&
+            'code' in err &&
+            err.code === ErrorCode.BAD_REQUEST
     )
 })
 

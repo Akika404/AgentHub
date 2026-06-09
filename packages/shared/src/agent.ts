@@ -242,7 +242,7 @@ export interface CreateAgentPayload {
   name: string
   avatar?: string | null
   color?: string
-  capabilitySummary?: string
+  capabilitySummary: string
   vendor: AgentVendor
   platformProviderId: string
   model: string

@@ -27,7 +27,7 @@ AgentHub 的 Agent 是用户创建的虚拟员工配置，底层由 Claude / Cod
 | Turn 事件流      | Redis                | 一轮一条 Stream 广播 AgentEvent；会话活跃指针 + 跨实例 abort 控制频道 |
 
 凭证仍来自 `PlatformProviderService.resolveRuntimeConfig(userId, platformProviderId)`，仅后端内部使用。
-`capabilitySummary` 是给用户和群聊 Orchestrator 看的简短能力描述，用于判断 Agent 擅长什么；它不会作为 system prompt 注入 adapter。
+`capabilitySummary` 是给用户和群聊 Orchestrator 看的简短能力描述，用于判断 Agent 擅长什么；创建 Agent 时必须提供非空值，它不会作为 system prompt 注入 adapter。
 
 ## Code Layout
 

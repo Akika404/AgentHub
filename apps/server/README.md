@@ -302,7 +302,7 @@ src/multiagents/
 | POST       | `/api/agent-chats/:chatId/clear`                | 清空聊天句柄和 UI 消息历史                                                             |
 | DELETE     | `/api/agent-chats/:chatId`                      | 删除聊天                                                                               |
 
-Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入。创建 Agent 时，`workingDirectory` 必须位于当前用户 `agent_workspace`，`agentHomeDirectory` 必须位于当前用户 `agent_home`；未传 Agent Home 时后端分配到 `agent_home/<agentId>`。创建聊天时 `workingDirectory` 可选；留空时后端分配到当前用户 `agent_workspace/chat-<sessionId>`，会话私有 home 固定在 `session/<sessionId>`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；skill 来源必须位于当前用户 `skills`。MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
+Agent 可保存头像 data URL/URL、颜色标识与 `capabilitySummary` 能力摘要；未设置头像时，前端用颜色和名称前两个字生成默认头像。能力摘要用于群聊 Orchestrator 判断成员擅长什么，不作为成员运行时 system prompt 注入，创建 Agent 时必须提供非空值。创建 Agent 时，`workingDirectory` 必须位于当前用户 `agent_workspace`，`agentHomeDirectory` 必须位于当前用户 `agent_home`；未传 Agent Home 时后端分配到 `agent_home/<agentId>`。创建聊天时 `workingDirectory` 可选；留空时后端分配到当前用户 `agent_workspace/chat-<sessionId>`，会话私有 home 固定在 `session/<sessionId>`。system prompt 不在聊天上设置，运行时继承 Agent。聊天创建时会把 Agent Home 下的 vendor 配置同步到会话 cwd，并把本聊天指定的 skill 文件夹导入到会话工作目录的 vendor skills 目录；skill 来源必须位于当前用户 `skills`。MCP 与 Agent 原配置浅合并。同一 Agent 的不同聊天使用不同 `session.id` busy 锁，因此互不阻塞。
 
 ## 服务端目录浏览模块（`src/workspace-fs/`）
 
