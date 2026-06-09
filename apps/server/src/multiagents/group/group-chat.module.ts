@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { UserModule } from '../../user/user.module.js'
 import { UserWorkspaceModule } from '../../user-workspace/user-workspace.module.js'
 import { PlatformProviderModule } from '../../platform-provider/platform-provider.module.js'
+import { ChatClientModule } from '../../chat-client/index.js'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
 import { AgentMessage } from '../entities/agent-message.entity.js'
@@ -80,7 +81,8 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         ]),
         UserModule,
         UserWorkspaceModule,
-        PlatformProviderModule
+        PlatformProviderModule,
+        ChatClientModule
     ],
     controllers: [GroupChatController],
     providers: [

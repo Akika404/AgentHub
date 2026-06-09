@@ -384,7 +384,7 @@ src/multiagents/group/
 - 一次群运行 = 一条 Redis Stream（`GroupRunStream`，按单聊 `TurnStream` 范式），成员 turn 事件经 `member_turn_event` 透传，天然多端围观；活跃指针 `SET NX` 做「群」级跨实例互斥（已有活跃轮 → 返回冲突，引导用 `activeRunId` 围观）。
 - 群聊主体保存 `isPinned` 与 `archivedAt`：置顶状态跨端一致；`archivedAt` 非空或 `status=archived` 时群聊只读，服务端拒绝新的 `converse`。
 - 成员干活复用单聊适配层（`createAgent` + `agentToConfig`）和 `scope=group` 的成员内部 `AgentSession`，`workingDirectory` 指向该任务的 git worktree；私有 L1 落 `agent_message` / `agent_message_step`，但不会进入 `/agent-chats` 单聊列表。轻量成员聊天（例如打招呼、给一句观点）走 `memberTurns`，真实调用成员 Agent，但不创建黑板 task、不建 worktree、不做 report/diff。
-- 成员 task 成功返回后，会先经过 Orchestrator 的隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
+- 成员 task 成功返回后，会先经过隐藏交接判断（不写展示消息、不推 `orchestrator_report`）：该判断使用无状态 `ChatClient`，不会复用或污染 `group_chat.orchestratorSessionId`。若成员实际是在用普通文本向用户澄清/提问，即使没有按 `report.awaiting_user_input` 格式声明，也会把该 task 标为 `waiting_input`，下游 task 不启动，群运行静默等待用户回复。
 - 多阶段任务会在每阶段 task graph 全部完成后做有限续编排：服务端把阶段结果交回 Orchestrator 判断原始需求是否已真正交付；若前一阶段只是 PRD/方案/调研，会继续派发实现/验证等下游任务，避免前置规划完成后提前收尾。
 - 最终汇报默认先调用 Orchestrator 最终审查器，读取黑板摘要与可安全预览的文本/HTML 产物，对照原始需求和任务状态确认完成、失败、阻塞或等待输入；只有审查器调用失败时才退回模板拼接。全成功但审查发现缺口时，会继续派发后续任务，直到审查通过或达到续编排上限。
 - 共享工作区：创建群聊时可传 `workspaceDir`，但必须位于当前用户 `agent_workspace`；未传时分配到当前用户 `agent_workspace/group-<groupId>`。成员 task worktree、成员 SDK home、Orchestrator SDK home 都挂在共享仓库下的 `.agenthub/groups/<groupId>/`，因此 `.codex` / `.claude` 等运行态会出现在群聊项目工作区目录树内。建群写 `ACTIVE=true`，删除群聊只把共享仓库根的 `ACTIVE` 改成 `false`，任何情况下都不删除目录。

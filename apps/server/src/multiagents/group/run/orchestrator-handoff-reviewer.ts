@@ -1,15 +1,8 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import type { BlackboardTaskNode } from '@agenthub/shared'
-import {
-    createAgent,
-    type AgentAdapter,
-    type AgentAdapterConfig,
-    type AgentOutputSchema
-} from '../../adapter/index.js'
-import { AgentWorkspaceService } from '../../workspace/agent-workspace.service.js'
 import { PlatformProviderService } from '../../../platform-provider/platform-provider.service.js'
+import { CHAT_CLIENT, type ChatClient } from '../../../chat-client/index.js'
 import { BlackboardService } from '../blackboard/blackboard.service.js'
-import { GroupWorkspaceService } from '../group-workspace.service.js'
 import type { GroupChat } from '../entities/group-chat.entity.js'
 import { GroupDebugLogger } from '../debug/group-debug-logger.service.js'
 
@@ -38,7 +31,6 @@ export interface OrchestratorTaskHandoffReviewResult {
     awaitingUserInput: boolean
     question: string | null
     reason: string
-    orchestratorSessionId?: string | null
 }
 
 export interface OrchestratorTaskHandoffReviewer {
@@ -47,35 +39,36 @@ export interface OrchestratorTaskHandoffReviewer {
 
 interface HandoffRunResult {
     text: string
-    success: boolean
-    error?: string
-    structuredOutput?: unknown
-    sessionId?: string | null
+    responseId?: string
 }
 
-const HANDOFF_REVIEW_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrator，负责在成员任务结束后做隐藏交接判断。
-你会看到：用户原始需求、刚结束的成员任务、成员最终输出、黑板摘要、以及依赖它的下游任务。
+const HANDOFF_REVIEW_SYSTEM_PROMPT = `你是 AgentHub 群聊的内部交接裁判，只负责判断一个刚结束的成员任务是否可以释放下游任务。
+你是无状态的一次性判断器，不参与用户对话，不继承 Orchestrator 的连续会话，也不要假设本次输入以外的事实。
 
 【你的职责】
-- 判断刚结束的成员任务是否真的已经完成到可以释放下游任务。
-- 如果成员最终输出实质上是在向用户澄清、确认、选择或索取继续所需的信息，即使它没有按结构化 report 格式声明 awaiting_user_input，也必须判定 awaitingUserInput=true、completed=false。
-- 如果成员只是给出完成总结、附带礼貌性"有问题再问我"、或提出不阻塞下游的建议问题，不要判定为等待用户。
-- 若 awaitingUserInput=true，question 要提炼为用户需要回答的简短问题；若没有等待用户，question 必须为 null。
-- 这是内部判断，不要面向用户写汇报文案，也不要创建任务。
+- 只根据本次提供的用户原始需求、当前任务、成员最终输出、黑板摘要和直接下游任务做判断。
+- 如果成员最终输出是在向用户澄清、确认、选择或索取继续所需的信息，且该信息会阻塞当前任务收尾或下游任务启动，返回 awaitingUserInput=true、completed=false。
+- 如果成员只是礼貌性地说"有问题再问我"、给出不阻塞的建议问题、或列出后续可选优化，不要判定为等待用户。
+- 如果成员输出已经实质满足当前任务目标，并且没有阻塞性用户问题，返回 completed=true、awaitingUserInput=false。
+- 如果成员输出没有提出用户问题，但也没有实质完成当前任务目标，返回 completed=false、awaitingUserInput=false。
+- 这是内部控制面判断，不要面向用户写汇报文案，不要创建任务，不要安排 Agent。
 
 【输出要求】
 - 只输出一个 JSON 对象，不要输出代码块标记或任何额外解释。
 - completed：该成员任务是否可视为完成并释放下游。
 - awaitingUserInput：是否应暂停下游，等待用户先回答成员的问题。
-- question：awaitingUserInput=true 时的简短问题；否则 null。
-- reason：一句话说明判断依据。`
+- question：awaitingUserInput=true 时，提炼一个用户需要回答的简短问题；否则必须为 null。
+- reason：一句话说明判断依据。
+
+JSON 形状：
+{"completed":boolean,"awaitingUserInput":boolean,"question":string|null,"reason":"..."}`
 
 @Injectable()
 export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffReviewer {
     constructor(
         private readonly providers: PlatformProviderService,
-        private readonly workspace: GroupWorkspaceService,
-        private readonly agentWorkspace: AgentWorkspaceService,
+        @Inject(CHAT_CLIENT)
+        private readonly chatClient: ChatClient,
         private readonly blackboard: BlackboardService,
         private readonly debug: GroupDebugLogger
     ) {}
@@ -84,11 +77,7 @@ export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffRe
         req: OrchestratorTaskHandoffReviewRequest
     ): Promise<OrchestratorTaskHandoffReviewResult> {
         const result = await this.runReviewer(req)
-        if (!result.success) {
-            throw new Error(result.error ?? 'Orchestrator handoff review failed')
-        }
-        const parsed =
-            this.parseReviewObject(result.structuredOutput) ?? this.parseReviewText(result.text)
+        const parsed = this.parseReviewText(result.text)
         if (!parsed) {
             this.debug.log('group.orchestrator_handoff_review.parse_failed', {
                 groupId: req.group.id,
@@ -97,7 +86,6 @@ export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffRe
             })
             throw new Error('Orchestrator handoff review returned invalid output')
         }
-        parsed.orchestratorSessionId = result.sessionId ?? null
         this.debug.log('group.orchestrator_handoff_review.parsed', {
             groupId: req.group.id,
             runId: req.runId,
@@ -114,119 +102,69 @@ export class LlmOrchestratorHandoffReviewer implements OrchestratorTaskHandoffRe
             req.userId,
             req.group.orchestratorProviderId
         )
-        const home = this.workspace.memberHomeDir(
-            req.group.id,
-            'orchestrator',
-            req.group.workspaceDir
-        )
-        await this.agentWorkspace.ensureAgentHomeDirectory(req.group.orchestratorVendor, home)
-
-        const config: AgentAdapterConfig = {
-            id: `orch-handoff-${req.group.id}`,
-            model: req.group.orchestratorModel,
-            agentHomeDirectory: home,
-            workingDirectory: home,
-            apiKey: provider.apiKey,
-            baseUrl: provider.baseUrl,
-            reasoningEffort: 'minimal',
-            systemPrompt: HANDOFF_REVIEW_SYSTEM_PROMPT,
-            allowedTools: [],
-            permissionMode: 'default'
-        }
-        const adapter = this.createReviewerAdapter(req, config)
         const prompt = await this.buildPrompt(req)
         this.debug.log('group.orchestrator_handoff_review.prompt', {
             groupId: req.group.id,
             runId: req.runId,
             taskId: req.task.id,
-            resumedSdkSessionId: req.group.orchestratorSessionId ?? null,
+            providerType: provider.type,
+            model: req.group.orchestratorModel,
             prompt
         })
-        const first = await this.sendReviewRequest(adapter, prompt, this.outputSchema())
-        if (first.success) return first
-        return this.sendReviewRequest(this.createReviewerAdapter(req, config), prompt)
-    }
-
-    private createReviewerAdapter(
-        req: OrchestratorTaskHandoffReviewRequest,
-        config: AgentAdapterConfig
-    ): AgentAdapter {
-        const adapter = createAgent(req.group.orchestratorVendor, config)
-        if (req.group.orchestratorSessionId) {
-            adapter.resumeWith(req.group.orchestratorSessionId)
-        }
-        return adapter
-    }
-
-    private async sendReviewRequest(
-        adapter: ReturnType<typeof createAgent>,
-        prompt: string,
-        outputSchema?: AgentOutputSchema
-    ): Promise<HandoffRunResult> {
-        const parts: string[] = []
-        let finalFromDone: string | null = null
-        let structuredOutput: unknown
-        let success = true
-        let error: string | undefined
-
-        for await (const ev of adapter.send(prompt, outputSchema ? { outputSchema } : undefined)) {
-            if (ev.type === 'text') parts.push(ev.text)
-            else if (ev.type === 'error' && ev.fatal) {
-                success = false
-                error = ev.message
-            } else if (ev.type === 'done') {
-                success = ev.success
-                if (ev.finalText) finalFromDone = ev.finalText
-                structuredOutput = ev.structuredOutput
-            }
-        }
-        const textParts = parts.map((part) => part.trim()).filter((part) => part.length > 0)
-        const finalText = finalFromDone?.trim()
-        if (finalText && !textParts.includes(finalText)) textParts.push(finalText)
+        const response = await this.chatClient.chat({
+            providerType: provider.type,
+            model: req.group.orchestratorModel,
+            apiKey: provider.apiKey,
+            baseUrl: provider.baseUrl,
+            systemPrompt: HANDOFF_REVIEW_SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 1024,
+            ...(provider.type === 'anthropic' ? {} : { temperature: 0 })
+        })
+        this.debug.log('group.orchestrator_handoff_review.output', {
+            groupId: req.group.id,
+            runId: req.runId,
+            taskId: req.task.id,
+            responseId: response.id ?? null,
+            usage: response.usage ?? null,
+            text: response.text
+        })
         return {
-            text: textParts.join('\n\n').trim(),
-            success,
-            error,
-            structuredOutput,
-            sessionId: adapter.sessionId
-        }
-    }
-
-    private outputSchema(): AgentOutputSchema {
-        return {
-            type: 'object',
-            properties: {
-                completed: { type: 'boolean' },
-                awaitingUserInput: { type: 'boolean' },
-                question: { type: ['string', 'null'] },
-                reason: { type: 'string' }
-            },
-            required: ['completed', 'awaitingUserInput', 'question', 'reason'],
-            additionalProperties: false
+            text: response.text,
+            responseId: response.id
         }
     }
 
     private async buildPrompt(req: OrchestratorTaskHandoffReviewRequest): Promise<string> {
         const blackboardSummary = await this.blackboard.summarize(req.group.id)
         return [
-            `项目名称：${req.group.projectName}`,
-            `项目目标：${req.group.projectGoal ?? '(未设定)'}`,
-            `用户原始需求：${req.originalUserText}`,
+            '# 群聊与项目上下文',
+            `- groupId: ${req.group.id}`,
+            `- projectName: ${req.group.projectName}`,
+            `- projectGoal: ${req.group.projectGoal ?? '(未设定)'}`,
+            `- projectStatus: ${req.group.projectStatus}`,
             '',
-            '刚结束的成员任务：',
+            '# 用户原始需求',
+            req.originalUserText || '(未提供)',
+            '',
+            '# 刚结束的成员任务',
             `- taskId=${req.task.id}`,
             `- name=${req.task.name}`,
             `- agent=${req.task.agentName ?? req.task.agentId ?? '(unknown)'}`,
             `- objective=${req.task.objective}`,
             '',
-            `成员最终输出：\n${req.task.summary || '(无输出)'}`,
+            '# 成员最终输出',
+            req.task.summary || '(无输出)',
             '',
-            `依赖它的下游任务：\n${this.renderDownstream(req.downstreamTasks)}`,
+            '# 直接依赖该任务的下游任务',
+            this.renderDownstream(req.downstreamTasks),
             '',
-            `黑板摘要：\n${blackboardSummary}`,
+            '# 当前黑板摘要',
+            blackboardSummary,
             '',
-            '请判断是否可以释放下游任务，或需要先等待用户回答成员的问题。'
-        ].join('\n')
+            '# 判断问题',
+            '请判断这个成员任务是否可以视为完成并释放下游任务，还是必须先等待用户回答成员提出的阻塞性问题。只输出符合系统提示 JSON 形状的对象。'
+        ].join('\n\n')
     }
 
     private renderDownstream(

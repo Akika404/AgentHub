@@ -288,7 +288,6 @@ export class OrchestratorService {
         params: OrchestratorTaskHandoffReviewRequest
     ): Promise<OrchestratorTaskHandoffReviewResult> {
         const review = await this.handoffReviewer.review(params)
-        await this.persistOrchestratorSessionId(params.group, review.orchestratorSessionId)
         this.debug.log('group.orchestrator.handoff_review', {
             groupId: params.group.id,
             runId: params.runId,

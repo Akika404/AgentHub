@@ -80,9 +80,10 @@
 释放群活跃锁，挂起任务与下游 pending 留库。
 
 隐藏交接判断：即使成员没有按 report 格式设置 `awaiting_user_input`，只要它成功返回后实际是在用
-普通文本向用户澄清/提问，`group-run.executor.ts` 会先调用 Orchestrator 的隐藏 handoff review
-确认是否可以释放下游。若判定仍在等待用户输入，则同样把当前 task 标为 `waiting_input`；该判断不写
-展示消息、不推 `orchestrator_report`，因此用户只会看到成员自己的提问，然后直接回复即可继续。
+普通文本向用户澄清/提问，`group-run.executor.ts` 会先调用无状态 `ChatClient` handoff review
+确认是否可以释放下游；它不复用 `group_chat.orchestratorSessionId`，避免污染 Orchestrator 的连续会话。
+若判定仍在等待用户输入，则同样把当前 task 标为 `waiting_input`；该判断不写展示消息、不推
+`orchestrator_report`，因此用户只会看到成员自己的提问，然后直接回复即可继续。
 
 恢复（`group-run.executor.ts#resolveResume` + `#drive(resume)`）：新一轮 `converse` 前先查本群
 `waiting_input` 任务；命中则以原图 `runId` 重载全图节点，对挂起节点用强制 `Case A`
