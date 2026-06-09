@@ -360,7 +360,7 @@ src/multiagents/group/
 │   └── continuity-resolver.service.ts # 再次修改场景 A/B/C 判定（热 buffer + 强指代 + 产出物匹配）
 ├── run/
 │   ├── group-run-stream.service.ts # 群运行事件流（Redis Stream，沿用 turn-stream 范式）
-│   ├── orchestrator-planner.ts     # OrchestratorPlanner 接口 + LLM 默认实现（测试可注入假 Planner）
+│   ├── orchestrator-executor.ts     # OrchestratorExecutor 接口 + LLM 默认实现（测试可注入假 Planner）
 │   ├── orchestrator.service.ts     # 出计划 → 写 task_graph + 发 task-list → 聚合汇报
 │   ├── dispatch.service.ts         # 单次派发：装配→worktree→跑 turn→git diff 代写黑板→处理报告
 │   └── group-run.executor.ts       # converse 入口 + 串行编排一次群运行 + abort
@@ -401,7 +401,7 @@ src/multiagents/group/
 
 ### Orchestrator Planner
 
-`OrchestratorPlanner` 可注入（`ORCHESTRATOR_PLANNER` 令牌）。默认使用 `LlmOrchestratorPlanner`，按群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划；Orchestrator 自身会把 Claude Code/Codex SDK 会话 id 持久化到内部字段 `group_chat.orchestratorSessionId`，后续群运行用 `resumeWith()` 恢复同一编排会话，因此可接住「上一轮追问、下一轮短答」这类连续对话。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。续编排检查中的 `tasks: []` 只表示后续工作已结束，不会额外发 Orchestrator 文本，最终由最终审查器验收并统一收尾。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。Planner 还可返回 `contextUpdates`，服务端会把已确认的项目目标/技术栈/阶段写回 `projectMeta`，把明确的用户选择写成已批准黑板决策。LLM 调用失败或输出非法时如实返回上游错误，不静默降级成规则分派。测试场景可覆盖该 token 注入假 Planner / 假最终审查器 / 假交接审查器。
+`OrchestratorExecutor` 可注入（`ORCHESTRATOR_PLANNER` 令牌）。默认使用 `LlmOrchestratorPlanner`，按群聊保存的 vendor/model/provider + 内置 prompt 产 JSON 计划；Orchestrator 自身会把 Claude Code/Codex SDK 会话 id 持久化到内部字段 `group_chat.orchestratorSessionId`，后续群运行用 `resumeWith()` 恢复同一编排会话，因此可接住「上一轮追问、下一轮短答」这类连续对话。问候/闲聊/状态询问/澄清讨论等非任务消息可返回 `tasks: []` + `note`，由 Orchestrator 直接回复且不写黑板任务/不派发成员。续编排检查中的 `tasks: []` 只表示后续工作已结束，不会额外发 Orchestrator 文本，最终由最终审查器验收并统一收尾。Orchestrator 不允许代替成员 Agent 发言；当用户需要某个成员本人给出观点或问候、且无需工具/文件产出时，Planner 返回 `memberTurns`，服务端真实调用成员 Agent 做轻量回复；只有需要交付文件、执行命令或写入黑板协作状态时才创建 task。Planner 还可返回 `contextUpdates`，服务端会把已确认的项目目标/技术栈/阶段写回 `projectMeta`，把明确的用户选择写成已批准黑板决策。LLM 调用失败或输出非法时如实返回上游错误，不静默降级成规则分派。测试场景可覆盖该 token 注入假 Planner / 假最终审查器 / 假交接审查器。
 
 ### 数据库与测试
 

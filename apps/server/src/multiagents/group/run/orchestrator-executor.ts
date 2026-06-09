@@ -61,7 +61,7 @@ export interface OrchestratorContextUpdates {
     decisions?: OrchestratorDecisionUpdate[]
 }
 
-export interface OrchestratorPlan {
+export interface OrchestratorDecision {
     /** 空数组表示只需要 Orchestrator 回复，不应创建黑板任务或派发成员。 */
     tasks: PlanTask[]
     /** 给用户的开场说明（可空） */
@@ -76,7 +76,7 @@ export interface OrchestratorPlan {
     orchestratorSessionId?: string | null
 }
 
-export interface PlanRequest {
+export interface DecisionRequest {
     group: GroupChat
     userId: string
     userText: string
@@ -85,8 +85,8 @@ export interface PlanRequest {
     context: OrchestratorContext
 }
 
-export interface OrchestratorPlanner {
-    plan(req: PlanRequest): Promise<OrchestratorPlan>
+export interface OrchestratorExecutor {
+    decide(req: DecisionRequest): Promise<OrchestratorDecision>
 }
 
 interface OrchestratorRunResult {
@@ -152,7 +152,7 @@ export const ORCHESTRATOR_SYSTEM_PROMPT = `你是 AgentHub 群聊的 Orchestrato
  * 不静默降级成规则分派，避免把 Orchestrator 伪装成真实编排。
  */
 @Injectable()
-export class LlmOrchestratorPlanner implements OrchestratorPlanner {
+export class LlmOrchestratorExecutor implements OrchestratorExecutor {
     constructor(
         private readonly providers: PlatformProviderService,
         private readonly workspace: GroupWorkspaceService,
@@ -160,12 +160,12 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         private readonly debug: GroupDebugLogger
     ) {}
 
-    async plan(req: PlanRequest): Promise<OrchestratorPlan> {
+    async decide(req: DecisionRequest): Promise<OrchestratorDecision> {
         let result: OrchestratorRunResult
         try {
             result = await this.runOrchestrator(req)
         } catch (err) {
-            throw BusinessException.upstream('Orchestrator LLM planning failed', {
+            throw BusinessException.upstream('Orchestrator LLM decision failed', {
                 groupId: req.group.id,
                 providerId: req.group.orchestratorProviderId,
                 model: req.group.orchestratorModel,
@@ -176,7 +176,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         const structuredPlan = this.parsePlanObject(result.structuredOutput, req)
         const parsed = structuredPlan ?? this.parsePlanText(result.text, req)
         if (!parsed) {
-            this.debug.log('group.orchestrator_planner.parse_failed', {
+            this.debug.log('group.orchestrator_executor.parse_failed', {
                 groupId: req.group.id,
                 userId: req.userId,
                 routeKind: req.routeKind,
@@ -191,7 +191,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         parsed.orchestratorSessionId = result.sessionId ?? null
         const displayText = structuredPlan ? undefined : this.resolveDisplayText(result.text)
         if (displayText) parsed.displayText = displayText
-        this.debug.log('group.orchestrator_planner.parsed', {
+        this.debug.log('group.orchestrator_executor.parsed', {
             groupId: req.group.id,
             userId: req.userId,
             routeKind: req.routeKind,
@@ -201,7 +201,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         return parsed
     }
 
-    private async runOrchestrator(req: PlanRequest): Promise<OrchestratorRunResult> {
+    private async runOrchestrator(req: DecisionRequest): Promise<OrchestratorRunResult> {
         const provider = await this.providers.resolveRuntimeConfig(
             req.userId,
             req.group.orchestratorProviderId
@@ -229,7 +229,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         }
         const adapter = this.createOrchestratorAdapter(req, config)
         const prompt = this.buildPrompt(req)
-        this.debug.log('group.orchestrator_planner.prompt', {
+        this.debug.log('group.orchestrator_executor.prompt', {
             groupId: req.group.id,
             userId: req.userId,
             vendor: req.group.orchestratorVendor,
@@ -241,7 +241,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             prompt
         })
         const first = await this.sendPlanRequest(adapter, prompt, this.buildPlanOutputSchema(req))
-        this.debug.log('group.orchestrator_planner.output', {
+        this.debug.log('group.orchestrator_executor.output', {
             groupId: req.group.id,
             userId: req.userId,
             attempt: 'schema',
@@ -253,7 +253,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             this.createOrchestratorAdapter(req, config),
             prompt
         )
-        this.debug.log('group.orchestrator_planner.output', {
+        this.debug.log('group.orchestrator_executor.output', {
             groupId: req.group.id,
             userId: req.userId,
             attempt: 'fallback_text',
@@ -263,7 +263,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         throw new Error(fallback.error ?? first.error ?? 'Orchestrator turn failed')
     }
 
-    private createOrchestratorAdapter(req: PlanRequest, config: AgentAdapterConfig): AgentAdapter {
+    private createOrchestratorAdapter(req: DecisionRequest, config: AgentAdapterConfig): AgentAdapter {
         const adapter = createAgent(req.group.orchestratorVendor, config)
         if (req.group.orchestratorSessionId) {
             adapter.resumeWith(req.group.orchestratorSessionId)
@@ -326,7 +326,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         }
     }
 
-    private buildPlanOutputSchema(req: PlanRequest): AgentOutputSchema {
+    private buildPlanOutputSchema(req: DecisionRequest): AgentOutputSchema {
         const memberIds = req.context.memberStatus.map((m) => m.agentId)
         return {
             type: 'object',
@@ -404,7 +404,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         }
     }
 
-    private buildPrompt(req: PlanRequest): string {
+    private buildPrompt(req: DecisionRequest): string {
         const members = req.context.memberStatus
             .map(
                 (m) =>
@@ -433,7 +433,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             .join('\n')
     }
 
-    private parsePlanText(text: string, req: PlanRequest): OrchestratorPlan | null {
+    private parsePlanText(text: string, req: DecisionRequest): OrchestratorDecision | null {
         const json = this.extractJson(text)
         if (!json) return null
         let obj: unknown
@@ -445,7 +445,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
         return this.parsePlanObject(obj, req)
     }
 
-    private parsePlanObject(obj: unknown, req: PlanRequest): OrchestratorPlan | null {
+    private parsePlanObject(obj: unknown, req: DecisionRequest): OrchestratorDecision | null {
         if (typeof obj !== 'object' || obj === null) return null
         if ('memberMessages' in obj) return null
         const rawTasks = (obj as { tasks?: unknown }).tasks

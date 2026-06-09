@@ -16,11 +16,11 @@ import { GroupChatMember } from '../entities/group-chat-member.entity.js'
 import { GroupRunStream } from './group-run-stream.service.js'
 import {
     ORCHESTRATOR_PLANNER,
-    type OrchestratorPlanner,
+    type OrchestratorExecutor,
     type OrchestratorContext,
     type OrchestratorContextUpdates,
     type PlanMemberTurn
-} from './orchestrator-planner.js'
+} from './orchestrator-executor.js'
 import {
     ORCHESTRATOR_FINAL_REVIEWER,
     type OrchestratorFinalReviewer,
@@ -127,7 +127,7 @@ export function buildOrchestratorReportText(outcomes: TaskOutcome[]): string | n
 
 /**
  * OrchestratorService — 独立内置编排角色：用群配置 vendor/model + 内置 prompt 产计划
- *（经可注入 OrchestratorPlanner）。任务消息写黑板 task_graph + 发 task-list；
+ *（经可注入 OrchestratorExecutor）。任务消息写黑板 task_graph + 发 task-list；
  * 非任务消息只发 Orchestrator 文本回复；成员消息必须来自真实成员 turn。
  * 轻量成员聊天返回 memberTurns，不写黑板 task_graph。
  */
@@ -135,7 +135,7 @@ export function buildOrchestratorReportText(outcomes: TaskOutcome[]): string | n
 export class OrchestratorService {
     constructor(
         @Inject(ORCHESTRATOR_PLANNER)
-        private readonly planner: OrchestratorPlanner,
+        private readonly executor: OrchestratorExecutor,
         @Inject(ORCHESTRATOR_FINAL_REVIEWER)
         private readonly finalReviewer: OrchestratorFinalReviewer,
         @Inject(ORCHESTRATOR_HANDOFF_REVIEWER)
@@ -184,7 +184,7 @@ export class OrchestratorService {
             context
         })
 
-        const plan = await this.planner.plan({
+        const decision = await this.executor.decide({
             group,
             userId,
             userText: params.userText,
@@ -192,17 +192,17 @@ export class OrchestratorService {
             mentionedAgentIds,
             context
         })
-        this.debug.log('group.orchestrator.plan.raw', {
+        this.debug.log('group.orchestrator.executor.raw', {
             groupId: group.id,
             runId,
             routeKind,
             mentionedAgentIds,
-            plan
+            plan: decision
         })
-        await this.persistPlannerState(group, userId, runId, plan)
+        await this.persistPlannerState(group, userId, runId, decision)
 
-        if (plan.tasks.length === 0) {
-            const text = plan.displayText?.trim() || plan.note?.trim() || '收到。'
+        if (decision.tasks.length === 0) {
+            const text = decision.displayText?.trim() || decision.note?.trim() || '收到。'
             if (!suppressNoopMessage) {
                 await this.groupMessages.appendText(group.id, userId, 'orchestrator', text)
                 await this.runStream.publish(runId, {
@@ -211,28 +211,28 @@ export class OrchestratorService {
                     text
                 })
             }
-            this.debug.log('group.orchestrator.plan.noop', {
+            this.debug.log('group.orchestrator.executor.noop', {
                 groupId: group.id,
                 runId,
                 routeKind,
                 mentionedAgentIds,
-                note: plan.note,
-                displayText: plan.displayText ?? null,
-                memberTurns: plan.memberTurns ?? [],
+                note: decision.note,
+                displayText: decision.displayText ?? null,
+                memberTurns: decision.memberTurns ?? [],
                 suppressNoopMessage
             })
             return {
                 nodes: [],
-                note: plan.note,
-                ...(plan.displayText ? { displayText: plan.displayText } : {}),
-                memberTurns: plan.memberTurns ?? []
+                note: decision.note,
+                ...(decision.displayText ? { displayText: decision.displayText } : {}),
+                memberTurns: decision.memberTurns ?? []
             }
         }
 
         const nodes = await this.blackboard.upsertTaskGraph(
             group.id,
             runId,
-            plan.tasks.map((t) => ({
+            decision.tasks.map((t) => ({
                 key: t.key,
                 name: t.name,
                 agentId: t.agentId,
@@ -252,7 +252,7 @@ export class OrchestratorService {
             group.id,
             userId,
             'orchestrator',
-            plan.note ?? '任务计划',
+            decision.note ?? '任务计划',
             items
         )
         await this.runStream.publish(runId, {
@@ -261,7 +261,7 @@ export class OrchestratorService {
             routeKind,
             tasks: nodes
         })
-        this.debug.log('group.orchestrator.plan.persisted', {
+        this.debug.log('group.orchestrator.executor.persisted', {
             groupId: group.id,
             runId,
             routeKind,
@@ -273,10 +273,10 @@ export class OrchestratorService {
                 objective: n.objective,
                 status: n.status
             })),
-            note: plan.note
+            note: decision.note
         })
 
-        return { nodes, note: plan.note, memberTurns: [] }
+        return { nodes, note: decision.note, memberTurns: [] }
     }
 
     /**

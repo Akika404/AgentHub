@@ -40,7 +40,7 @@ import { OrchestratorService } from './run/orchestrator.service.js'
 import { DispatchService } from './run/dispatch.service.js'
 import { MemberChatService } from './run/member-chat.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
-import { LlmOrchestratorPlanner, ORCHESTRATOR_PLANNER } from './run/orchestrator-planner.js'
+import { LlmOrchestratorExecutor, ORCHESTRATOR_PLANNER } from './run/orchestrator-executor.js'
 import {
     LlmOrchestratorFinalReviewer,
     ORCHESTRATOR_FINAL_REVIEWER
@@ -104,11 +104,11 @@ import { GroupDebugLogger } from './debug/group-debug-logger.service.js'
         DispatchService,
         MemberChatService,
         GroupRunExecutor,
-        LlmOrchestratorPlanner,
+        LlmOrchestratorExecutor,
         LlmOrchestratorFinalReviewer,
         LlmOrchestratorHandoffReviewer,
         GroupDebugLogger,
-        { provide: ORCHESTRATOR_PLANNER, useExisting: LlmOrchestratorPlanner },
+        { provide: ORCHESTRATOR_PLANNER, useExisting: LlmOrchestratorExecutor },
         {
             provide: ORCHESTRATOR_FINAL_REVIEWER,
             useExisting: LlmOrchestratorFinalReviewer

@@ -2,10 +2,10 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import type { GroupChat } from '../entities/group-chat.entity.js'
 import {
-    LlmOrchestratorPlanner,
-    type OrchestratorPlan,
-    type PlanRequest
-} from './orchestrator-planner.js'
+    LlmOrchestratorExecutor,
+    type OrchestratorDecision,
+    type DecisionRequest
+} from './orchestrator-executor.js'
 
 interface StubRunResult {
     text: string
@@ -15,8 +15,8 @@ interface StubRunResult {
     sessionId?: string | null
 }
 
-function createPlanner(result: StubRunResult): LlmOrchestratorPlanner {
-    const planner = new LlmOrchestratorPlanner(
+function createPlanner(result: StubRunResult): LlmOrchestratorExecutor {
+    const planner = new LlmOrchestratorExecutor(
         {} as never,
         {} as never,
         {} as never,
@@ -28,7 +28,7 @@ function createPlanner(result: StubRunResult): LlmOrchestratorPlanner {
     return planner
 }
 
-function planRequest(): PlanRequest {
+function planRequest(): DecisionRequest {
     return {
         group: {
             id: 'group-1',
@@ -74,7 +74,7 @@ test('LlmOrchestratorPlanner ignores raw SDK text when structured output is avai
         sessionId: 'sdk-session-1'
     })
 
-    const plan: OrchestratorPlan = await planner.plan(planRequest())
+    const plan: OrchestratorDecision = await planner.decide(planRequest())
 
     assert.equal(plan.note, note)
     assert.equal(plan.displayText, undefined)

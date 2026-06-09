@@ -19,7 +19,7 @@
 
 - `apps/server/src/multiagents/group/entities/group-chat.entity.ts`
 - `apps/server/src/multiagents/group/group-chat.service.ts`
-- `apps/server/src/multiagents/group/run/orchestrator-planner.ts`
+- `apps/server/src/multiagents/group/run/orchestrator-executor.ts`
 - `apps/server/src/multiagents/group/run/orchestrator.service.ts`
 - `apps/server/src/multiagents/group/__tests__/*`
 - `apps/server/sql/group_chat_collaboration.sql`

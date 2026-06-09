@@ -142,7 +142,7 @@ S10 测试 + 文档回顾
 - 用群配置的 vendor/model/provider + **内置编排 system_prompt** 跑一轮 LLM，输入 `orchestrator_context`（projectGoal/activeTaskGraph/recentUserIntents/blackboardSummary/memberStatus）。
 - 产出结构化计划（单任务 or task_graph），写入黑板 + 发 task-list 消息到 presentation_log。
 - 末尾聚合各成员产出生成汇报 text 消息。
-- **可注入性**：计划生成走一个 `OrchestratorPlanner` 接口，测试用假实现注入（避免真实 LLM e2e）。
+- **可注入性**：计划生成走一个 `OrchestratorExecutor` 接口，测试用假实现注入（避免真实 LLM e2e）。
 
 **S7.2 dispatch** `dispatch.service.ts`：
 - 串单次派发：ContextAssembler 装配 → createTaskWorktree → 取/重建成员 AgentSession（cwd=worktree）→ 跑 turn（事件入 group run Stream + 落 agent_message_step）。

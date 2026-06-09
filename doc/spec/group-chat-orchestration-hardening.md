@@ -65,7 +65,7 @@ type BlackboardTaskStatus = 'pending' | 'ready' | 'doing' | 'done' | 'failed' | 
 
 ### Orchestrator turn（工具隔离）
 
-`LlmOrchestratorPlanner.runOrchestrator`（`orchestrator-planner.ts`）：`permissionMode: 'plan'`、`allowedTools: []`、`workingDirectory` = 编排专属 home 目录。Orchestrator 只产 JSON 计划，物理上无法读写共享仓库。
+`LlmOrchestratorPlanner.runOrchestrator`（`orchestrator-executor.ts`）：`permissionMode: 'plan'`、`allowedTools: []`、`workingDirectory` = 编排专属 home 目录。Orchestrator 只产 JSON 计划，物理上无法读写共享仓库。
 
 ### 初始任务状态（`orchestrator.service.ts`）
 
@@ -134,7 +134,7 @@ await allSettled(inFlight)
 
 ## 涉及文件
 
-- `apps/server/src/multiagents/group/run/orchestrator-planner.ts`（工具隔离 + 提示词 deps 语义）
+- `apps/server/src/multiagents/group/run/orchestrator-executor.ts`（工具隔离 + 提示词 deps 语义）
 - `apps/server/src/multiagents/group/run/orchestrator.service.ts`（初始状态 + 汇报区分）
 - `apps/server/src/multiagents/group/run/dispatch.service.ts`（escalation + 乐观锁接通 + 合并冲突不吞）
 - `apps/server/src/multiagents/group/run/group-run.executor.ts`（DAG 调度 + 失败降级）
