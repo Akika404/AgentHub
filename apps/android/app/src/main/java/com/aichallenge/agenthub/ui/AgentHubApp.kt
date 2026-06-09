@@ -3,6 +3,7 @@ package com.aichallenge.agenthub.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,9 +38,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -51,14 +53,11 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,6 +69,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -78,8 +78,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,6 +90,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -276,13 +275,17 @@ private fun MainShell(state: AppUiState, viewModel: AppViewModel, snackbar: Snac
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
             if (showBottomBar) {
-                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 2.dp
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f))
                             .navigationBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         BottomItem(MainTab.Chats, state.mainTab, "聊天", Icons.Default.ChatBubble) { viewModel.setMainTab(MainTab.Chats) }
                         BottomItem(MainTab.Groups, state.mainTab, "群聊", Icons.Default.Groups) { viewModel.setMainTab(MainTab.Groups) }
@@ -323,12 +326,13 @@ private fun RowScope.BottomItem(tab: MainTab, selected: MainTab, label: String, 
         modifier = Modifier
             .weight(1f)
             .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .padding(vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = tint)
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
         Text(label, color = tint, style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
 }
@@ -363,16 +367,21 @@ private fun ChatListPane(
             .padding(WindowInsets.statusBars.asPaddingValues())
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text("聊天", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(state.session.user?.nickname ?: state.session.user?.account ?: "AgentHub", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    state.session.user?.nickname ?: state.session.user?.account ?: "AgentHub",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            IconButton(onClick = viewModel::refresh) { Icon(Icons.Default.Refresh, contentDescription = "刷新") }
+            AgentIconButton(Icons.Default.Refresh, "刷新", viewModel::refresh)
+            Spacer(Modifier.width(8.dp))
             Box {
-                IconButton(onClick = { createMenu = true }) { Icon(Icons.Default.Add, contentDescription = "新建") }
+                AgentIconButton(Icons.Default.Add, "新建", onClick = { createMenu = true })
                 DropdownMenu(expanded = createMenu, onDismissRequest = { createMenu = false }) {
                     DropdownMenuItem(text = { Text("创建和 Agent 单聊") }, leadingIcon = { Icon(Icons.Default.ChatBubble, null) }, onClick = { createMenu = false; onCreateChat() })
                     DropdownMenuItem(text = { Text("创建 Agent 群聊") }, leadingIcon = { Icon(Icons.Default.Groups, null) }, onClick = { createMenu = false; onCreateGroup() })
@@ -380,13 +389,10 @@ private fun ChatListPane(
                 }
             }
         }
-        OutlinedTextField(
+        AgentSearchField(
             value = state.chatSearch,
             onValueChange = viewModel::setChatSearch,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            placeholder = { Text("搜索聊天、Agent、项目") },
-            singleLine = true
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
         )
         Spacer(Modifier.height(8.dp))
         val items = viewModel.chatItems()
@@ -410,18 +416,26 @@ private fun ChatRow(item: ChatListItem, viewModel: AppViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
+            .background(if (item.pinned) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
             .combinedClickable(
                 onClick = { viewModel.selectChat(item.key) },
                 onLongClick = { menu = true }
             )
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Avatar(text = item.avatarText, color = item.avatarColor, icon = if (item.kind == "group") Icons.Default.Groups else Icons.Default.Person)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(item.title, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                Text(
+                    item.title,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 if (item.kind == "group") BadgeText("群聊")
                 if (item.archived) BadgeText("已归档")
                 if (item.pinned) Icon(Icons.Default.Check, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
@@ -457,21 +471,44 @@ private fun ChatDetailScreen(state: AppUiState, viewModel: AppViewModel, activeK
     Scaffold(
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (running) state.runtime.label else if (archived) "已归档" else "Active", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(WindowInsets.statusBars.asPaddingValues())
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.65f))
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AgentIconButton(Icons.AutoMirrored.Filled.ArrowBack, "返回", onClick = { viewModel.showChatList() })
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                title,
+                                modifier = Modifier.weight(1f, fill = false),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (!archived) {
+                                Spacer(Modifier.width(8.dp))
+                                BadgeText(if (running) state.runtime.label else "Active")
+                            }
+                        }
+                        Text(
+                            if (archived) "已归档" else if (running) "正在运行" else "移动端工作台",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                },
-                navigationIcon = { IconButton(onClick = { viewModel.showChatList() }) { Icon(Icons.Default.ArrowBack, contentDescription = "返回") } },
-                actions = {
-                    IconButton(onClick = { scope.launch { pagerState.animateScrollToPage(1) } }) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
+                    Spacer(Modifier.width(10.dp))
+                    AgentIconButton(Icons.Default.Settings, "设置", onClick = {
+                        scope.launch { pagerState.animateScrollToPage(1) }
+                    })
+                }
+            }
         }
     ) { padding ->
         HorizontalPager(
@@ -502,10 +539,11 @@ private fun ConversationPage(state: AppUiState, viewModel: AppViewModel, activeK
                 items(state.messages, key = { it.id }) { message -> MessageCard(message) }
             }
         }
-        HorizontalDivider()
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f))
         Row(
             Modifier
                 .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
                 .navigationBarsPadding()
                 .padding(10.dp),
             verticalAlignment = Alignment.Bottom
@@ -517,20 +555,40 @@ private fun ConversationPage(state: AppUiState, viewModel: AppViewModel, activeK
                 enabled = !archived && !running,
                 minLines = 1,
                 maxLines = 4,
-                placeholder = { Text(if (archived) "已归档" else "输入消息") }
+                placeholder = { Text(if (archived) "已归档" else "输入消息") },
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                )
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(
-                onClick = {
-                    if (running) viewModel.stopActiveRun()
-                    else {
-                        viewModel.sendMessage(input)
-                        input = ""
-                    }
-                },
-                enabled = running || (!archived && input.trim().isNotBlank())
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (running || (!archived && input.trim().isNotBlank())) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    .clickable(enabled = running || (!archived && input.trim().isNotBlank())) {
+                        if (running) viewModel.stopActiveRun()
+                        else {
+                            viewModel.sendMessage(input)
+                            input = ""
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(if (running) Icons.Default.StopCircle else Icons.Default.Send, contentDescription = if (running) "停止" else "发送", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    if (running) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.Send,
+                    contentDescription = if (running) "停止" else "发送",
+                    tint = if (running || (!archived && input.trim().isNotBlank())) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -549,15 +607,25 @@ private fun MessageCard(message: DisplayMessage) {
                 Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, modifier = Modifier.fillMaxWidth(0.82f)) {
                     Text(message.sender.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Surface(
+                        modifier = Modifier.border(
+                            1.dp,
+                            if (mine) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline,
+                            RoundedCornerShape(10.dp)
+                        ),
                         color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        shadowElevation = if (mine) 0.dp else 1.dp
                     ) {
-                        Text(message.text, modifier = Modifier.padding(10.dp), color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            message.text,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
         }
-        is AgentRunDisplayMessage -> Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        is AgentRunDisplayMessage -> AgentCardSurface {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp)
@@ -582,13 +650,13 @@ private fun MessageCard(message: DisplayMessage) {
                 if (message.text.isNotBlank()) Text(message.text)
             }
         }
-        is TaskListDisplayMessage -> Card(Modifier.fillMaxWidth()) {
+        is TaskListDisplayMessage -> AgentCardSurface {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(message.heading, fontWeight = FontWeight.SemiBold)
                 message.tasks.forEach { Text("• ${it.title} · ${it.status}", style = MaterialTheme.typography.bodySmall) }
             }
         }
-        is OptionsDisplayMessage -> Card(Modifier.fillMaxWidth()) {
+        is OptionsDisplayMessage -> AgentCardSurface {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(message.text)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -596,7 +664,13 @@ private fun MessageCard(message: DisplayMessage) {
                 }
             }
         }
-        is AgentQuestionDisplayMessage -> Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        is AgentQuestionDisplayMessage -> Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.25f), RoundedCornerShape(10.dp)),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shape = RoundedCornerShape(10.dp)
+        ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(message.summary, fontWeight = FontWeight.SemiBold)
                 message.questions.forEach { Text(it.question, style = MaterialTheme.typography.bodySmall) }
@@ -690,17 +764,17 @@ private fun SettingsPage(state: AppUiState, agentChat: com.aichallenge.agenthub.
 @Composable
 private fun GroupsScreen(state: AppUiState, viewModel: AppViewModel, onCreateGroup: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("群聊", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("成员、目标、黑板", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("成员、目标、黑板", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            IconButton(onClick = onCreateGroup) { Icon(Icons.Default.Add, contentDescription = "创建群聊") }
+            AgentIconButton(Icons.Default.Add, "创建群聊", onCreateGroup)
         }
         if (state.groupChats.isEmpty()) EmptyHint("还没有群聊。")
         else LazyColumn(contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(state.groupChats, key = { it.id }) { group ->
-                Card(
+                AgentCardSurface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -726,12 +800,12 @@ private fun GroupsScreen(state: AppUiState, viewModel: AppViewModel, onCreateGro
 @Composable
 private fun AgentsScreen(state: AppUiState, viewModel: AppViewModel, onCreateAgent: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Agent", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("模型与能力配置", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("模型与能力配置", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
-            IconButton(onClick = onCreateAgent) { Icon(Icons.Default.Add, contentDescription = "创建 Agent") }
+            AgentIconButton(Icons.Default.Add, "创建 Agent", onCreateAgent)
         }
         if (state.agents.isEmpty()) EmptyHint("还没有 Agent，请先创建。")
         else LazyColumn(contentPadding = PaddingValues(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -745,7 +819,7 @@ private fun AgentsScreen(state: AppUiState, viewModel: AppViewModel, onCreateAge
 @Composable
 private fun AgentCard(agent: AgentView, viewModel: AppViewModel) {
     var menu by remember { mutableStateOf(false) }
-    Card {
+    AgentCardSurface {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Avatar(agentInitials(agent.name), agent.color, Icons.Default.Person)
             Spacer(Modifier.width(10.dp))
@@ -755,7 +829,7 @@ private fun AgentCard(agent: AgentView, viewModel: AppViewModel) {
                 agent.capabilitySummary?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "更多") }
+                AgentIconButton(Icons.Default.MoreVert, "更多", onClick = { menu = true })
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("删除") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menu = false; viewModel.deleteAgent(agent.id) })
                 }
@@ -767,15 +841,16 @@ private fun AgentCard(agent: AgentView, viewModel: AppViewModel) {
 @Composable
 private fun Avatar(text: String, color: String?, icon: ImageVector, size: androidx.compose.ui.unit.Dp = 42.dp) {
     val parsed = remember(color) { runCatching { Color(android.graphics.Color.parseColor(color ?: "#3370ff")) }.getOrDefault(Color(0xFF3370FF)) }
+    val contentColor = if (parsed.luminance() > 0.62f) MaterialTheme.colorScheme.onSurface else Color.White
     Box(
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(8.dp))
-            .background(parsed.copy(alpha = 0.16f)),
+            .background(parsed),
         contentAlignment = Alignment.Center
     ) {
-        if (text.isBlank()) Icon(icon, contentDescription = null, tint = parsed)
-        else Text(text.take(2), color = parsed, fontWeight = FontWeight.Bold)
+        if (text.isBlank()) Icon(icon, contentDescription = null, tint = contentColor)
+        else Text(text.take(2), color = contentColor, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -787,7 +862,7 @@ private fun BadgeText(text: String) {
             .padding(start = 4.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal = 5.dp, vertical = 2.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         color = MaterialTheme.colorScheme.onPrimaryContainer,
         style = MaterialTheme.typography.labelSmall
     )
@@ -802,7 +877,7 @@ private fun EmptyHint(text: String) {
 
 @Composable
 private fun DetailCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    AgentCardSurface {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             content()
@@ -816,6 +891,57 @@ private fun KeyValue(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable
+private fun AgentIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit, enabled: Boolean = true) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (enabled) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+        )
+    }
+}
+
+@Composable
+private fun AgentSearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        placeholder = { Text("搜索聊天、Agent、项目") },
+        singleLine = true,
+        shape = RoundedCornerShape(8.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = Color.Transparent,
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            cursorColor = MaterialTheme.colorScheme.primary
+        )
+    )
+}
+
+@Composable
+private fun AgentCardSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp)),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(10.dp),
+        shadowElevation = 1.dp,
+        content = content
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -1269,7 +1395,7 @@ private fun DirectoryEntryRow(entry: ServerDirectoryEntry, picker: DirectoryPick
             }
         } else {
             IconButton(onClick = { viewModel.openDirectory(entry.path) }, enabled = entry.readable) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "打开", modifier = Modifier)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "打开", modifier = Modifier)
             }
         }
     }

@@ -1,26 +1,72 @@
 package com.aichallenge.agenthub.ui.theme
 
-import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+
+private val ColorDarkBackground = androidx.compose.ui.graphics.Color(0xFF15171A)
+private val ColorDarkSurface = androidx.compose.ui.graphics.Color(0xFF1D2024)
+private val ColorDarkSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF252A30)
+private val ColorDarkBorder = androidx.compose.ui.graphics.Color(0xFF363C44)
+private val ColorDarkTextMain = androidx.compose.ui.graphics.Color(0xFFECEFF3)
+private val ColorDarkTextMuted = androidx.compose.ui.graphics.Color(0xFF9EA6B1)
+private val ColorDarkBlueContainer = androidx.compose.ui.graphics.Color(0xFF1B3268)
+private val ColorDarkAccentContainer = androidx.compose.ui.graphics.Color(0xFF312B66)
+private val ColorDarkDangerContainer = androidx.compose.ui.graphics.Color(0xFF4A1E24)
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = AgentBlue,
+    onPrimary = AgentSurface,
+    primaryContainer = ColorDarkBlueContainer,
+    onPrimaryContainer = AgentBlueSofter,
+    secondary = AgentTextMuted,
+    onSecondary = AgentSurface,
+    secondaryContainer = ColorDarkSurfaceVariant,
+    onSecondaryContainer = ColorDarkTextMain,
+    tertiary = AgentAccent,
+    tertiaryContainer = ColorDarkAccentContainer,
+    onTertiaryContainer = AgentAccentSoft,
+    background = ColorDarkBackground,
+    onBackground = ColorDarkTextMain,
+    surface = ColorDarkSurface,
+    onSurface = ColorDarkTextMain,
+    surfaceVariant = ColorDarkSurfaceVariant,
+    onSurfaceVariant = ColorDarkTextMuted,
+    outline = ColorDarkBorder,
+    outlineVariant = ColorDarkBorder,
+    error = AgentDanger,
+    errorContainer = ColorDarkDangerContainer,
+    onErrorContainer = AgentDangerSoft
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = AgentBlue,
+    onPrimary = AgentSurface,
+    primaryContainer = AgentBlueSoft,
+    onPrimaryContainer = AgentBlue,
+    secondary = AgentTextSecondary,
+    onSecondary = AgentSurface,
+    secondaryContainer = AgentSurfaceHover,
+    onSecondaryContainer = AgentTextMain,
+    tertiary = AgentAccent,
+    tertiaryContainer = AgentAccentSoft,
+    onTertiaryContainer = AgentAccent,
+    background = AgentBackground,
+    onBackground = AgentTextMain,
+    surface = AgentSurface,
+    onSurface = AgentTextMain,
+    surfaceVariant = AgentSurfaceHover,
+    onSurfaceVariant = AgentTextMuted,
+    outline = AgentSurfaceBorder,
+    outlineVariant = AgentSurfaceBorder,
+    error = AgentDanger,
+    errorContainer = AgentDangerSoft,
+    onErrorContainer = AgentDanger
 
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
@@ -33,19 +79,22 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+private val AgentShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(10.dp),
+    extraLarge = RoundedCornerShape(12.dp)
+)
+
 @Composable
 fun AgentHubTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
+        darkTheme && dynamicColor -> DarkColorScheme
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
@@ -53,6 +102,7 @@ fun AgentHubTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = AgentShapes,
         content = content
     )
 }
