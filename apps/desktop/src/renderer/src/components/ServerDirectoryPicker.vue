@@ -42,10 +42,20 @@ const pathDraft = ref('')
 const selectedPaths = ref<string[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
+const newFolderOpen = ref(false)
+const newFolderName = ref('')
+const newFolderError = ref<string | null>(null)
 
 const isMultiple = computed(() => props.mode === 'multiple')
-const currentPath = computed(() => listing.value?.path ?? pathDraft.value.trim())
+const currentPath = computed(() => pathDraft.value.trim() || listing.value?.path || '')
 const selectedSet = computed(() => new Set(selectedPaths.value))
+const canCreateFolder = computed(() => listing.value?.root.kind === 'agent_workspace')
+const confirmLabel = computed(() => {
+  if (isMultiple.value) return '使用所选目录'
+  return pathDraft.value.trim() && pathDraft.value.trim() !== listing.value?.path
+    ? '使用输入路径'
+    : '使用当前目录'
+})
 
 function unique(paths: string[]): string[] {
   return [...new Set(paths.map((path) => path.trim()).filter(Boolean))]
@@ -55,10 +65,30 @@ function messageForError(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback
 }
 
+function resetNewFolder(): void {
+  newFolderOpen.value = false
+  newFolderName.value = ''
+  newFolderError.value = null
+}
+
 function applyListing(next: ServerDirectoryListing): void {
   listing.value = next
   pathDraft.value = next.path
   rootPath.value = next.root.path
+  resetNewFolder()
+}
+
+function joinServerPath(base: string, name: string): string {
+  const trimmedBase = base.trim()
+  const trimmedName = name.trim()
+  const separator = trimmedBase.includes('\\') ? '\\' : '/'
+  const baseWithoutTrailing = trimmedBase.replace(/[\\/]+$/g, '')
+
+  if (!baseWithoutTrailing) return `${separator}${trimmedName}`
+  if (/^[A-Za-z]:$/.test(baseWithoutTrailing)) {
+    return `${baseWithoutTrailing}${separator}${trimmedName}`
+  }
+  return `${baseWithoutTrailing}${separator}${trimmedName}`
 }
 
 async function initialize(): Promise<void> {
@@ -139,6 +169,35 @@ function addCurrent(): void {
   addPath(currentPath.value)
 }
 
+function openNewFolder(): void {
+  newFolderOpen.value = true
+  newFolderName.value = ''
+  newFolderError.value = null
+}
+
+function useNewFolder(): void {
+  const name = newFolderName.value.trim()
+  if (!name) {
+    newFolderError.value = '请输入文件夹名称'
+    return
+  }
+  if (name === '.' || name === '..' || /[/\\]/.test(name)) {
+    newFolderError.value = '文件夹名称不能包含路径分隔符'
+    return
+  }
+
+  const base = listing.value?.path ?? pathDraft.value.trim()
+  if (!base) {
+    newFolderError.value = '请先选择服务器目录'
+    return
+  }
+
+  const path = joinServerPath(base, name)
+  pathDraft.value = path
+  if (isMultiple.value) addPath(path)
+  resetNewFolder()
+}
+
 function confirm(): void {
   const draft = pathDraft.value.trim()
   const paths = isMultiple.value ? selectedPaths.value : unique([draft || currentPath.value])
@@ -152,6 +211,7 @@ watch(
   () => props.open,
   (open) => {
     if (open) void initialize()
+    else resetNewFolder()
   }
 )
 
@@ -202,11 +262,43 @@ watch(rootPath, (next) => {
             <span class="material-symbols-outlined text-xl">refresh</span>
             刷新
           </BaseButton>
+          <BaseButton
+            v-if="canCreateFolder"
+            variant="secondary"
+            size="sm"
+            :disabled="loading"
+            @click="openNewFolder"
+          >
+            <span class="material-symbols-outlined text-xl">create_new_folder</span>
+            新建文件夹
+          </BaseButton>
           <BaseButton v-if="isMultiple" variant="secondary" size="sm" @click="addCurrent">
             <span class="material-symbols-outlined text-xl">add</span>
             加入当前
           </BaseButton>
         </div>
+      </div>
+
+      <div
+        v-if="newFolderOpen"
+        class="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 rounded-md border border-surface-border bg-surface-hover/60 p-3"
+      >
+        <div class="min-w-0">
+          <BaseInput
+            v-model="newFolderName"
+            :invalid="newFolderError !== null"
+            type="text"
+            placeholder="文件夹名称"
+            @keyup.enter="useNewFolder"
+            @keyup.esc="resetNewFolder"
+          />
+          <p v-if="newFolderError" class="mt-1 text-xs text-danger">{{ newFolderError }}</p>
+        </div>
+        <BaseButton variant="ghost" size="lg" @click="resetNewFolder">取消</BaseButton>
+        <BaseButton size="lg" @click="useNewFolder">
+          <span class="material-symbols-outlined text-xl">done</span>
+          确定
+        </BaseButton>
       </div>
 
       <div
@@ -313,7 +405,7 @@ watch(rootPath, (next) => {
     <template #footer>
       <BaseButton variant="ghost" @click="close">取消</BaseButton>
       <BaseButton :disabled="loading || (!isMultiple && !pathDraft.trim())" @click="confirm">
-        {{ isMultiple ? '使用所选目录' : '使用当前目录' }}
+        {{ confirmLabel }}
       </BaseButton>
     </template>
   </Modal>
