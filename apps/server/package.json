@@ -6,13 +6,13 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "nest build",
-    "start": "nest start",
-    "dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
+    "build": "pnpm -F @agenthub/agent-core build && nest build",
+    "start": "pnpm -F @agenthub/agent-core build && nest start",
+    "dev": "pnpm -F @agenthub/agent-core build && nest start --watch",
+    "start:debug": "pnpm -F @agenthub/agent-core build && nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.spec.ts\""
+    "test": "pnpm -F @agenthub/agent-core build && node --import tsx --test \"src/**/*.spec.ts\""
   },
   "dependencies": {
     "@agenthub/agent-core": "workspace:*",
