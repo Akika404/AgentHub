@@ -173,9 +173,8 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             })
         }
 
-        const parsed =
-            this.parsePlanObject(result.structuredOutput, req) ??
-            this.parsePlanText(result.text, req)
+        const structuredPlan = this.parsePlanObject(result.structuredOutput, req)
+        const parsed = structuredPlan ?? this.parsePlanText(result.text, req)
         if (!parsed) {
             this.debug.log('group.orchestrator_planner.parse_failed', {
                 groupId: req.group.id,
@@ -190,7 +189,7 @@ export class LlmOrchestratorPlanner implements OrchestratorPlanner {
             })
         }
         parsed.orchestratorSessionId = result.sessionId ?? null
-        const displayText = this.resolveDisplayText(result.text)
+        const displayText = structuredPlan ? undefined : this.resolveDisplayText(result.text)
         if (displayText) parsed.displayText = displayText
         this.debug.log('group.orchestrator_planner.parsed', {
             groupId: req.group.id,
