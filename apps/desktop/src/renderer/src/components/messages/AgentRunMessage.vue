@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { AgentTodoItem } from '../../api'
 import type { AgentRunMessage, AgentRunStep } from '../../types/chatDisplay'
 import { formatTime } from '../../utils/format'
+import { renderMarkdown } from '../../utils/markdown'
 import SenderAvatar from './SenderAvatar.vue'
 
 const props = defineProps<{ message: AgentRunMessage }>()
@@ -10,6 +11,7 @@ const props = defineProps<{ message: AgentRunMessage }>()
 const expanded = ref(false)
 
 const hasText = computed(() => props.message.text.trim().length > 0)
+const renderedText = computed(() => renderMarkdown(props.message.text))
 // 取最后一条快照：todo 每次更新都作为全量快照，历史数据里可能存有多条，
 // 最新的那条才是最终状态（旧逻辑取 find 第一条会退化成只含首个 pending 任务）。
 const planStep = computed(() => props.message.steps.filter((step) => step.type === 'todo').at(-1))
@@ -297,7 +299,7 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
           </div>
         </Transition>
 
-        <div v-if="hasText" class="font-medium text-text-main">{{ message.text }}</div>
+        <div v-if="hasText" class="markdown-body font-medium text-text-main" v-html="renderedText"></div>
       </div>
     </div>
   </div>
