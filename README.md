@@ -33,7 +33,7 @@
 - 子 Agent 完成后，Orchestrator 聚合产出并在聊天流中汇报结果
 - 支持并行调度、失败降级、代码冲突处理
 
-> **实现进度**：群聊协作「最小闭环」MVP 已落地（建群 + 黑板 + MessageRouter + Orchestrator 串行拆解/派发 + 聚合汇报 + ContextAssembler + agent_memory + 再次修改 A/B/C + 子 Agent worktree 执行）。本轮为串行执行，DAG 并行调度 / 冲突检测仲裁 / 失败重试降级留待第二份 spec。详见 [`doc/spec/group-chat-collaboration-mvp.md`](doc/spec/group-chat-collaboration-mvp.md) 与后端 [`apps/server/README.md`](apps/server/README.md) 的「群聊协作模块」。
+> **实现进度**：群聊协作「最小闭环」MVP 已落地（建群 + 黑板 + MessageRouter + Orchestrator 串行拆解/派发 + 聚合汇报 + ContextAssembler + agent_memory + 再次修改 A/B/C + 子 Agent worktree 执行）。本轮为串行执行，DAG 并行调度 / 冲突检测仲裁 / 失败重试降级留待第二份 spec。详见 [`doc/spec/group-chat-collaboration-mvp.md`](doc/spec/group-chat-collaboration-mvp.md) 与后端 [`apps/server/SERVER_README.md`](apps/server/SERVER_README.md) 的「群聊协作模块」。
 > 桌面端当前将单聊和群聊合并在聊天页会话列表中展示；独立群聊页作为群资料页，集中展示成员、目标、工作区与黑板摘要。
 
 #### 3. 多 Agent 接入

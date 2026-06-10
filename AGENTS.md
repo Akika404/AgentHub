@@ -4,22 +4,23 @@ This file provides guidance to Vibe Coding Tools (Claude Code、OpenCode、Trae.
 
 ## Repository layout
 
-pnpm workspace monorepo:
+pnpm workspace monorepo. **每个部分的完整目录树请到对应目录的 README 查看**，本文件只保留顶层概览：
 
 ```
 apps/
-  android/   — Native Android app using Kotlin + Jetpack Compose
-  desktop/   — Electron + Vue 3 renderer (the current main deliverable)
-  server/    — Backend service (placeholder; framework not chosen yet)
+  android/   — Native Android app (Kotlin + Jetpack Compose)        → apps/android/README.md
+  desktop/   — Electron + Vue 3 renderer (current main deliverable) → apps/desktop/README.md
+  server/    — NestJS backend service                               → apps/server/SERVER_README.md
 packages/
-  shared/    — Shared TypeScript types & protocol contracts (consumed by desktop & server)
+  shared/    — Shared TypeScript types & protocol contracts (desktop ↔ server) → packages/shared/README.md
+  agent-core/— Framework-agnostic agent engine (Claude/Codex adapters + workspace git/artifact) → packages/agent-core/README.md
 ```
 
 Root-level configs: `pnpm-workspace.yaml`, `package.json` (workspace scripts), `.prettierrc.yaml`, `.npmrc`.
 
 ## Commands
 
-Root scripts delegate to the desktop app for now (the only runnable app):
+Root scripts delegate to the desktop app (server/android run via their own filters):
 
 ```bash
 pnpm dev          # alias: pnpm -F @agenthub/desktop dev
@@ -34,31 +35,20 @@ Per-package commands use `pnpm -F <pkg> <script>`:
 ```bash
 pnpm -F @agenthub/desktop start       # preview production build
 pnpm -F @agenthub/desktop build:mac   # package for macOS (also :win / :linux)
-pnpm -F @agenthub/shared  typecheck
-pnpm -F @agenthub/server  typecheck
+pnpm -F @agenthub/server  dev         # nest start --watch
+pnpm -F @agenthub/shared  build       # types package → dist/
+pnpm -F @agenthub/agent-core build    # agent engine → dist/
 ```
 
-## Desktop architecture (`apps/desktop/`)
+## Architecture summaries
 
-Standard three-process Electron app using Vue 3 + TypeScript, built with electron-vite.
+完整目录树见各目录 README；这里只给一句话定位：
 
-- `src/main/` — Electron main process. Creates `BrowserWindow`, registers `ipcMain` handlers.
-- `src/preload/` — Context bridge. Exposes APIs to the renderer via `contextBridge`. Add new renderer-accessible APIs here.
-- `src/renderer/` — Vue 3 frontend. Treated as a normal Vite/Vue app; accesses Electron APIs only through `window.electron` / `window.api` (injected by preload).
-
-IPC pattern: renderer calls `window.api.<method>` → preload exposes it via `contextBridge` → main handles it with `ipcMain.handle/on`. Keep IPC surface minimal and typed via `src/preload/index.d.ts`.
-
-Output goes to `apps/desktop/out/` (main/preload compiled) and `apps/desktop/out/renderer/` (Vue bundle).
-
-## Android architecture (`apps/android/`)
-
-Native Android app built with Kotlin and the Jetpack Compose UI toolkit. Follow Android and Compose conventions for screens, state, navigation, and UI components.
-
-## Shared types (`packages/shared/`)
-
-All data types and runtime constants crossing the desktop ↔ server boundary (chat summaries, messages, message-card kinds, network nodes, the `AgentHubApi` interface, local-runner protocol constants) live here and are imported as `@agenthub/shared`. Runtime consumers load compiled output from `packages/shared/dist`, while TypeScript types continue to resolve from `packages/shared/src`.
-
-When changing an API shape, edit it in `packages/shared/src/` so both ends pick up the change.
+- **Desktop** (`apps/desktop/`) — 三进程 Electron：`src/main/`（主进程 + IPC + 本地 runner）、`src/preload/`（`contextBridge` 暴露 `window.api`）、`src/renderer/`（Vue 3，仅通过 `window.api` 访问 Electron）。详见 `apps/desktop/README.md`。
+- **Server** (`apps/server/`) — NestJS：`user` / `platform-provider` / `multiagents`（单聊 turn runtime）/ `multiagents/group`（群聊协作 + Orchestrator）/ `workspace-fs` 等模块。详见 `apps/server/SERVER_README.md`。
+- **Android** (`apps/android/`) — 原生 Kotlin + Jetpack Compose（Material 3），单 Activity + `AppViewModel`。详见 `apps/android/README.md`。
+- **shared** (`packages/shared/`) — 跨 desktop ↔ server 的类型与协议契约（`@agenthub/shared`）。改 API 形状时改 `src/`，两端同步。详见 `packages/shared/README.md`。
+- **agent-core** (`packages/agent-core/`) — 框架无关的 Agent 引擎（Claude/Codex 适配器 + 工作区 git/产物预览），被 desktop 主进程与 server 复用。详见 `packages/agent-core/README.md`。
 
 ## Coding Rules
 
@@ -67,5 +57,5 @@ Before taking any action, if there is no rules-related content in your context, 
 
 ## Submodule Rules
 
-- Before modifying any code under `apps/server`, you **must** first read `apps/server/AGENTS.md`.
+- Before modifying any code under `apps/server`, you **must** first read `apps/server/AGENTS.md` (backend dev rules). 目录结构与模块/接口文档在 `apps/server/SERVER_README.md`。
 - For any change involving the frontend-backend contract, **both files must be read**.
