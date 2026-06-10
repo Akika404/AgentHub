@@ -636,32 +636,53 @@ private fun MessageCard(message: DisplayMessage, onPreviewArtifact: (com.aichall
         }
         is TextDisplayMessage -> {
             val mine = message.sender.role == "user"
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-                Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, modifier = Modifier.fillMaxWidth(0.82f)) {
-                    Text(message.sender.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Surface(
-                        modifier = Modifier.border(
-                            1.dp,
-                            if (mine) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline,
-                            RoundedCornerShape(10.dp)
-                        ),
-                        color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(10.dp),
-                        shadowElevation = if (mine) 0.dp else 1.dp
-                    ) {
-                        Text(
-                            message.text,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                        )
+            val bubble: @Composable () -> Unit = {
+                Surface(
+                    modifier = Modifier.border(
+                        1.dp,
+                        if (mine) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outline,
+                        RoundedCornerShape(10.dp)
+                    ),
+                    color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(10.dp),
+                    shadowElevation = if (mine) 0.dp else 1.dp
+                ) {
+                    Text(
+                        message.text,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+                verticalAlignment = Alignment.Top
+            ) {
+                if (!mine) {
+                    Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 36.dp, avatar = message.sender.avatar)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Column(
+                    horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    if (!mine) {
+                        Text(message.sender.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    bubble()
+                }
+                if (mine) {
+                    Spacer(Modifier.width(8.dp))
+                    Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 36.dp, avatar = message.sender.avatar)
                 }
             }
         }
         is AgentRunDisplayMessage -> AgentCardSurface {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp)
+                    Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp, avatar = message.sender.avatar)
                     Spacer(Modifier.width(8.dp))
                     Text("${message.sender.name} · ${message.status}", fontWeight = FontWeight.SemiBold)
                 }
@@ -720,7 +741,7 @@ private fun DeployCard(message: DeployDisplayMessage, onPreviewArtifact: (com.ai
     AgentCardSurface {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp)
+                Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp, avatar = message.sender.avatar)
                 Spacer(Modifier.width(8.dp))
                 Text(message.sender.name, fontWeight = FontWeight.SemiBold)
             }
@@ -768,7 +789,7 @@ private fun SettingsPage(state: AppUiState, viewModel: AppViewModel, agentChat: 
             item {
                 DetailCard("Agent") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(agentInitials(agentChat.agent.name), agentChat.agent.color, Icons.Default.Person)
+                        Avatar(agentInitials(agentChat.agent.name), agentChat.agent.color, Icons.Default.Person, avatar = agentChat.agent.avatar)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(agentChat.agent.name, fontWeight = FontWeight.SemiBold)
@@ -802,7 +823,7 @@ private fun SettingsPage(state: AppUiState, viewModel: AppViewModel, agentChat: 
                 DetailCard("成员") {
                     group.members.forEach { member ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(agentInitials(member.name), member.color, Icons.Default.Person, size = 32.dp)
+                            Avatar(agentInitials(member.name), member.color, Icons.Default.Person, size = 32.dp, avatar = member.avatar)
                             Spacer(Modifier.width(8.dp))
                             Column {
                                 Text(member.name, fontWeight = FontWeight.Medium)
@@ -939,7 +960,7 @@ private fun AgentCard(agent: AgentView, viewModel: AppViewModel) {
     var menu by remember { mutableStateOf(false) }
     AgentCardSurface {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(agentInitials(agent.name), agent.color, Icons.Default.Person)
+            Avatar(agentInitials(agent.name), agent.color, Icons.Default.Person, avatar = agent.avatar)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(agent.name, fontWeight = FontWeight.SemiBold)
@@ -957,18 +978,28 @@ private fun AgentCard(agent: AgentView, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun Avatar(text: String, color: String?, icon: ImageVector, size: androidx.compose.ui.unit.Dp = 42.dp) {
+private fun Avatar(
+    text: String,
+    color: String?,
+    icon: ImageVector,
+    size: androidx.compose.ui.unit.Dp = 42.dp,
+    avatar: String? = null
+) {
+    val bitmap = remember(avatar) { avatar?.takeIf { it.isNotBlank() }?.let(::decodeDataUrlBitmap) }
     val parsed = remember(color) { runCatching { Color(android.graphics.Color.parseColor(color ?: "#3370ff")) }.getOrDefault(Color(0xFF3370FF)) }
     val contentColor = if (parsed.luminance() > 0.62f) MaterialTheme.colorScheme.onSurface else Color.White
     Box(
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(8.dp))
-            .background(parsed),
+            .background(if (bitmap == null) parsed else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
-        if (text.isBlank()) Icon(icon, contentDescription = null, tint = contentColor)
-        else Text(text.take(2), color = contentColor, fontWeight = FontWeight.Bold)
+        when {
+            bitmap != null -> Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            text.isBlank() -> Icon(icon, contentDescription = null, tint = contentColor)
+            else -> Text(text.take(2), color = contentColor, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

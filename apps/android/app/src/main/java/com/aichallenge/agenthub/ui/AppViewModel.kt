@@ -285,7 +285,7 @@ class AppViewModel(
     }
 
     private suspend fun loadMessages(key: String) {
-        val userName = currentUserName()
+        val userSender = currentUserSender()
         val kind = sessionKind(key)
         val rawId = sessionRawId(key)
         val existingRun = messageCache[key].orEmpty().activeRunMessage()
@@ -294,7 +294,7 @@ class AppViewModel(
                 if (mutableState.value.activeKey == key) mutableState.update { it.copy(messagesLoading = false) }
                 return
             }
-            val loaded = agentChatRepository.messages(rawId).map { agentMessageToDisplay(it, chat, userName) }
+            val loaded = agentChatRepository.messages(rawId).map { agentMessageToDisplay(it, chat, userSender) }
             loaded.withActivePlaceholder(
                 existing = existingRun,
                 active = chat.activeTurnId != null,
@@ -307,7 +307,7 @@ class AppViewModel(
                 if (mutableState.value.activeKey == key) mutableState.update { it.copy(messagesLoading = false) }
                 return
             }
-            val loaded = groupChatRepository.messages(rawId).map { groupMessageToDisplay(it, group.members, userName) }
+            val loaded = groupChatRepository.messages(rawId).map { groupMessageToDisplay(it, group.members, userSender) }
             loaded.withActivePlaceholder(
                 existing = existingRun,
                 active = group.activeRunId != null,
@@ -382,7 +382,7 @@ class AppViewModel(
                 id = "local-user-${System.nanoTime()}",
                 chatId = chatId,
                 timestamp = java.time.Instant.now().toString(),
-                sender = SenderInfo("me", currentUserName(), "user"),
+                sender = currentUserSender(),
                 text = text
             )
         )
@@ -411,7 +411,7 @@ class AppViewModel(
                 id = "local-user-${System.nanoTime()}",
                 chatId = groupId,
                 timestamp = java.time.Instant.now().toString(),
-                sender = SenderInfo("me", currentUserName(), "user"),
+                sender = currentUserSender(),
                 text = text
             )
         )
@@ -955,6 +955,11 @@ class AppViewModel(
     private fun currentUserName(): String {
         val user = mutableState.value.session.user
         return user?.nickname?.trim()?.takeIf { it.isNotBlank() } ?: user?.account ?: "我"
+    }
+
+    private fun currentUserSender(): SenderInfo {
+        val user = mutableState.value.session.user
+        return SenderInfo("me", currentUserName(), "user", avatar = user?.avatar)
     }
 
     private fun errorMessage(err: Throwable, fallback: String): String =

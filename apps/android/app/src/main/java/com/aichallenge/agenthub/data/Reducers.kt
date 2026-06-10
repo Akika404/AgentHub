@@ -117,12 +117,12 @@ fun deriveChatItems(
         )
 }
 
-fun agentMessageToDisplay(view: AgentChatMessageView, chat: AgentChatView, currentUserName: String): DisplayMessage {
+fun agentMessageToDisplay(view: AgentChatMessageView, chat: AgentChatView, currentUser: SenderInfo): DisplayMessage {
     if (view.role == "system") {
         return SystemDisplayMessage(view.id, view.chatId, view.createdAt, view.text)
     }
     val sender = if (view.role == "user") {
-        SenderInfo("me", currentUserName, "user")
+        currentUser
     } else {
         SenderInfo(chat.agent.id, chat.agent.name, "agent", chat.agent.color, chat.agent.avatar)
     }
@@ -152,14 +152,14 @@ private fun runStepFromView(view: AgentRunStepView): AgentRunStep? {
     }
 }
 
-fun groupMessageToDisplay(view: GroupMessageView, members: List<GroupMemberView>, currentUserName: String): DisplayMessage {
+fun groupMessageToDisplay(view: GroupMessageView, members: List<GroupMemberView>, currentUser: SenderInfo): DisplayMessage {
     val baseChatId = view.groupChatId
     if (view.kind == "system" || view.senderRole == "system") {
         return SystemDisplayMessage(view.id, baseChatId, view.createdAt, view.text.orEmpty())
     }
     val member = view.senderAgentId?.let { id -> members.find { it.agentId == id } }
     val sender = when (view.senderRole) {
-        "user" -> SenderInfo("me", currentUserName, "user")
+        "user" -> currentUser
         "orchestrator" -> SenderInfo("orchestrator", "Orchestrator", "orchestrator", "#7b61ff")
         else -> SenderInfo(
             view.senderAgentId ?: "agent",
