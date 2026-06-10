@@ -2,6 +2,7 @@ package com.aichallenge.agenthub.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -70,6 +73,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -90,14 +94,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.aichallenge.agenthub.data.AgentQuestionDisplayMessage
 import com.aichallenge.agenthub.data.AgentRunDisplayMessage
 import com.aichallenge.agenthub.data.AgentView
@@ -106,6 +115,7 @@ import com.aichallenge.agenthub.data.CreateAgentChatPayload
 import com.aichallenge.agenthub.data.CreateAgentPayload
 import com.aichallenge.agenthub.data.CreateGroupChatPayload
 import com.aichallenge.agenthub.data.DEFAULT_API_BASE_URL
+import com.aichallenge.agenthub.data.DeployDisplayMessage
 import com.aichallenge.agenthub.data.DisplayMessage
 import com.aichallenge.agenthub.data.GroupChatView
 import com.aichallenge.agenthub.data.OptionsDisplayMessage
@@ -117,10 +127,14 @@ import com.aichallenge.agenthub.data.TaskListDisplayMessage
 import com.aichallenge.agenthub.data.TextDisplayMessage
 import com.aichallenge.agenthub.data.VENDOR_CAPABILITIES
 import com.aichallenge.agenthub.data.agentInitials
+import com.aichallenge.agenthub.data.artifactFileName
+import com.aichallenge.agenthub.data.artifactKindLabel
+import com.aichallenge.agenthub.data.formatBytes
 import com.aichallenge.agenthub.data.isVendorProviderCompatible
 import com.aichallenge.agenthub.data.sessionKind
 import com.aichallenge.agenthub.data.sessionRawId
 import com.aichallenge.agenthub.data.sessionKey
+import com.aichallenge.agenthub.data.shouldShowBlackboardArtifact
 import com.aichallenge.agenthub.data.validateAgentForm
 import com.aichallenge.agenthub.data.validateGroupForm
 import com.aichallenge.agenthub.data.vendorLabel
@@ -518,25 +532,41 @@ private fun ChatDetailScreen(state: AppUiState, viewModel: AppViewModel, activeK
             if (page == 0) {
                 ConversationPage(state, viewModel, activeKey, archived, running)
             } else {
-                SettingsPage(state, activeAgentChat, activeGroup)
+                SettingsPage(state, viewModel, activeAgentChat, activeGroup)
             }
         }
+    }
+
+    val previewState = state.artifactPreview
+    if (previewState.open) {
+        ArtifactPreviewSheet(previewState, onClose = viewModel::closeArtifactPreview)
     }
 }
 
 @Composable
 private fun ConversationPage(state: AppUiState, viewModel: AppViewModel, activeKey: String, archived: Boolean, running: Boolean) {
     var input by rememberSaveable(activeKey) { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    // Jump to the latest message when the chat opens or loading finishes, then keep
+    // pinned to the bottom as new messages stream in.
+    LaunchedEffect(activeKey, state.messagesLoading, state.messages.size) {
+        if (!state.messagesLoading && state.messages.isNotEmpty()) {
+            listState.scrollToItem(state.messages.lastIndex)
+        }
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         if (state.messagesLoading) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(state.messages, key = { it.id }) { message -> MessageCard(message) }
+                items(state.messages, key = { it.id }) { message -> MessageCard(message, viewModel::openArtifactPreview) }
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f))
@@ -596,7 +626,7 @@ private fun ConversationPage(state: AppUiState, viewModel: AppViewModel, activeK
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MessageCard(message: DisplayMessage) {
+private fun MessageCard(message: DisplayMessage, onPreviewArtifact: (com.aichallenge.agenthub.data.BlackboardArtifact) -> Unit) {
     when (message) {
         is SystemDisplayMessage -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(message.text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -677,12 +707,55 @@ private fun MessageCard(message: DisplayMessage) {
                 message.answerText?.let { Text("已回复：$it", style = MaterialTheme.typography.bodySmall) }
             }
         }
+        is DeployDisplayMessage -> DeployCard(message, onPreviewArtifact)
+    }
+}
+
+@Composable
+private fun DeployCard(message: DeployDisplayMessage, onPreviewArtifact: (com.aichallenge.agenthub.data.BlackboardArtifact) -> Unit) {
+    val isService = message.manifest.mode == "service"
+    AgentCardSurface {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(message.sender.name.take(2), message.sender.color, Icons.Default.Person, size = 30.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(message.sender.name, fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                if (isService) "可运行的项目" else "可预览的产物",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                message.manifest.note ?: if (isService) "本轮交付了一个需要运行的网页项目，请在桌面端运行预览。" else "本轮交付了可直接预览的产物。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (isService) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        message.manifest.installCommand?.let { Text("$ $it", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                        message.manifest.command?.let { Text("$ $it", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                        message.manifest.port?.let { Text("# 端口 $it", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+                Text("运行预览请在桌面端进行。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                message.artifacts.forEach { artifact ->
+                    ArtifactRow(artifact) { onPreviewArtifact(artifact) }
+                }
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SettingsPage(state: AppUiState, agentChat: com.aichallenge.agenthub.data.AgentChatView?, group: GroupChatView?) {
+private fun SettingsPage(state: AppUiState, viewModel: AppViewModel, agentChat: com.aichallenge.agenthub.data.AgentChatView?, group: GroupChatView?) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -750,13 +823,55 @@ private fun SettingsPage(state: AppUiState, agentChat: com.aichallenge.agenthub.
                 }
             }
             item {
-                DetailCard("产出 / 决策 / 契约") {
+                DetailCard("产出物") {
                     val board = state.blackboard
-                    Text("产出物 ${board?.artifacts?.size ?: 0}")
+                    val artifacts = board?.artifacts?.filter(::shouldShowBlackboardArtifact).orEmpty()
+                    if (artifacts.isEmpty()) {
+                        Text("暂无产出物", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        artifacts.forEach { artifact ->
+                            ArtifactRow(artifact) { viewModel.openArtifactPreview(artifact) }
+                        }
+                    }
+                }
+            }
+            item {
+                DetailCard("决策 / 契约") {
+                    val board = state.blackboard
                     Text("决策 ${board?.decisions?.size ?: 0}")
                     Text("契约 ${board?.contracts?.size ?: 0}")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ArtifactRow(artifact: com.aichallenge.agenthub.data.BlackboardArtifact, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    artifactFileName(artifact.path),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text("v${artifact.version}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (artifact.summary.isNotBlank()) {
+                Text(artifact.summary, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("${artifact.status} · 点击预览", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -1400,6 +1515,137 @@ private fun DirectoryEntryRow(entry: ServerDirectoryEntry, picker: DirectoryPick
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ArtifactPreviewSheet(state: ArtifactPreviewState, onClose: () -> Unit) {
+    val artifact = state.artifact ?: return
+    val preview = state.preview
+    val title = preview?.fileName ?: artifactFileName(artifact.path)
+    val subtitle = preview?.let { "${artifactKindLabel(it.previewKind)} · ${formatBytes(it.size)}" } ?: "准备预览"
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = sheetState,
+        dragHandle = null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(WindowInsets.statusBars.asPaddingValues())
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                AgentIconButton(Icons.Default.Close, "关闭预览", onClick = onClose)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.75f))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                when {
+                    state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    state.error != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(state.error, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                    }
+                    preview != null -> ArtifactPreviewBody(preview)
+                    else -> Box(Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArtifactPreviewBody(preview: com.aichallenge.agenthub.data.BlackboardArtifactPreview) {
+    when {
+        preview.previewKind == "text" && preview.content != null -> {
+            Text(
+                preview.content,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp),
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        preview.previewKind == "html" && preview.content != null -> {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    android.webkit.WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        // Fit page to the WebView width; without this a page lacking a
+                        // viewport meta tag is laid out at ~980px and crammed top-left.
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+                    }
+                },
+                update = { webView ->
+                    webView.loadDataWithBaseURL(null, preview.content, "text/html", "utf-8", null)
+                }
+            )
+        }
+
+        preview.previewKind == "image" && preview.dataUrl != null -> {
+            val bitmap = remember(preview.dataUrl) { decodeDataUrlBitmap(preview.dataUrl) }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = preview.fileName,
+                    modifier = Modifier.fillMaxSize().padding(12.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                ArtifactPreviewFallback(preview)
+            }
+        }
+
+        else -> ArtifactPreviewFallback(preview)
+    }
+}
+
+@Composable
+private fun ArtifactPreviewFallback(preview: com.aichallenge.agenthub.data.BlackboardArtifactPreview) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(preview.fileName, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(
+            preview.message ?: "该文件类型暂不支持在应用内预览。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(4.dp))
+        Text("type: ${preview.mimeType}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("size: ${formatBytes(preview.size)}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("path: ${preview.artifact.path}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
+}
+
+/** Decode a `data:<mime>;base64,<payload>` URL into a Compose ImageBitmap. */
+private fun decodeDataUrlBitmap(dataUrl: String): androidx.compose.ui.graphics.ImageBitmap? = runCatching {
+    val base64 = dataUrl.substringAfter("base64,", "").ifBlank { return null }
+    val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+}.getOrNull()
 
 @Composable
 private fun SheetContent(title: String, content: @Composable ColumnScope.() -> Unit) {

@@ -295,6 +295,21 @@ data class AgentQuestion(
     val allowText: Boolean? = null
 )
 
+/**
+ * Deploy card manifest. Mirrors `DeployManifest` in
+ * `packages/shared/src/deployment.ts`. `static` describes a previewable entry
+ * file; `service` describes a runnable dev server (command/port).
+ */
+@Serializable
+data class DeployManifest(
+    val mode: String,
+    val entryPath: String? = null,
+    val command: String? = null,
+    val installCommand: String? = null,
+    val port: Int? = null,
+    val note: String? = null
+)
+
 @Serializable
 data class GroupMessageView(
     val id: String,
@@ -315,7 +330,9 @@ data class GroupMessageView(
     val questions: List<AgentQuestion> = emptyList(),
     val summary: String? = null,
     val answerText: String? = null,
-    val replyTo: MessageReplyRef? = null
+    val replyTo: MessageReplyRef? = null,
+    val manifest: DeployManifest? = null,
+    val artifacts: List<BlackboardArtifact> = emptyList()
 )
 
 @Serializable
@@ -370,6 +387,25 @@ data class BlackboardView(
     val decisions: List<BlackboardDecision> = emptyList(),
     val contracts: List<BlackboardContract> = emptyList(),
     val taskGraph: List<BlackboardTaskNode> = emptyList()
+)
+
+/**
+ * Artifact preview payload. Mirrors `BlackboardArtifactPreview` in
+ * `packages/shared/src/blackboard.ts`. `content` is set for text/html kinds,
+ * `dataUrl` (base64 data URL) for image/pdf/audio/video; both null for the
+ * fallback kinds (office/binary/too_large), where `message` explains why.
+ */
+@Serializable
+data class BlackboardArtifactPreview(
+    val artifact: BlackboardArtifact,
+    val fileName: String,
+    val extension: String,
+    val mimeType: String,
+    val size: Int,
+    val previewKind: String,
+    val content: String? = null,
+    val dataUrl: String? = null,
+    val message: String? = null
 )
 
 @Serializable
@@ -453,6 +489,15 @@ data class AgentQuestionDisplayMessage(
     val summary: String,
     val answered: Boolean = false,
     val answerText: String? = null
+) : DisplayMessage
+
+data class DeployDisplayMessage(
+    override val id: String,
+    override val chatId: String,
+    override val timestamp: String,
+    val sender: SenderInfo,
+    val manifest: DeployManifest,
+    val artifacts: List<BlackboardArtifact>
 ) : DisplayMessage
 
 data class AgentRunStep(

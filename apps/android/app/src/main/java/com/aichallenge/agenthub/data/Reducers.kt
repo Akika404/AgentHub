@@ -19,6 +19,37 @@ fun sessionRawId(key: String): String = key.substringAfter(':', "")
 fun agentInitials(name: String): String =
     name.trim().take(2).ifBlank { "AG" }.uppercase()
 
+/** Hidden agent-runtime dirs that should never surface as user-facing artifacts. */
+private val HIDDEN_ARTIFACT_DIRS = setOf(".codex", ".agents", ".claude")
+
+/** Mirrors `shouldShowBlackboardArtifact` in the desktop renderer. */
+fun shouldShowBlackboardArtifact(artifact: BlackboardArtifact): Boolean =
+    artifact.path.split('/', '\\').none { it in HIDDEN_ARTIFACT_DIRS }
+
+/** Last path segment, used as the artifact's display title. */
+fun artifactFileName(path: String): String = path.split('/', '\\').lastOrNull()?.ifBlank { path } ?: path
+
+/** Short human label for an artifact's preview kind. */
+fun artifactKindLabel(kind: String): String = when (kind) {
+    "text" -> "文本"
+    "html" -> "HTML"
+    "pdf" -> "PDF"
+    "image" -> "图片"
+    "audio" -> "音频"
+    "video" -> "视频"
+    "office" -> "Office"
+    "too_large" -> "过大"
+    "binary" -> "二进制"
+    else -> "预览"
+}
+
+/** Human-readable byte size, matching the desktop `formatBytes` helper. */
+fun formatBytes(size: Int): String = when {
+    size < 1024 -> "$size B"
+    size < 1024 * 1024 -> "${"%.1f".format(size / 1024.0)} KB"
+    else -> "${"%.1f".format(size / 1024.0 / 1024.0)} MB"
+}
+
 fun titleForChat(chat: AgentChatView): String =
     chat.title?.trim()?.takeIf { it.isNotBlank() } ?: "${chat.agent.name} ${chat.createdAt.take(10)}"
 
@@ -151,6 +182,11 @@ fun groupMessageToDisplay(view: GroupMessageView, members: List<GroupMemberView>
             view.answered == true,
             view.answerText
         )
+        "deploy" -> if (view.manifest != null) {
+            DeployDisplayMessage(view.id, baseChatId, view.createdAt, sender, view.manifest, view.artifacts)
+        } else {
+            TextDisplayMessage(view.id, baseChatId, view.createdAt, sender, view.text.orEmpty(), view.replyTo)
+        }
         else -> {
             val steps = view.steps.mapNotNull(::runStepFromView)
             if (view.senderRole == "agent" && steps.isNotEmpty()) {

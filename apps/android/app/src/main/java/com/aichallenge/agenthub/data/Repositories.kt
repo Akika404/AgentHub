@@ -102,6 +102,12 @@ class GroupChatRepository(private val api: ApiClient) {
 
     suspend fun blackboard(id: String): BlackboardView =
         api.get("/group-chats/$id/blackboard", BlackboardView.serializer())
+
+    suspend fun artifactPreview(id: String, artifactId: String): BlackboardArtifactPreview =
+        api.get(
+            "/group-chats/$id/blackboard/artifacts/$artifactId/preview",
+            BlackboardArtifactPreview.serializer()
+        )
 }
 
 class WorkspaceFsRepository(private val api: ApiClient) {

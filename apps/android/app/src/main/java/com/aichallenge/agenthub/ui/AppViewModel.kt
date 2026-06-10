@@ -11,6 +11,8 @@ import com.aichallenge.agenthub.data.AgentRunDisplayMessage
 import com.aichallenge.agenthub.data.ApiClient
 import com.aichallenge.agenthub.data.ApiException
 import com.aichallenge.agenthub.data.AuthRepository
+import com.aichallenge.agenthub.data.BlackboardArtifact
+import com.aichallenge.agenthub.data.BlackboardArtifactPreview
 import com.aichallenge.agenthub.data.BlackboardView
 import com.aichallenge.agenthub.data.ChatListItem
 import com.aichallenge.agenthub.data.CreateAgentChatPayload
@@ -108,9 +110,20 @@ data class AppUiState(
     val runtime: RuntimeState = RuntimeState(),
     val runningKeys: Set<String> = emptySet(),
     val blackboard: BlackboardView? = null,
+    val artifactPreview: ArtifactPreviewState = ArtifactPreviewState(),
     val directoryPicker: DirectoryPickerState = DirectoryPickerState(),
     val pickedPaths: Map<DirectoryTarget, List<String>> = emptyMap()
 )
+
+/** Drives the read-only artifact preview sheet for the active group chat. */
+data class ArtifactPreviewState(
+    val artifact: BlackboardArtifact? = null,
+    val loading: Boolean = false,
+    val preview: BlackboardArtifactPreview? = null,
+    val error: String? = null
+) {
+    val open: Boolean get() = artifact != null
+}
 
 data class RunningStream(val id: String, val handle: StreamHandle)
 
@@ -257,7 +270,8 @@ class AppViewModel(
                     messages = messageCache[key].orEmpty(),
                     messagesLoading = !messageCache.containsKey(key),
                     runtime = RuntimeState(),
-                    blackboard = null
+                    blackboard = null,
+                    artifactPreview = ArtifactPreviewState()
                 )
             }
             runCatching { loadMessages(key) }
@@ -315,6 +329,35 @@ class AppViewModel(
                     mutableState.update { it.copy(blackboard = board) }
                 }
             }
+    }
+
+    /** Open the artifact preview sheet and fetch its content for the active group. */
+    fun openArtifactPreview(artifact: BlackboardArtifact) {
+        val key = mutableState.value.activeKey ?: return
+        if (sessionKind(key) != "group") return
+        val groupId = sessionRawId(key)
+        mutableState.update {
+            it.copy(artifactPreview = ArtifactPreviewState(artifact = artifact, loading = true))
+        }
+        viewModelScope.launch {
+            runCatching { groupChatRepository.artifactPreview(groupId, artifact.id) }
+                .onSuccess { preview ->
+                    mutableState.update { state ->
+                        if (state.artifactPreview.artifact?.id != artifact.id) state
+                        else state.copy(artifactPreview = state.artifactPreview.copy(loading = false, preview = preview, error = null))
+                    }
+                }
+                .onFailure { err ->
+                    mutableState.update { state ->
+                        if (state.artifactPreview.artifact?.id != artifact.id) state
+                        else state.copy(artifactPreview = state.artifactPreview.copy(loading = false, error = errorMessage(err, "加载预览失败")))
+                    }
+                }
+        }
+    }
+
+    fun closeArtifactPreview() {
+        mutableState.update { it.copy(artifactPreview = ArtifactPreviewState()) }
     }
 
     fun sendMessage(text: String) {
@@ -882,7 +925,7 @@ class AppViewModel(
 
     private fun clearActiveChat() {
         mutableState.update {
-            it.copy(activeKey = null, messages = emptyList(), messagesLoading = false, runtime = RuntimeState(), blackboard = null)
+            it.copy(activeKey = null, messages = emptyList(), messagesLoading = false, runtime = RuntimeState(), blackboard = null, artifactPreview = ArtifactPreviewState())
         }
     }
 
