@@ -12,10 +12,10 @@ export interface GroupSenderMeta {
 function resolveSender(
   view: GroupMessageView,
   members: Map<string, GroupSenderMeta>,
-  currentUserName: string
+  currentUserSender: SenderInfo
 ): SenderInfo {
   if (view.senderRole === 'user') {
-    return { id: 'me', name: currentUserName, role: 'user', accent: 'primary' }
+    return currentUserSender
   }
   if (view.senderRole === 'orchestrator') {
     return {
@@ -41,7 +41,7 @@ function resolveSender(
 export function groupMessageToDisplay(
   view: GroupMessageView,
   members: Map<string, GroupSenderMeta>,
-  currentUserName: string
+  currentUserSender: SenderInfo
 ): ChatDisplayMessage {
   const base = {
     id: view.id,
@@ -53,7 +53,7 @@ export function groupMessageToDisplay(
   if (view.kind === 'system') {
     return { ...base, kind: 'system', text: view.text }
   }
-  const sender = resolveSender(view, members, currentUserName)
+  const sender = resolveSender(view, members, currentUserSender)
   if (view.kind === 'task-list') {
     return { ...base, kind: 'task-list', sender, heading: view.heading, tasks: view.tasks }
   }

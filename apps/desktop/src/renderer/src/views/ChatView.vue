@@ -1294,9 +1294,8 @@ async function loadGroupMessages(
   try {
     const history = await groupChatApi.listMessages(groupId)
     const members = groupMemberMeta(group)
-    const next = history.map((message) =>
-      groupMessageToDisplay(message, members, currentUserSender().name)
-    )
+    const currentUser = currentUserSender()
+    const next = history.map((message) => groupMessageToDisplay(message, members, currentUser))
     messageCache.set(sessionKey, next)
     if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
       messages.value = next
