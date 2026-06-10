@@ -62,6 +62,8 @@ export class LocalRunnerService {
     this.reconnectAttempts = 0
     this.deviceId ??= await this.loadOrCreateDeviceId()
     this.engines = await this.probeEngines()
+    // [DIAG] 临时诊断：定位 runner 不连接问题。定位完可删。
+    console.log('[DIAG runner] start: url=%s engines=%o', runnerWsUrl(), this.engines)
     this.connect()
   }
 
@@ -94,6 +96,7 @@ export class LocalRunnerService {
 
     socket.on('open', () => {
       this.reconnectAttempts = 0
+      console.log('[DIAG runner] ws open -> sending hello')
       this.send({
         type: 'hello',
         protocolVersion: LOCAL_RUNNER_PROTOCOL_VERSION,
@@ -106,11 +109,13 @@ export class LocalRunnerService {
       const msg = this.parse(raw)
       if (msg) void this.dispatch(msg)
     })
-    socket.on('close', () => {
+    socket.on('close', (code, reason) => {
+      console.log('[DIAG runner] ws close code=%d reason=%s', code, reason?.toString())
       if (this.socket === socket) this.socket = null
       this.scheduleReconnect()
     })
-    socket.on('error', () => {
+    socket.on('error', (err) => {
+      console.log('[DIAG runner] ws error:', err?.message ?? err)
       // close 会随后触发，重连逻辑在 close 里统一处理。
     })
   }

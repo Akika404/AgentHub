@@ -79,20 +79,27 @@ export class LocalRunnerGateway implements OnModuleInit, OnModuleDestroy {
         return this.connections.get(userId)?.deviceId ?? null
     }
 
-    private async onConnection(socket: WebSocket, req: IncomingMessage): Promise<void> {
-        const userId = await this.authenticate(req)
-        if (!userId) {
-            socket.close(4401, 'unauthorized')
-            return
-        }
+    private onConnection(socket: WebSocket, req: IncomingMessage): void {
+        // 同步捕获第一帧（hello）：authenticate 是异步的（verify token + Redis 撤销检查）。
+        // 若等鉴权完成再 attach 监听，客户端在 open 后立刻发来的 hello 会落在 await 窗口内，
+        // 而此时还没有 'message' 监听 —— EventEmitter 会直接丢弃该事件，导致连接「鉴权通过却
+        // 永远等不到 hello」、注册不上。故必须在 'connection' 同一 tick 内就挂上 once('message')。
+        const helloRaw = new Promise<unknown>((resolve) => socket.once('message', resolve))
 
-        socket.once('message', (raw) => {
-            const msg = this.parse(raw)
+        void this.authenticate(req).then(async (userId) => {
+            if (!userId) {
+                socket.close(4401, 'unauthorized')
+                return
+            }
+            const msg = this.parse(await helloRaw)
             if (!msg || msg.type !== 'hello') {
                 socket.close(4400, 'expected hello')
                 return
             }
             if (msg.protocolVersion !== LOCAL_RUNNER_PROTOCOL_VERSION) {
+                this.logger.warn(
+                    `Runner protocol mismatch (user=${userId}): got ${msg.protocolVersion}, expected ${LOCAL_RUNNER_PROTOCOL_VERSION}`
+                )
                 socket.close(4426, 'protocol version mismatch')
                 return
             }
