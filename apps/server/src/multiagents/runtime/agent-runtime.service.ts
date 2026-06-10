@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { randomUUID } from 'node:crypto'
 import { createAgent, type AgentEvent, type AgentVendor } from '../adapter/index.js'
-import type { LocalRunConfig, MessageReplyRef } from '@agenthub/shared'
+import { LOCAL_DEFAULT_MODEL, type LocalRunConfig, type MessageReplyRef } from '@agenthub/shared'
 import { Agent } from '../entities/agent.entity.js'
 import { AgentSession } from '../entities/agent-session.entity.js'
 import type { LiveAgent } from '../live-agent.js'
@@ -436,7 +436,7 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         }
         const runConfig: LocalRunConfig = {
             id: session.id,
-            model: agent.model,
+            ...(agent.model !== LOCAL_DEFAULT_MODEL ? { model: agent.model } : {}),
             workingDirectory: session.workingDirectory,
             reasoningEffort: (agent.reasoningEffort as LocalRunConfig['reasoningEffort']) ?? undefined,
             systemPrompt: agent.systemPrompt ?? undefined,

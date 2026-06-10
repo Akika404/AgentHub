@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { randomUUID } from 'node:crypto'
 import { Repository } from 'typeorm'
+import { LOCAL_DEFAULT_MODEL } from '@agenthub/shared'
 import { getCapabilities } from '../adapter/index.js'
 import { CreateAgentDto } from '../dto/create-agent.dto.js'
 import { UpdateAgentDto } from '../dto/update-agent.dto.js'
@@ -74,7 +75,7 @@ export class AgentConfigService {
             vendor: dto.vendor,
             executionMode: 'local',
             platformProviderId: null,
-            model: dto.model,
+            model: dto.model?.trim() || LOCAL_DEFAULT_MODEL,
             // 本机解析：服务器不管理 local agent 的 home 目录
             agentHomeDirectory: '',
             workingDirectory,
@@ -99,6 +100,10 @@ export class AgentConfigService {
                 'Server-execution agents require platformProviderId'
             )
         }
+        const model = dto.model?.trim()
+        if (!model) {
+            throw BusinessException.badRequest('Server-execution agents require model')
+        }
         const caps = getCapabilities(dto.vendor)
 
         const provider = await this.providerService.resolveRuntimeConfig(
@@ -106,7 +111,7 @@ export class AgentConfigService {
             dto.platformProviderId
         )
         this.policy.assertVendorProviderCompatible(dto.vendor, provider.type)
-        this.policy.assertModelInList(dto.model, provider.modelList)
+        this.policy.assertModelInList(model, provider.modelList)
 
         const agentId = randomUUID()
         const workingDirectory = await this.userWorkspace.assertPathInRoot(
@@ -146,7 +151,7 @@ export class AgentConfigService {
             vendor: dto.vendor,
             executionMode: 'server',
             platformProviderId: dto.platformProviderId,
-            model: dto.model,
+            model,
             agentHomeDirectory,
             workingDirectory,
             systemPrompt: dto.systemPrompt ?? null,

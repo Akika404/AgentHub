@@ -8,7 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu.vue'
 import BaseButton from '../components/ui/BaseButton.vue'
 import BaseSkeleton from '../components/ui/BaseSkeleton.vue'
-import { vendorLabel } from '../utils/vendor'
+import { agentModelLabel, vendorLabel } from '../utils/vendor'
 
 const agents = ref<AgentView[]>([])
 const providers = ref<PlatformProviderView[]>([])
@@ -255,7 +255,7 @@ onMounted(load)
               <span
                 class="inline-flex min-w-0 max-w-[8.75rem] items-center rounded-sm border border-surface-border bg-surface-hover px-1.5 py-[1px] text-xs font-medium leading-4 text-gray-600 truncate"
               >
-                {{ agent.model }}
+                {{ agentModelLabel(agent) }}
               </span>
             </div>
           </div>
@@ -277,7 +277,7 @@ onMounted(load)
             <div class="min-w-0">
               <h2 class="text-2xl font-semibold text-text-main truncate">{{ selected.name }}</h2>
               <p class="text-sm text-text-muted mt-1">
-                {{ vendorLabel(selected.vendor) }} · {{ selected.model }}
+                {{ vendorLabel(selected.vendor) }} · {{ agentModelLabel(selected) }}
               </p>
             </div>
           </div>
@@ -315,7 +315,7 @@ onMounted(load)
           </div>
           <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">模型</span>
-            <span class="text-base text-text-main">{{ selected.model }}</span>
+            <span class="text-base text-text-main">{{ agentModelLabel(selected) }}</span>
           </div>
           <div class="flex px-4 py-3">
             <span class="w-32 flex-shrink-0 text-sm text-text-muted">PlatformProvider</span>

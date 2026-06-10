@@ -20,7 +20,7 @@ import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
 import ServerDirectoryPicker from './ServerDirectoryPicker.vue'
-import { vendorLabel } from '../utils/vendor'
+import { agentModelLabel, vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{
@@ -251,7 +251,7 @@ function onWorkspacePicked(paths: string[]): void {
             <span class="min-w-0 flex-1">
               <span class="block truncate text-base font-medium">{{ agent.name }}</span>
               <span class="block truncate text-xs text-text-muted">
-                {{ vendorLabel(agent.vendor) }} / {{ agent.model }}
+                {{ vendorLabel(agent.vendor) }} / {{ agentModelLabel(agent) }}
               </span>
             </span>
           </button>

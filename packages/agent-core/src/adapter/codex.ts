@@ -160,7 +160,7 @@ export class CodexAdapter implements AgentAdapter {
         const effort = mapEffort(this.config.reasoningEffort)
         const readOnly = this.config.permissionMode === 'plan'
         const threadOptions = {
-          model: this.config.model,
+          ...(this.config.model ? { model: this.config.model } : {}),
           sandboxMode: readOnly ? ('read-only' as const) : ('danger-full-access' as const),
           approvalPolicy: 'never' as const,
           skipGitRepoCheck: true,

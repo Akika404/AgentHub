@@ -7,6 +7,9 @@ import type { MessageReplyRef } from './chat.js'
 
 export type AgentVendor = 'claude' | 'codex'
 
+/** Internal stored value for local agents that should use the CLI's configured default model. */
+export const LOCAL_DEFAULT_MODEL = '__agenthub_local_default__'
+
 /**
  * 执行位置。
  * - `server`（默认）：Agent 在服务器进程内通过 SDK 子进程执行，操作服务器文件系统。
@@ -186,6 +189,7 @@ export interface AgentView {
    * （用本机 CLI 自己的登录态，不引用服务器 Provider）。
    */
   platformProviderId: string | null
+  /** server 模式为实际模型；local 模式可为 LOCAL_DEFAULT_MODEL，表示使用本机 CLI 默认配置。 */
   model: string
   /** Agent-private persisted home directory. */
   agentHomeDirectory: string
@@ -260,10 +264,11 @@ export interface StartTurnResult {
 
 /**
  * Create Agent input. baseUrl/apiKey are not passed here: referenced via
- * `platformProviderId`; `model` must belong to that provider's modelList.
+ * `platformProviderId`; server-mode `model` must belong to that provider's modelList.
  *
  * 当 `executionMode === 'local'` 时：`platformProviderId` 省略（用本机 CLI 登录态），
- * `workingDirectory` 是用户**本机**的绝对路径（不校验服务器 workspace 根），
+ * `model` 可省略，省略时使用本机 CLI 的默认模型配置；`workingDirectory`
+ * 是用户**本机**的绝对路径（不校验服务器 workspace 根），
  * `skillSourceDirectories` 不适用（本机 skills 由用户本机配置发现）。
  */
 export interface CreateAgentPayload {
@@ -276,7 +281,7 @@ export interface CreateAgentPayload {
   executionMode?: AgentExecutionMode
   /** server 模式必填；local 模式省略。 */
   platformProviderId?: string
-  model: string
+  model?: string
   /** Optional Agent-private home; omitted values are allocated under the user's agent_home. */
   agentHomeDirectory?: string
   /**

@@ -10,7 +10,7 @@ import BaseInput from './ui/BaseInput.vue'
 import BaseSelect from './ui/BaseSelect.vue'
 import BaseTextarea from './ui/BaseTextarea.vue'
 import ServerDirectoryPicker from './ServerDirectoryPicker.vue'
-import { vendorLabel } from '../utils/vendor'
+import { agentModelLabel, vendorLabel } from '../utils/vendor'
 
 const props = defineProps<{
   open: boolean
@@ -181,7 +181,7 @@ async function onSubmit(): Promise<void> {
         <BaseSelect v-model="form.agentId" :disabled="loading || agents.length === 0">
           <option value="" disabled>请选择</option>
           <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-            {{ agent.name }} · {{ vendorLabel(agent.vendor) }} / {{ agent.model }}
+            {{ agent.name }} · {{ vendorLabel(agent.vendor) }} / {{ agentModelLabel(agent) }}
           </option>
         </BaseSelect>
         <div
@@ -199,7 +199,7 @@ async function onSubmit(): Promise<void> {
               {{ selectedAgent.name }}
             </div>
             <div class="text-xs text-text-muted truncate">
-              {{ vendorLabel(selectedAgent.vendor) }} / {{ selectedAgent.model }}
+              {{ vendorLabel(selectedAgent.vendor) }} / {{ agentModelLabel(selectedAgent) }}
             </div>
           </div>
         </div>

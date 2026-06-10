@@ -105,8 +105,8 @@ export type AgentPermissionMode =
 export interface AgentAdapterConfig {
   /** AgentHub 内部的唯一标识，例如 "claude-bob"。仅做日志/调试用 */
   id?: string
-  /** 模型名 */
-  model: string
+  /** 模型名；省略时由底层 CLI/SDK 使用本地默认配置。 */
+  model?: string
   /** Agent 私有持久目录；Claude 用于 CLAUDE_CONFIG_DIR，Codex 用于 CODEX_HOME */
   agentHomeDirectory: string
   /** 工作目录（agent 实际操作文件系统的根） */

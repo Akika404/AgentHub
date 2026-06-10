@@ -85,6 +85,7 @@ const selectedProvider = computed(() =>
 )
 
 const modelOptions = computed(() => selectedProvider.value?.modelList ?? [])
+const serverModelOptions = computed(() => (isLocal.value ? [] : modelOptions.value))
 
 function vendorForProvider(provider: PlatformProviderView): AgentVendor {
   return provider.type === 'anthropic' ? 'claude' : 'codex'
@@ -96,6 +97,12 @@ function preferredModel(provider: PlatformProviderView): string {
 
 function defaultProviderForVendor(vendor: AgentVendor): PlatformProviderView | undefined {
   return props.providers.find((p) => p.isDefault && isVendorProviderCompatible(vendor, p.type))
+}
+
+function selectDefaultProviderForVendor(vendor: AgentVendor): void {
+  const defaultProvider = defaultProviderForVendor(vendor)
+  form.platformProviderId = defaultProvider?.id ?? ''
+  form.model = defaultProvider ? preferredModel(defaultProvider) : ''
 }
 
 function stringifyConfig(value: unknown): string {
@@ -145,17 +152,31 @@ watch(
   () => form.vendor,
   () => {
     if (suspendDependentWatchers.value) return
-    // local 模式不引用 Provider，保留用户输入的模型名。
-    if (isLocal.value) return
-    const defaultProvider = defaultProviderForVendor(form.vendor)
-    form.platformProviderId = defaultProvider?.id ?? ''
-    form.model = defaultProvider ? preferredModel(defaultProvider) : ''
+    if (isLocal.value) {
+      form.platformProviderId = ''
+      form.model = ''
+      return
+    }
+    selectDefaultProviderForVendor(form.vendor)
+  }
+)
+watch(
+  () => form.executionMode,
+  () => {
+    if (suspendDependentWatchers.value) return
+    if (isLocal.value) {
+      form.platformProviderId = ''
+      form.model = ''
+      return
+    }
+    selectDefaultProviderForVendor(form.vendor)
   }
 )
 watch(
   () => form.platformProviderId,
   () => {
     if (suspendDependentWatchers.value) return
+    if (isLocal.value) return
     form.model = selectedProvider.value ? preferredModel(selectedProvider.value) : ''
   }
 )
@@ -182,7 +203,8 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
   if (!isHexColor(form.color)) return '请输入合法颜色，如 #3370ff'
   if (!isEdit.value && !form.capabilitySummary.trim()) return '请输入能力摘要'
   if (!isLocal.value && !form.platformProviderId) return '请选择 PlatformProvider'
-  if (!form.model) return '请选择模型'
+  const model = form.model.trim()
+  if (!isLocal.value && !model) return '请选择模型'
   if (!form.workingDirectory.trim()) return '请输入工作目录'
   const capabilitySummary = form.capabilitySummary.trim()
 
@@ -191,11 +213,13 @@ function buildPayload(): CreateAgentPayload | UpdateAgentPayload | string {
     avatar: form.avatar,
     color: form.color.toLowerCase(),
     vendor: form.vendor,
-    model: form.model,
     workingDirectory: form.workingDirectory.trim()
   }
   // local 模式不引用 Provider（用本机登录态）；server 模式带上 platformProviderId。
-  if (!isLocal.value) payload.platformProviderId = form.platformProviderId
+  if (!isLocal.value) {
+    payload.platformProviderId = form.platformProviderId
+    payload.model = model
+  }
   if (capabilitySummary) {
     payload.capabilitySummary = capabilitySummary
   } else if (isEdit.value) {
@@ -481,27 +505,25 @@ async function onSubmit(): Promise<void> {
       </div>
       <p v-else class="text-xs text-text-muted -mt-1">
         本机模式使用你本地已登录的 {{ vendorLabel(form.vendor) }} 账号/额度，不引用服务器 Provider。
-        运行时需在桌面端打开 AgentHub 且本机已安装对应 CLI。
+        模型由本地 CLI 默认配置决定；运行时需在桌面端打开 AgentHub 且本机已安装对应 CLI。
       </p>
 
-      <div>
+      <div v-if="!isLocal">
         <label class="block text-sm font-medium text-text-main mb-1.5">模型</label>
-        <BaseSelect v-if="modelOptions.length" v-model="form.model">
-          <option value="" disabled>
-            请选择
-          </option>
-          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+        <BaseSelect v-if="serverModelOptions.length" v-model="form.model">
+          <option value="" disabled>请选择</option>
+          <option v-for="m in serverModelOptions" :key="m" :value="m">{{ m }}</option>
         </BaseSelect>
         <BaseInput
           v-else
           v-model="form.model"
           mono
           type="text"
-          :disabled="!isLocal && !selectedProvider"
-          :placeholder="isLocal ? '输入本机模型名，如 claude-sonnet-4-6' : '输入模型名'"
+          :disabled="!selectedProvider"
+          placeholder="输入模型名"
         />
         <p
-          v-if="selectedProvider && modelOptions.length === 0"
+          v-if="selectedProvider && serverModelOptions.length === 0"
           class="text-xs text-text-muted mt-1"
         >
           该 Provider 的模型列表为空，可先使用默认模型或手动输入。
@@ -533,7 +555,8 @@ async function onSubmit(): Promise<void> {
             你本机的绝对路径（如 /Users/you/project）；Agent 直接在本机这个目录里读写文件。
           </template>
           <template v-else>
-            必须位于当前用户的 agent_workspace；Agent Home 由后端分配到 agent_home，skills 会放在 {{ vendorConfigName }}/skills。
+            必须位于当前用户的 agent_workspace；Agent Home 由后端分配到 agent_home，skills 会放在
+            {{ vendorConfigName }}/skills。
           </template>
         </p>
       </div>

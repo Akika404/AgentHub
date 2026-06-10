@@ -7,7 +7,8 @@ import {
     IsOptional,
     IsString,
     Matches,
-    MaxLength
+    MaxLength,
+    ValidateIf
 } from 'class-validator'
 import type { AgentPermissionMode, AgentVendor } from '../adapter/index.js'
 import type { AgentExecutionMode } from '@agenthub/shared'
@@ -81,10 +82,11 @@ export class CreateAgentDto {
     @IsNotEmpty()
     platformProviderId?: string
 
-    /** 选定的模型名，须属于所引用 Provider 的 modelList */
+    /** server 模式选定模型名；local 模式可省略，由本机 CLI 默认配置决定。 */
+    @ValidateIf((dto: CreateAgentDto) => dto.executionMode !== 'local')
     @IsString()
     @IsNotEmpty()
-    model!: string
+    model?: string
 
     @IsString()
     @IsNotEmpty()

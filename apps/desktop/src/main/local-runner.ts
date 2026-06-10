@@ -181,7 +181,7 @@ export class LocalRunnerService {
     const agentHomeDirectory = vendor === 'claude' ? homedir() : join(homedir(), '.codex')
     return {
       id: config.id,
-      model: config.model,
+      ...(config.model ? { model: config.model } : {}),
       agentHomeDirectory,
       workingDirectory: config.workingDirectory,
       apiKey: '',

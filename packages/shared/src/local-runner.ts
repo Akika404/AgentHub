@@ -37,7 +37,8 @@ export interface LocalEngineAvailability {
 export interface LocalRunConfig {
   /** 仅日志/调试用 */
   id?: string
-  model: string
+  /** 省略时使用本机 CLI 的默认模型配置。 */
+  model?: string
   /** 用户本机的工作目录绝对路径 */
   workingDirectory: string
   reasoningEffort?: AgentReasoningEffort
