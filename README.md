@@ -127,8 +127,3 @@ pnpm -F @agenthub/agent-core build    # Agent 引擎 → dist/
 | [`packages/agent-core/README.md`](packages/agent-core/README.md) | Agent 引擎说明 |
 | [`doc/`](doc/) | 产品设计、spec、plan |
 
----
-
-## 📦 交付物
-
-产品设计文档 + 技术文档 + 可运行 Demo + AI 协作开发记录 + 3 分钟 Demo 视频。
