@@ -8,6 +8,7 @@ import type {
     DeployManifest,
     DeploymentEvent,
     DeploymentView,
+    GroupAttachmentPreview,
     GroupAttachmentView,
     GroupChatView,
     GroupMessageView,
@@ -20,7 +21,10 @@ import type {
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { GroupChatService } from './group-chat.service.js'
 import { GroupMessageService } from './group-message.service.js'
-import { GroupAttachmentService, type UploadedGroupAttachmentFile } from './group-attachment.service.js'
+import {
+    GroupAttachmentService,
+    type UploadedGroupAttachmentFile
+} from './group-attachment.service.js'
 import { GroupRunStream } from './run/group-run-stream.service.js'
 import { GroupRunExecutor } from './run/group-run.executor.js'
 import { GroupArtifactPreviewService } from './group-artifact-preview.service.js'
@@ -87,6 +91,15 @@ export class GroupChatManager {
     ): Promise<GroupAttachmentView> {
         const group = await this.groupChat.loadGroup(userId, groupId)
         return this.groupAttachments.upload(userId, group, file)
+    }
+
+    async previewAttachment(
+        userId: string,
+        groupId: string,
+        attachmentId: string
+    ): Promise<GroupAttachmentPreview> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        return this.groupAttachments.preview(userId, group, attachmentId)
     }
 
     async updateMessage(

@@ -47,7 +47,7 @@ apps/desktop/
             │   ├── http.ts              # 核心请求助手：经 proxy 解信封、抛 ApiError、处理 401
             │   ├── auth.ts              # 用户模块客户端（/api/user/*）：注册/登录/登出/me/update
             │   ├── agents.ts            # Agent + 单聊客户端，含 converse SSE、workspace diff/commit
-            │   ├── group-chats.ts       # 群聊客户端：消息/运行/黑板/部署/附件 + SSE
+            │   ├── group-chats.ts       # 群聊客户端：消息/运行/黑板/部署/附件上传与预览 + SSE
             │   ├── providers.ts         # Provider 客户端（/api/platform-providers/*）：CRUD/测连/刷新模型
             │   ├── workspace-fs.ts      # 服务端目录浏览客户端：目录列举、文件预览、skill 上传
             │   ├── mock.ts              # 尚未落地的 chat 模块的内存 mock AgentHubApi
@@ -77,7 +77,7 @@ apps/desktop/
             │   ├── ChatList.vue             # 会话列表（置顶/归档、群头像、右键菜单）
             │   ├── ChatHeader.vue           # 聊天头部栏（标题/操作）
             │   ├── MessageList.vue          # 消息流渲染，分发到各类型消息组件
-            │   ├── MessageInput.vue         # 输入框：文本、@-mention、附件、引用栏
+            │   ├── MessageInput.vue         # 输入框：文本、@-mention、文件/图片附件、引用栏
             │   ├── PinnedBar.vue            # 置顶消息条（取消置顶/跳转）
             │   ├── RightInspector.vue       # 右侧检查器：Agent 网络节点、运行阶段、todos
             │   ├── BlackboardSidebar.vue    # 黑板任务/产物侧栏（状态色）
@@ -108,7 +108,7 @@ apps/desktop/
             │   │   ├── OptionsMessage.vue       # 选项提示消息（选择/回复）
             │   │   ├── TaskListMessage.vue      # 任务清单消息
             │   │   ├── DeployMessage.vue        # 部署卡片：产物、预览/编辑/触发部署
-            │   │   ├── AttachmentList.vue       # 消息附件列表（大小标签）
+            │   │   ├── AttachmentList.vue       # 消息附件列表（文件行 + 图片卡片）
             │   │   ├── SystemMessage.vue        # 居中系统/通知行
             │   │   └── SenderAvatar.vue         # 消息发送者小头像
             │   └── ui/                      # 设计系统 Base 组件（复用，勿手搓）

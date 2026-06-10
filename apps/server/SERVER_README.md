@@ -369,7 +369,7 @@ src/multiagents/group/
 ├── group-chat.service.ts              # 建群/管理 + 共享工作区编排 + 装载助手
 ├── group-message.service.ts           # 展示层 presentation_log 读写
 ├── group-workspace.service.ts         # 共享 git 仓库：init / worktree add / merge / diff / ACTIVE 标记
-├── group-attachment.service.ts        # 群聊上传文件落入工作区可见目录
+├── group-attachment.service.ts        # 群聊上传文件落入工作区可见目录 + 附件预览
 ├── group-artifact-preview.service.ts  # 黑板产出物对应工作区文件 → UI 预览 payload
 ├── git-path.ts                        # 解析 git 的 C 转义/引号文件路径
 ├── entities/                          # group_chat / group_chat_member / group_message / group_run
@@ -415,7 +415,9 @@ src/multiagents/group/
 | DELETE     | `/api/group-chats/:id`                                          | 删群（级联删数据库记录；工作区 `ACTIVE=false`，不删除目录）                                        |
 | GET        | `/api/group-chats/:id/messages`                                 | 展示层消息历史（升序，多发言者）                                                                   |
 | PATCH      | `/api/group-chats/:id/messages/:messageId`                      | 修改群聊消息标注状态（`pinned`）；Pin 后进入当前群后续 Orchestrator 与成员上下文                   |
-| POST       | `/api/group-chats/:id/converse`                                 | 发消息启动群运行（后台游离），body `{text,mentions?}` → `{runId}`                                  |
+| POST       | `/api/group-chats/:id/attachments`                              | 上传群聊附件；后续通过 `converse.attachmentIds` 消费并复制到共享工作区                             |
+| GET        | `/api/group-chats/:id/attachments/:attachmentId/preview`        | 预览已发送附件对应的工作区文件；图片等返回 `dataUrl`                                               |
+| POST       | `/api/group-chats/:id/converse`                                 | 发消息启动群运行（后台游离），body `{text,mentions?,attachmentIds?}` → `{runId}`                   |
 | GET `@Sse` | `/api/group-chats/:id/runs/:runId/events`                       | 订阅群运行事件流（回放+追尾 `GroupRunEvent`，遇 done 结束）                                        |
 | POST       | `/api/group-chats/:id/runs/:runId/abort`                        | 中止整个群运行（跨实例广播）                                                                       |
 | GET        | `/api/group-chats/:id/workspace-diff`                           | 查询共享工作区相对 AgentHub checkpoint 的累计文件变更                                              |
@@ -473,10 +475,10 @@ src/user-workspace/
 
 ### 接口（前缀 `/api`，成功响应统一信封，全部需鉴权）
 
-| 方法 | 路径                                                 | 功能                                                           |
-| ---- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| GET  | `/api/workspace-fs/roots`                            | 列出当前用户允许浏览的服务器目录根                             |
-| GET  | `/api/workspace-fs/directories?path=<absolute path>` | 列出某个服务器目录下的一级子目录；`path` 省略时返回第一个 root |
+| 方法 | 路径                                                 | 功能                                                                       |
+| ---- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| GET  | `/api/workspace-fs/roots`                            | 列出当前用户允许浏览的服务器目录根                                         |
+| GET  | `/api/workspace-fs/directories?path=<absolute path>` | 列出某个服务器目录下的一级子目录；`path` 省略时返回第一个 root             |
 | POST | `/api/workspace-fs/skills/import-local`              | 上传桌面端本地 Skill 文件夹 manifest，并写入当前用户服务器 `skills` 根目录 |
 
 安全边界：

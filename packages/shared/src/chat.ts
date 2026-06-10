@@ -5,7 +5,7 @@
 
 import type { AgentRunStepView } from './agent.js'
 import type { DeployManifest } from './deployment.js'
-import type { BlackboardArtifact } from './blackboard.js'
+import type { ArtifactFilePreview, BlackboardArtifact } from './blackboard.js'
 
 export type ChatKind = 'group' | 'agent' | 'user' | 'team'
 
@@ -116,6 +116,11 @@ export interface GroupAttachmentView {
   /** workspace-relative path; null until the attachment is consumed by a group run */
   workspacePath: string | null
   createdAt: string
+}
+
+/** Preview payload for one uploaded group attachment. */
+export interface GroupAttachmentPreview extends ArtifactFilePreview {
+  attachment: GroupAttachmentView
 }
 
 export interface TextMessage extends BaseMessage {

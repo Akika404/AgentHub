@@ -78,9 +78,7 @@ class MemoryAttachmentRepo {
                 const groupId = params.groupId as string
                 return [...this.rows.values()].filter(
                     (row) =>
-                        ids.includes(row.id) &&
-                        row.userId === userId &&
-                        row.groupChatId === groupId
+                        ids.includes(row.id) && row.userId === userId && row.groupChatId === groupId
                 )
             }
         }
@@ -197,6 +195,39 @@ test('GroupAttachmentService finalizes successful attachments by removing temp f
     await assert.rejects(readFile(tempPath, 'utf8'))
 })
 
+test('GroupAttachmentService previews consumed image attachments', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agenthub-attachment-preview-'))
+    const { service, group } = createService(root)
+
+    const uploaded = await service.upload('user-1', group, {
+        originalname: 'photo.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from([1, 2, 3])
+    })
+    const [consumed] = await service.consumeForRun('user-1', group, [uploaded.id], 'run-1')
+
+    const preview = await service.preview('user-1', group, uploaded.id)
+
+    assert.equal(preview.attachment.id, uploaded.id)
+    assert.equal(preview.attachment.workspacePath, consumed.workspacePath)
+    assert.equal(preview.previewKind, 'image')
+    assert.equal(preview.mimeType, 'image/png')
+    assert.equal(preview.dataUrl, 'data:image/png;base64,AQID')
+})
+
+test('GroupAttachmentService rejects preview before attachment is consumed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agenthub-attachment-preview-unconsumed-'))
+    const { service, group } = createService(root)
+
+    const uploaded = await service.upload('user-1', group, {
+        originalname: 'photo.png',
+        mimetype: 'image/png',
+        buffer: Buffer.from([1, 2, 3])
+    })
+
+    await assert.rejects(service.preview('user-1', group, uploaded.id), /not been sent/)
+})
+
 test('GroupAttachmentService rejects attachments that are already claimed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agenthub-attachment-claimed-'))
     const { service, group } = createService(root)
@@ -228,7 +259,10 @@ test('GroupAttachmentService mirrors run attachments into a task worktree and cl
     const [consumed] = await service.consumeForRun('user-1', group, [uploaded.id], 'run-1')
 
     assert.equal(consumed.workspacePath, 'attachments/run-1/note.txt')
-    assert.equal(await service.mirrorRunAttachmentsToWorktree('user-1', group, 'run-1', worktree), 1)
+    assert.equal(
+        await service.mirrorRunAttachmentsToWorktree('user-1', group, 'run-1', worktree),
+        1
+    )
     assert.equal(await readFile(join(worktree, consumed.workspacePath ?? ''), 'utf8'), 'hello')
 
     await service.cleanupWorktreeAttachmentMirrors(worktree, 'run-1')

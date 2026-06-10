@@ -71,6 +71,9 @@ interface ActiveDeploymentState {
   groupId: string
   view: DeploymentView
 }
+type PreviewAttachment = GroupAttachmentView & {
+  previewUrl?: string
+}
 
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
 const INSPECTOR_WIDTH_STORAGE_KEY = 'agenthub:right-inspector-width'
@@ -120,6 +123,7 @@ const chatListWidth = ref(readStoredWidth(CHAT_LIST_WIDTH_STORAGE_KEY, CHAT_LIST
 const inspectorWidth = ref(readStoredWidth(INSPECTOR_WIDTH_STORAGE_KEY, INSPECTOR_DEFAULT_WIDTH))
 const resizingPane = ref<'chat-list' | 'inspector' | null>(null)
 const messageCache = new Map<string, ChatDisplayMessage[]>()
+const localAttachmentPreviewUrls = new Set<string>()
 const turnStreams = new Map<string, AgentConverseStream>()
 const groupStreams = new Map<string, GroupRunStream>()
 const runMessageIds = new Map<string, string>()
@@ -598,11 +602,43 @@ function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatD
   ]
 }
 
-function appendMessage(sessionKey: string, message: ChatDisplayMessage): void {
-  const cached = messageCache.get(sessionKey) ?? []
-  const next = [...cached, message]
+function attachmentPreviewUrls(message: ChatDisplayMessage): string[] {
+  return (message.attachments ?? [])
+    .map((attachment) => (attachment as PreviewAttachment).previewUrl)
+    .filter((url): url is string => typeof url === 'string' && url.length > 0)
+}
+
+function releaseAttachmentPreviewUrl(url: string): void {
+  if (!localAttachmentPreviewUrls.has(url)) return
+  URL.revokeObjectURL(url)
+  localAttachmentPreviewUrls.delete(url)
+}
+
+function releaseRemovedAttachmentPreviewUrls(
+  previous: ChatDisplayMessage[],
+  next: ChatDisplayMessage[]
+): void {
+  const retained = new Set(next.flatMap(attachmentPreviewUrls))
+  for (const url of previous.flatMap(attachmentPreviewUrls)) {
+    if (!retained.has(url)) releaseAttachmentPreviewUrl(url)
+  }
+}
+
+function releaseAllAttachmentPreviewUrls(): void {
+  for (const url of localAttachmentPreviewUrls) URL.revokeObjectURL(url)
+  localAttachmentPreviewUrls.clear()
+}
+
+function setCachedMessages(sessionKey: string, next: ChatDisplayMessage[]): void {
+  const previous = messageCache.get(sessionKey) ?? []
+  releaseRemovedAttachmentPreviewUrls(previous, next)
   messageCache.set(sessionKey, next)
   if (activeSessionKey.value === sessionKey) messages.value = next
+}
+
+function appendMessage(sessionKey: string, message: ChatDisplayMessage): void {
+  const cached = messageCache.get(sessionKey) ?? []
+  setCachedMessages(sessionKey, [...cached, message])
 }
 
 function updateCachedMessages(
@@ -611,8 +647,7 @@ function updateCachedMessages(
 ): void {
   const cached = messageCache.get(sessionKey) ?? []
   const next = updater(cached)
-  messageCache.set(sessionKey, next)
-  if (activeSessionKey.value === sessionKey) messages.value = next
+  setCachedMessages(sessionKey, next)
 }
 
 function removeMessage(sessionKey: string, messageId: string): void {
@@ -629,16 +664,32 @@ function appendSystemMessage(sessionKey: string, text: string): void {
   })
 }
 
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name)
+}
+
+function createAttachmentPreviewUrl(file: File): string | undefined {
+  if (!isImageFile(file)) return undefined
+  const url = URL.createObjectURL(file)
+  localAttachmentPreviewUrls.add(url)
+  return url
+}
+
 function localAttachmentViews(groupId: string, files: File[] | undefined): GroupAttachmentView[] {
-  return (files ?? []).map((file, index) => ({
-    id: `local-${Date.now()}-${index}`,
-    groupChatId: groupId,
-    originalName: file.name,
-    mimeType: file.type || 'application/octet-stream',
-    size: file.size,
-    workspacePath: null,
-    createdAt: new Date().toISOString()
-  }))
+  return (files ?? []).map((file, index) => {
+    const previewUrl = createAttachmentPreviewUrl(file)
+    const attachment: PreviewAttachment = {
+      id: `local-${Date.now()}-${index}`,
+      groupChatId: groupId,
+      originalName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      size: file.size,
+      workspacePath: null,
+      createdAt: new Date().toISOString(),
+      ...(previewUrl ? { previewUrl } : {})
+    }
+    return attachment
+  })
 }
 
 function attachmentLines(attachments: GroupAttachmentView[] | undefined): string[] {
@@ -1297,7 +1348,7 @@ async function loadAgentMessages(
   try {
     const history = await agentChatApi.listMessages(chatId)
     const next = history.flatMap((message) => messageFromView(message, chat))
-    messageCache.set(sessionKey, next)
+    setCachedMessages(sessionKey, next)
     if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
       messages.value = next
     }
@@ -1326,7 +1377,7 @@ async function loadGroupMessages(
     const members = groupMemberMeta(group)
     const currentUser = currentUserSender()
     const next = history.map((message) => groupMessageToDisplay(message, members, currentUser))
-    messageCache.set(sessionKey, next)
+    setCachedMessages(sessionKey, next)
     if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
       messages.value = next
     }
@@ -2512,6 +2563,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', normalizePaneWidths)
   stopPaneResize()
+  releaseAllAttachmentPreviewUrls()
   void closeDeployment()
   // 只断开本端订阅，turn 在服务端继续运行；重新打开或在其它设备仍可围观
   void detachAllTurns()

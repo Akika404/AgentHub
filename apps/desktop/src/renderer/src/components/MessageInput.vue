@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { MessageReplyRef } from '../api'
 import type { MentionTarget } from '../types/mentions'
 import { formatBytes } from '../utils/format'
@@ -31,10 +31,12 @@ const emit = defineEmits<{
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const fileInputAccept = ref('')
 const isComposing = ref(false)
 const attachmentError = ref<string | null>(null)
 const dragActive = ref(false)
 const files = ref<File[]>([])
+const filePreviewUrls = ref<Record<string, string>>({})
 const mentionTrigger = ref<{ start: number; query: string } | null>(null)
 const highlightedMentionIndex = ref(0)
 
@@ -96,7 +98,7 @@ function submit(): void {
     ...(files.value.length ? { files: [...files.value] } : {})
   })
   text.value = ''
-  files.value = []
+  clearFiles()
   attachmentError.value = null
   closeMentionPicker()
 }
@@ -223,8 +225,9 @@ function insertMentionById(id: string): void {
   insertMention(target, false)
 }
 
-function openFilePicker(): void {
+function openFilePicker(accept = ''): void {
   if (props.disabled || !props.attachmentsEnabled) return
+  fileInputAccept.value = accept
   fileInputRef.value?.click()
 }
 
@@ -256,11 +259,55 @@ function addFiles(fileList: FileList | File[] | null): void {
     if (!duplicate) next.push(file)
   }
   files.value = next
+  syncFilePreviewUrls()
 }
 
 function removeFile(index: number): void {
   files.value = files.value.filter((_, i) => i !== index)
+  syncFilePreviewUrls()
   if (files.value.length < MAX_ATTACHMENTS) attachmentError.value = null
+}
+
+function clearFiles(): void {
+  files.value = []
+  releaseAllFilePreviewUrls()
+}
+
+function fileKey(file: File): string {
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name)
+}
+
+function previewUrlFor(file: File): string | null {
+  return filePreviewUrls.value[fileKey(file)] ?? null
+}
+
+function syncFilePreviewUrls(): void {
+  const nextKeys = new Set(files.value.filter(isImageFile).map(fileKey))
+  const nextUrls = { ...filePreviewUrls.value }
+
+  for (const [key, url] of Object.entries(nextUrls)) {
+    if (!nextKeys.has(key)) {
+      URL.revokeObjectURL(url)
+      delete nextUrls[key]
+    }
+  }
+
+  for (const file of files.value) {
+    if (!isImageFile(file)) continue
+    const key = fileKey(file)
+    if (!nextUrls[key]) nextUrls[key] = URL.createObjectURL(file)
+  }
+
+  filePreviewUrls.value = nextUrls
+}
+
+function releaseAllFilePreviewUrls(): void {
+  for (const url of Object.values(filePreviewUrls.value)) URL.revokeObjectURL(url)
+  filePreviewUrls.value = {}
 }
 
 function onDragOver(event: DragEvent): void {
@@ -298,6 +345,8 @@ function extractMentionIds(value: string): string[] {
 }
 
 defineExpose({ insertMentionById })
+
+onUnmounted(releaseAllFilePreviewUrls)
 </script>
 
 <template>
@@ -331,16 +380,45 @@ defineExpose({ insertMentionById })
         <div
           v-for="(file, index) in files"
           :key="`${file.name}-${file.size}-${file.lastModified}`"
-          class="flex max-w-[260px] items-center gap-2 rounded border border-surface-border bg-background px-2.5 py-1.5 text-sm text-text-main"
+          class="relative overflow-hidden rounded border border-surface-border bg-background text-sm text-text-main"
+          :class="
+            isImageFile(file)
+              ? 'h-[84px] w-[144px] shadow-sm'
+              : 'flex max-w-[260px] items-center gap-2 px-2.5 py-1.5'
+          "
         >
-          <span class="material-symbols-outlined text-xl text-primary">attach_file</span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate font-medium">{{ file.name }}</span>
-            <span class="block text-xs text-text-muted">{{ formatBytes(file.size) }}</span>
-          </span>
+          <template v-if="isImageFile(file)">
+            <img
+              v-if="previewUrlFor(file)"
+              :src="previewUrlFor(file) ?? undefined"
+              :alt="file.name"
+              class="h-full w-full object-cover"
+            />
+            <div v-else class="flex h-full w-full items-center justify-center bg-surface-hover">
+              <span class="material-symbols-outlined text-2xl text-text-muted">image</span>
+            </div>
+            <div
+              class="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-white backdrop-blur-sm"
+            >
+              <div class="truncate text-xs font-medium">{{ file.name }}</div>
+              <div class="text-xs leading-4 text-white/75">{{ formatBytes(file.size) }}</div>
+            </div>
+          </template>
+          <template v-else>
+            <span class="material-symbols-outlined text-xl text-primary">attach_file</span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium">{{ file.name }}</span>
+              <span class="block text-xs text-text-muted">{{ formatBytes(file.size) }}</span>
+            </span>
+          </template>
           <button
             type="button"
-            class="rounded p-0.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-main"
+            class="rounded p-0.5 transition-colors"
+            :class="
+              isImageFile(file)
+                ? 'absolute right-1 top-1 bg-black/45 text-white hover:bg-black/65'
+                : 'text-text-muted hover:bg-surface-hover hover:text-text-main'
+            "
             title="移除附件"
             @click="removeFile(index)"
           >
@@ -409,13 +487,29 @@ defineExpose({ insertMentionById })
       </div>
       <div class="flex items-center justify-between py-2">
         <div class="flex items-center space-x-2 text-text-muted">
-          <input ref="fileInputRef" type="file" class="hidden" multiple @change="onFileInput" />
+          <input
+            ref="fileInputRef"
+            type="file"
+            class="hidden"
+            multiple
+            :accept="fileInputAccept || undefined"
+            @change="onFileInput"
+          />
+          <BaseButton
+            variant="ghost"
+            icon
+            title="上传图片"
+            :disabled="disabled || !attachmentsEnabled"
+            @click="openFilePicker('image/*')"
+          >
+            <span class="material-symbols-outlined text-3xl">image</span>
+          </BaseButton>
           <BaseButton
             variant="ghost"
             icon
             title="上传文件"
             :disabled="disabled || !attachmentsEnabled"
-            @click="openFilePicker"
+            @click="openFilePicker()"
           >
             <span class="material-symbols-outlined text-3xl">attach_file</span>
           </BaseButton>

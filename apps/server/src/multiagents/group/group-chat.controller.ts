@@ -28,6 +28,7 @@ import type {
     BlackboardEventView,
     BlackboardView,
     DeploymentView,
+    GroupAttachmentPreview,
     GroupAttachmentView,
     GroupChatView,
     GroupMessageView,
@@ -50,7 +51,10 @@ import {
     GroupChatViewDto,
     StartGroupRunResultDto
 } from './dto/group-chat-response.dto.js'
-import { GroupAttachmentViewDto } from './dto/group-attachment-response.dto.js'
+import {
+    GroupAttachmentPreviewDto,
+    GroupAttachmentViewDto
+} from './dto/group-attachment-response.dto.js'
 import { GroupMessageViewDto } from './dto/group-message-response.dto.js'
 import {
     BlackboardArtifactPreviewDto,
@@ -145,6 +149,21 @@ export class GroupChatController {
         @Body() dto: UpdateGroupMessageDto
     ): Promise<GroupMessageView> {
         return this.manager.updateMessage(user.id, id, messageId, dto)
+    }
+
+    @Get(':id/attachments/:attachmentId/preview')
+    @ApiOperation({
+        summary: '预览群聊附件',
+        description:
+            '读取已发送附件在共享工作区中的文件，返回与产物预览一致的 dataUrl/text/unsupported payload。'
+    })
+    @ApiEnvelope(GroupAttachmentPreviewDto)
+    previewAttachment(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('attachmentId') attachmentId: string
+    ): Promise<GroupAttachmentPreview> {
+        return this.manager.previewAttachment(user.id, id, attachmentId)
     }
 
     @Get(':id/workspace-diff')

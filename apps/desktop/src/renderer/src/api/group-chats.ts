@@ -9,6 +9,7 @@ import {
   type CreateGroupChatPayload,
   type DeploymentEvent,
   type DeploymentView,
+  type GroupAttachmentPreview,
   type GroupAttachmentView,
   type GroupChatView,
   type GroupMessageView,
@@ -219,6 +220,8 @@ export const groupChatApi = {
   updateMessage: (id: string, messageId: string, payload: UpdateGroupMessagePayload) =>
     http.patch<GroupMessageView>(`/group-chats/${id}/messages/${messageId}`, payload),
   uploadAttachment,
+  getAttachmentPreview: (id: string, attachmentId: string) =>
+    http.get<GroupAttachmentPreview>(`/group-chats/${id}/attachments/${attachmentId}/preview`),
   getWorkspaceDiff: (id: string) =>
     http.get<WorkspaceDiffSummary>(`/group-chats/${id}/workspace-diff`),
   commitWorkspace: (id: string, payload?: WorkspaceCommitPayload) =>

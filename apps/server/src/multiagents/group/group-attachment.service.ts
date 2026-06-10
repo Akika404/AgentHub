@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { copyFile, mkdir, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { DataSource, In, IsNull, LessThan, Repository } from 'typeorm'
-import type { GroupAttachmentView } from '@agenthub/shared'
+import { ArtifactPreviewError, buildArtifactPreview } from '@agenthub/agent-core'
+import type { GroupAttachmentPreview, GroupAttachmentView } from '@agenthub/shared'
 import { BusinessException } from '../../common/index.js'
 import { GroupChat } from './entities/group-chat.entity.js'
 import { GroupAttachment } from './entities/group-attachment.entity.js'
@@ -57,7 +58,10 @@ export class GroupAttachmentService {
 
         const id = randomUUID()
         const safeName = this.safeFileName(file.originalname)
-        const uploadDir = join(this.workspace.groupRuntimeDir(group.id, group.workspaceDir), 'uploads')
+        const uploadDir = join(
+            this.workspace.groupRuntimeDir(group.id, group.workspaceDir),
+            'uploads'
+        )
         await mkdir(uploadDir, { recursive: true })
         const tempPath = join(uploadDir, `${id}-${safeName}`)
         await writeFile(tempPath, file.buffer)
@@ -77,6 +81,31 @@ export class GroupAttachmentService {
             })
         )
         return this.toView(saved)
+    }
+
+    async preview(
+        userId: string,
+        group: GroupChat,
+        attachmentId: string
+    ): Promise<GroupAttachmentPreview> {
+        const id = attachmentId.trim()
+        if (!id) throw BusinessException.badRequest('Attachment id is required')
+
+        const [row] = await this.attachmentRepo.find({
+            where: { id, userId, groupChatId: group.id }
+        })
+        if (!row) throw BusinessException.notFound(`Attachment ${id} not found`)
+        if (!row.workspacePath) {
+            throw BusinessException.badRequest('Attachment has not been sent yet')
+        }
+
+        const repo = this.workspace.repoDir(group.id, group.workspaceDir)
+        try {
+            const file = await buildArtifactPreview(repo, row.workspacePath)
+            return { attachment: this.toView(row), ...file }
+        } catch (err) {
+            throw this.toPreviewBusiness(err, row.workspacePath)
+        }
     }
 
     async consumeForRun(
@@ -274,11 +303,7 @@ export class GroupAttachmentService {
         })
     }
 
-    private async releaseRunClaim(
-        userId: string,
-        group: GroupChat,
-        runId: string
-    ): Promise<void> {
+    private async releaseRunClaim(userId: string, group: GroupChat, runId: string): Promise<void> {
         const rows = await this.attachmentRepo.find({
             where: { userId, groupChatId: group.id, runId }
         })
@@ -375,7 +400,11 @@ export class GroupAttachmentService {
     }
 
     private assertInsideRepo(repoDir: string, filePath: string): void {
-        this.assertInsideDir(repoDir, filePath, 'Attachment path must be inside the group workspace')
+        this.assertInsideDir(
+            repoDir,
+            filePath,
+            'Attachment path must be inside the group workspace'
+        )
     }
 
     private assertInsideDir(rootDir: string, filePath: string, message: string): void {
@@ -387,5 +416,14 @@ export class GroupAttachmentService {
 
     private escapeMarkdownLabel(value: string): string {
         return value.replace(/([\\[\]])/g, '\\$1')
+    }
+
+    private toPreviewBusiness(err: unknown, path: string): BusinessException {
+        if (err instanceof ArtifactPreviewError) {
+            if (err.reason === 'not_found') return BusinessException.notFound(err.message)
+            if (err.reason === 'forbidden') return BusinessException.forbidden(err.message)
+            return BusinessException.badRequest(err.message)
+        }
+        return BusinessException.badRequest(`Attachment ${path} preview failed`)
     }
 }
