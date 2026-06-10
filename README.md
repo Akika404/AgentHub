@@ -1,76 +1,134 @@
-# AgentHub - 多 Agent 协作平台
+# AgentHub · 多 Agent 协作平台
 
-### 课题背景
+> 以 **IM 聊天**为核心交互范式的多 Agent 协作平台。像用飞书/微信一样，新建对话、发送消息，与 Claude Code、Codex、OpenCode 等不同 AI Agent 协作；支持多会话并行、群聊协作（Orchestrator 自动拆解分派），并把代码 Diff、网页预览、文件附件等产物内联到聊天流中实时预览与编辑。
 
-通过对话式交互创建网页、Workflow 等产物。本课题要求学生构建一个该业务的简化实战版：多 Agent 协作平台（AgentHub）。
+---
 
-平台采用 IM 聊天作为核心交互范式。用户像使用飞书/微信一样，通过新建对话、发送消息的方式与不同 AI Agent 进行交互。每个 Agent 就是一个"聊天对象"，用户可以：
+## ✨ 核心能力
 
-- 新建对话：创建一个新的聊天会话，选择或指定要对话的 Agent（如 Claude Code、Codex、OpenCode 等）
-- 多会话并行：同时开启多个对话窗口，分别与不同 Agent 交流不同任务（类似 IM 的多个聊天窗口）
-- 群聊协作：在一个对话中 @ 多个 Agent，由主 Agent（Orchestrator）自动协调分工，多个 Agent 像群聊成员一样依次回复各自的产出
-- 上下文连续：每个对话保持完整的聊天历史，Agent 能基于历史消息理解上下文，支持多轮迭代修改
-- 产物内联：Agent 的回复不仅是文字，还可以内联展示代码 Diff、网页预览卡片、文件附件等富媒体产物，用户可直接在聊天流中预览和操作
+| 模块 | 说明 |
+| --- | --- |
+| **IM 聊天式交互** | 左侧统一会话列表（单聊 + 群聊），支持新建/置顶/归档/搜索；消息支持文本、代码块、图片、文件、网页/Diff/部署卡片；聊天历史自动作为上下文持续传递 |
+| **单聊模式** | 1v1 与单个 Agent 对话，适合明确任务（如「用 Claude Code 写一个 React 组件」），流式回复 + 工作区 git diff/commit |
+| **群聊协作** | 一个对话内 @ 多个 Agent，由主 Agent（Orchestrator）理解意图、拆解任务、分派给子 Agent，并聚合产出在聊天流中汇报。子 Agent 在隔离 worktree 中执行 |
+| **多 Agent 接入** | 统一适配器层抹平 API 差异，至少接入 Claude Code + Codex；支持用户自建 Agent（System Prompt + 工具集），每个 Agent 是一个独立「联系人」 |
+| **产物预览与编辑** | 回复中内联产物卡片（网页 iframe、文档渲染等），点击展开预览或编辑；text/html 产物可写回工作区文件 |
 
-平台同时接入市面主流 Agent 平台（Claude Code、Codex、OpenCode 等），通过统一的适配器层屏蔽 API 差异，并支持用户自建 Agent。所有 Agent 产出（代码、网页、文档、PPT 等）支持实时预览、代码二次编辑和一键部署发布。
+> **群聊实现进度**：「最小闭环」MVP 已落地（建群 + 黑板 + MessageRouter + Orchestrator 串行拆解/派发 + 聚合汇报 + ContextAssembler + agent_memory + 子 Agent worktree 执行）。本轮为串行执行；DAG 并行调度 / 冲突检测仲裁 / 失败重试降级留待后续。详见 [`doc/spec/group-chat-collaboration-mvp.md`](doc/spec/group-chat-collaboration-mvp.md)。
 
-### 核心功能
+---
 
-#### 1. IM 聊天式交互（核心体验）
+## 🧱 技术栈
 
-| 功能       | 说明                                                                            |
-| ---------- | ------------------------------------------------------------------------------- |
-| 对话列表   | 左侧会话列表统一显示单聊与群聊，支持新建/置顶/归档/搜索，按最近活跃排序         |
-| 单聊模式   | 1v1 与单个 Agent 对话，适合明确任务（如"用 Claude Code 写一个 React 组件"）     |
-| 群聊模式   | 一个对话中包含多个 Agent，通过 @ 指定或由 Orchestrator 自动分派，Agent 依次回复 |
-| 消息类型   | 文本、代码块、图片、文件附件、网页预览卡片、Diff 视图卡片、部署状态卡片（可选） |
-| 消息操作   | 回复、引用、重新生成、复制代码、一键应用 Diff、展开预览                         |
-| 上下文管理 | 聊天历史自动作为上下文传递给 Agent，支持手动 pin 关键消息作为长期上下文         |
+| 端 / 包 | 技术 |
+| --- | --- |
+| **desktop**（当前主交付端） | Electron 39 + Vue 3 + TypeScript，electron-vite 构建，Tailwind 自建 token 设计系统；三进程模型（main / preload / renderer） |
+| **server** | NestJS 11 + TypeORM + MySQL + Redis（ioredis）+ JWT；Scalar API 文档；统一响应信封 + 全局异常 |
+| **android**（轻量端） | Kotlin + Jetpack Compose（Material 3），单 Activity + `AppViewModel`，OkHttp 直连 REST/SSE |
+| **packages/shared** | 跨 desktop ↔ server 的共享 TypeScript 类型与协议契约 |
+| **packages/agent-core** | 框架无关 Agent 引擎：将 Claude Agent SDK / OpenAI Codex SDK 归一为统一 `AgentEvent` 流，含工作区 git diff/commit、产物预览与写回 |
 
-#### 2. 主 Agent 协调器（Orchestrator）
+---
 
-- 在群聊模式下，自动理解用户意图，将复杂任务拆解并分派给合适的子 Agent
-- 子 Agent 完成后，Orchestrator 聚合产出并在聊天流中汇报结果
-- 支持并行调度、失败降级、代码冲突处理
+## 📂 仓库结构
 
-> **实现进度**：群聊协作「最小闭环」MVP 已落地（建群 + 黑板 + MessageRouter + Orchestrator 串行拆解/派发 + 聚合汇报 + ContextAssembler + agent_memory + 再次修改 A/B/C + 子 Agent worktree 执行）。本轮为串行执行，DAG 并行调度 / 冲突检测仲裁 / 失败重试降级留待第二份 spec。详见 [`doc/spec/group-chat-collaboration-mvp.md`](doc/spec/group-chat-collaboration-mvp.md) 与后端 [`apps/server/SERVER_README.md`](apps/server/SERVER_README.md) 的「群聊协作模块」。
-> 桌面端当前将单聊和群聊合并在聊天页会话列表中展示；独立群聊页作为群资料页，集中展示成员、目标、工作区与黑板摘要。
+pnpm workspace 单仓多包（monorepo）。各部分完整目录树见对应 README：
 
-#### 3. 多 Agent 接入
+```
+AgentHub/
+├── apps/
+│   ├── desktop/   Electron + Vue 3 桌面端（主交付端）   → apps/desktop/README.md
+│   ├── server/    NestJS 后端服务                       → apps/server/SERVER_README.md
+│   └── android/   原生 Android 客户端（Kotlin/Compose）  → apps/android/README.md
+├── packages/
+│   ├── shared/      共享类型与协议契约                   → packages/shared/README.md
+│   └── agent-core/  框架无关 Agent 引擎                  → packages/agent-core/README.md
+├── doc/           产品设计 / spec / plan 文档
+├── pnpm-workspace.yaml
+└── package.json   根 workspace 脚本
+```
 
-- 统一适配器层，至少接入 2 个主流 Agent 平台（Claude Code + Codex / OpenCode）
-- 支持用户自建 Agent（对话式创建，设定 System Prompt + 工具集）
-- 每个 Agent 在聊天列表中显示为独立的"联系人"，有头像、名称、能力标签
+---
 
-#### 4. 产物预览与编辑
+## 🚀 快速开始
 
-- Agent 回复中内联产物预览卡片（网页 iframe、文档渲染、【P2】PPT 浏览）
-- 点击卡片展开预览或全屏编辑器；text/html 产物可保存写回工作区文件，运行中拒绝并发写回
-- 【P2】支持 Diff 视图、版本历史、对话式局部修改（选中代码 → 在聊天中描述修改）
+### 环境要求
 
-#### 【P2】5. 部署发布
+- **Node.js** ≥ 20（开发使用 25.x）
+- **pnpm** ≥ 9（开发使用 11.x）
+- **MySQL** 8.x（后端数据库，默认库名 `agenthub`）
+- **Redis** 6+（后端缓存 / 活跃 turn 指针）
+- 桌面端本地运行模式需要本机已安装相应 Agent CLI（Claude Code / Codex）
 
-- 聊天中直接发送"部署"指令，Agent 返回部署状态卡片
-- 一键生成预览 URL / 静态站点部署 / 容器化部署 / 源码打包下载
+### 1. 安装依赖
 
-#### 【P2】6. 多端支持
+```bash
+pnpm install
+```
 
-| 平台   | 定位                                       |
-| ------ | ------------------------------------------ |
-| Web 端 | 主力端，完整 IM 体验 + 代码编辑 + 全功能   |
-| 桌面端 | 本地文件访问、系统通知、Agent 进程管理     |
-| 移动端 | 轻量 IM 体验：查看对话、审批确认、产物预览 |
+### 2. 启动后端（NestJS）
 
-### 考察要点
+```bash
+cd apps/server
+cp .env.example .env          # 按需填写 MySQL / Redis / JWT 配置
+pnpm -F @agenthub/server dev   # nest start --watch，默认监听 :3000，API 前缀 /api
+```
 
-| 维度         | 权重 | 评判要点                                     |
-| ------------ | ---- | -------------------------------------------- |
-| AI 协作能力  | 30%  | 沉淀出和ai协作的Spec、skill、rules等协作规范 |
-| 功能完整度   | 25%  | IM 核心体验是否流畅、多 Agent 调度是否跑通   |
-| 生成效果质量 | 20%  | 聊天 UI 体验、产物预览效果                   |
-| 代码理解度   | 15%  | 答辩时能否解释架构选型和核心逻辑             |
-| 创新与产品感 | 10%  | 超预期功能点或体验优化、详细的产品设计方案   |
+启动后可访问 Scalar API 文档（`http://localhost:3000/api`）。
 
-### 交付物
+### 3. 启动桌面端（Electron + Vue）
 
-产品设计文档 + 技术文档 + 可运行 Demo + AI 协作开发记录 + 3 分钟 Demo 视频
+```bash
+pnpm dev          # = pnpm -F @agenthub/desktop dev
+```
+
+### 4. （可选）Android 客户端
+
+用 Android Studio 打开 `apps/android/`，模拟器默认通过 `http://10.0.2.2:3000/api` 连接本机后端。
+
+---
+
+## 🛠️ 常用命令
+
+根脚本默认代理到桌面端，server/android 通过各自 filter 运行：
+
+```bash
+pnpm dev          # 启动桌面端开发 (alias: -F @agenthub/desktop dev)
+pnpm build        # 构建桌面端
+pnpm typecheck    # 对所有 workspace 包做类型检查 (pnpm -r)
+pnpm lint         # 桌面端 ESLint
+pnpm format       # 全仓 Prettier
+```
+
+按包执行：
+
+```bash
+pnpm -F @agenthub/desktop start       # 预览生产构建
+pnpm -F @agenthub/desktop build:mac   # 打包 macOS（也支持 :win / :linux）
+pnpm -F @agenthub/server  dev         # nest start --watch
+pnpm -F @agenthub/server  test        # 后端单测
+pnpm -F @agenthub/shared  build       # 类型包 → dist/
+pnpm -F @agenthub/agent-core build    # Agent 引擎 → dist/
+```
+
+> `shared` 与 `agent-core` 是运行期依赖产物（`dist/`），desktop / server 的 `dev`/`build` 脚本已自动先行构建二者，一般无需手动编译。
+
+---
+
+## 📖 文档索引
+
+| 文档 | 内容 |
+| --- | --- |
+| [`apps/desktop/README.md`](apps/desktop/README.md) | 桌面端三进程模型、IPC、目录结构 |
+| [`apps/server/SERVER_README.md`](apps/server/SERVER_README.md) | 后端模块 / 接口总览 |
+| [`apps/server/CLAUDE.md`](apps/server/CLAUDE.md) | 后端开发规则（改 server 前必读） |
+| [`apps/android/README.md`](apps/android/README.md) | Android 端架构与目录 |
+| [`packages/shared/README.md`](packages/shared/README.md) | 共享契约说明 |
+| [`packages/agent-core/README.md`](packages/agent-core/README.md) | Agent 引擎说明 |
+| [`doc/`](doc/) | 产品设计、spec、plan |
+
+---
+
+## 📦 交付物
+
+产品设计文档 + 技术文档 + 可运行 Demo + AI 协作开发记录 + 3 分钟 Demo 视频。
