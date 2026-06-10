@@ -16,6 +16,7 @@ const props = defineProps<{ message: AgentRunMessage }>()
 
 const emit = defineEmits<{
   (e: 'preview-artifact', artifact: BlackboardArtifact): void
+  (e: 'edit-artifact', artifact: BlackboardArtifact): void
 }>()
 
 const expanded = ref(false)
@@ -316,34 +317,42 @@ function todoStatusLabel(status: AgentTodoItem['status']): string {
         <div v-if="hasText" class="markdown-body font-medium text-text-main" v-html="renderedText"></div>
       </div>
 
-      <!-- 内联产物预览卡片：点击打开全屏预览 -->
+      <!-- 内联产物卡片：主体预览，右侧编辑按钮打开全屏编辑窗口 -->
       <div v-if="previewArtifacts.length" class="mt-2 flex flex-col gap-2">
-        <button
+        <div
           v-for="artifact in previewArtifacts"
           :key="artifact.id"
-          type="button"
-          class="group flex items-center gap-3 rounded-xl border border-surface-border bg-surface px-3 py-2.5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-surface-hover"
-          @click="emit('preview-artifact', artifact)"
+          class="group flex items-stretch overflow-hidden rounded-xl border border-surface-border bg-surface shadow-sm transition-colors hover:border-primary/40 hover:bg-surface-hover"
         >
-          <span
-            class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+            title="预览文件"
+            @click="emit('preview-artifact', artifact)"
           >
-            <span class="material-symbols-outlined text-xl">{{ artifactIcon(artifact.path) }}</span>
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium text-text-main">
-              {{ artifactFileName(artifact.path) }}
+            <span
+              class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+            >
+              <span class="material-symbols-outlined text-xl">{{ artifactIcon(artifact.path) }}</span>
             </span>
-            <span class="block truncate text-xs text-text-muted">
-              {{ artifactKindLabel(artifact.path) }} · v{{ artifact.version }} · 点击预览
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium text-text-main">
+                {{ artifactFileName(artifact.path) }}
+              </span>
+              <span class="block truncate text-xs text-text-muted">
+                {{ artifactKindLabel(artifact.path) }} · v{{ artifact.version }} · 点击预览
+              </span>
             </span>
-          </span>
-          <span
-            class="material-symbols-outlined flex-shrink-0 text-xl text-text-muted transition-colors group-hover:text-primary"
+          </button>
+          <button
+            type="button"
+            class="flex w-11 flex-shrink-0 items-center justify-center border-l border-surface-border text-text-muted transition-colors hover:bg-primary-soft hover:text-primary"
+            title="编辑文件"
+            @click="emit('edit-artifact', artifact)"
           >
-            open_in_full
-          </span>
-        </button>
+            <span class="material-symbols-outlined text-xl">edit</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -4,9 +4,9 @@
 
 ## Context
 
-PRD ART-2：在 Agent 回复气泡内内联展示本回合产出的可预览产物卡片，点击卡片展开全屏预览。
+PRD ART-2：在 Agent 回复气泡内内联展示本回合产出的可预览产物卡片，点击预览在右侧抽屉查看，点击编辑才展开全屏文件窗口。
 
-ART-1（黑板产物预览抽屉）已落地：在群聊黑板侧栏 / 群详情点击产物，从右侧 460px 抽屉读取工作区文件预览。本功能复用 ART-1 的预览接口与渲染逻辑，但把入口前移到**每条成员回复气泡内**，并以**全屏 overlay** 承载预览。
+ART-1（黑板产物预览抽屉）已落地：在群聊黑板侧栏 / 群详情点击产物，从右侧 460px 抽屉读取工作区文件预览。本功能复用 ART-1 的预览接口与渲染逻辑，把入口前移到**每条成员回复气泡内**；消息卡片的预览入口同样承载在侧边栏抽屉，全屏 overlay 只作为编辑入口。
 
 范围：
 
@@ -54,32 +54,34 @@ member-chat（轻量成员闲聊回合）不做产物写回，故不涉及。
 2. `utils/groupMessage.ts` 的 `groupMessageToDisplay` 在 agent-run 分支注入 `artifacts`。
 3. 卡片照常渲染。
 
-### 预览
+### 预览 / 编辑
 
-1. 点击内联卡 → `AgentRunMessage` emit `preview-artifact` → `MessageList` 透传 → `ChatView` 设置 `overlayArtifact`。
-2. `ArtifactPreviewOverlay.vue` 全屏遮罩打开，调用 `getArtifactPreview` 加载，按 `previewKind` 用 `ArtifactPreviewBody.vue` 渲染（与 ART-1 抽屉共用）。
-3. HTML 走主进程自定义协议 `agent-preview://` 在 sandbox iframe 渲染。
+1. 点击内联卡主体或 deploy 卡的「预览」→ emit `preview-artifact` → `MessageList` 透传 → `ChatView` 设置 `previewArtifact`。
+2. `ArtifactPreviewDrawer.vue` 从右侧打开，调用 `getArtifactPreview` 加载，按 `previewKind` 用 `ArtifactPreviewBody.vue` 渲染（与 ART-1 抽屉共用）。
+3. 点击卡片右侧「编辑」→ emit `edit-artifact` → `ChatView` 设置 `overlayArtifact`，打开 `ArtifactPreviewOverlay.vue` 全屏文件窗口。`text` / `html` 以源码 textarea 打开，不走 HTML iframe 预览。
+4. HTML 走主进程自定义协议 `agent-preview://` 在 sandbox iframe 渲染。
 
 ## Frontend Components
 
-- `components/ArtifactPreviewBody.vue`（新增）：从 `ArtifactPreviewDrawer.vue` 提取的纯展示组件，按 `previewKind` 渲染 text/html/pdf/image/audio/video/受限状态 + `agent-preview://` 协议管理。抽屉与 overlay 共用。
-- `components/ArtifactPreviewOverlay.vue`（新增）：全屏遮罩预览容器，内部用 `ArtifactPreviewBody`，复用 `getArtifactPreview`。
+- `components/ArtifactPreviewBody.vue`（新增）：从 `ArtifactPreviewDrawer.vue` 提取的纯展示组件，按 `previewKind` 渲染 text/html/pdf/image/audio/video/受限状态 + `agent-preview://` 协议管理。仅预览抽屉复用。
+- `components/ArtifactPreviewOverlay.vue`（新增）：全屏文件窗口，复用 `getArtifactPreview` 拉取内容，但自己渲染编辑态；`text` / `html` 显示源码 textarea，非文本类显示不可编辑状态。
 - `components/ArtifactPreviewDrawer.vue`（重构）：改为复用 `ArtifactPreviewBody`，行为不变（ART-1 黑板侧栏入口）。
 - `utils/artifactPreview.ts`（新增）：按扩展名判定 `isInlinePreviewable` + 卡片图标 / 文件名 / 类型标签。
-- `messages/AgentRunMessage.vue`：正文下方渲染内联占位卡，emit `preview-artifact`。
-- `components/MessageList.vue`：透传 `AgentRunMessageView` 的 `@preview-artifact`。
-- `views/ChatView.vue`：`overlayArtifact` ref 驱动全屏 overlay（内联卡 / deploy 卡）；`previewArtifact` 仍驱动 460px 抽屉（黑板侧栏）；`appendRunArtifact` helper；`blackboard_update` 事件接线；会话切换时清空两个 ref。
+- `messages/AgentRunMessage.vue`：正文下方渲染内联占位卡，主体 emit `preview-artifact`，编辑按钮 emit `edit-artifact`。
+- `components/MessageList.vue`：透传 `AgentRunMessageView` / `DeployMessageView` 的 `preview-artifact` 与 `edit-artifact`。
+- `views/ChatView.vue`：`previewArtifact` ref 驱动 460px 抽屉（黑板侧栏 / 消息预览 / deploy 预览）；`overlayArtifact` ref 驱动全屏编辑窗口；`appendRunArtifact` helper；`blackboard_update` 事件接线；会话切换时清空两个 ref。
 
 ## Validation
 
 - `pnpm -F @agenthub/shared typecheck`
 - `pnpm -F @agenthub/server typecheck`
 - `pnpm -F @agenthub/desktop typecheck`
-- 手动：群聊跑一轮产出 html/pdf/图片产物 → 对应成员气泡出现占位卡 → 点开全屏预览正常；重开会话卡片仍在；office/binary 不入卡。
+- 手动：群聊跑一轮产出 html/pdf/图片产物 → 对应成员气泡出现占位卡 → 点击预览打开右侧抽屉；点击编辑打开全屏文件窗口；重开会话卡片仍在；office/binary 不入卡。
 
 ## Known Limits
 
 - 仅群聊；单聊待新增"按文件路径预览"后端能力。
-- 卡片为占位，不在气泡内内嵌 live iframe（性能/布局），全屏内嵌预览作为后续增强。
+- 卡片为占位，不在气泡内内嵌 live iframe（性能/布局）。
+- 当前编辑窗口还没有接入保存；真正保存需要新增受黑板 artifact 约束的原始文件读写接口，并定义用户编辑如何更新 artifact 版本/审计。
 - `payload.artifacts` 存写入时的快照（含当时 `version`）：预览内容点开时实时读文件（最新），但卡片标题的版本号是产出时刻的快照，后续被改不回填。与 deploy 卡片一致。
 - office / pptx 等仍只在预览区显示受限状态（沿用 ART-1 Known Limits）。

@@ -22,11 +22,11 @@
 - 新增 `utils/artifactPreview.ts`：`isInlinePreviewable` + 图标/文件名/类型标签。
 - 抽出 `components/ArtifactPreviewBody.vue`（previewKind 渲染 + `agent-preview://` 协议）。
 - `components/ArtifactPreviewDrawer.vue` 重构为复用 body。
-- 新增 `components/ArtifactPreviewOverlay.vue`（全屏遮罩）。
-- `messages/AgentRunMessage.vue`：渲染内联占位卡 + emit `preview-artifact`。
-- `components/MessageList.vue`：透传事件。
+- 新增 `components/ArtifactPreviewOverlay.vue`（全屏文件窗口，text/html 用源码 textarea，不复用 HTML 预览 body）。
+- `messages/AgentRunMessage.vue`：渲染内联占位卡 + emit `preview-artifact` / `edit-artifact`。
+- `components/MessageList.vue`：透传预览和编辑事件。
 - `utils/groupMessage.ts`：复原时注入 `artifacts`。
-- `views/ChatView.vue`：`overlayArtifact` ref + `appendRunArtifact` helper + `blackboard_update` 接线 + 会话切换清空。
+- `views/ChatView.vue`：`previewArtifact` 抽屉预览 + `overlayArtifact` 全屏编辑 + `appendRunArtifact` helper + `blackboard_update` 接线 + 会话切换清空。
 
 ## 4. 文档与验证
 

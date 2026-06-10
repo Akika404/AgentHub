@@ -10,6 +10,7 @@ const props = defineProps<{ message: DeployMessage }>()
 
 const emit = defineEmits<{
   (e: 'preview-artifact', artifact: BlackboardArtifact): void
+  (e: 'edit-artifact', artifact: BlackboardArtifact): void
   (e: 'run-deployment', message: DeployMessage): void
 }>()
 
@@ -90,19 +91,32 @@ function fileName(path: string): string {
         <!-- static：直接预览入口文件 -->
         <template v-else>
           <div class="space-y-1.5 mb-1">
-            <button
+            <div
               v-for="artifact in message.artifacts"
               :key="artifact.id"
-              type="button"
-              class="w-full flex items-center gap-2 bg-white border border-surface-border rounded-md px-3 py-1.5 text-left transition-colors hover:border-primary hover:bg-primary-soft/40"
-              @click="emit('preview-artifact', artifact)"
+              class="flex overflow-hidden rounded-md border border-surface-border bg-white transition-colors hover:border-primary hover:bg-primary-soft/40"
             >
-              <span class="material-symbols-outlined text-md text-text-muted">draft</span>
-              <span class="text-md text-text-main truncate flex-1">{{
-                fileName(artifact.path)
-              }}</span>
-              <span class="material-symbols-outlined text-md text-primary">open_in_new</span>
-            </button>
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left"
+                title="预览文件"
+                @click="emit('preview-artifact', artifact)"
+              >
+                <span class="material-symbols-outlined text-md text-text-muted">draft</span>
+                <span class="text-md text-text-main truncate flex-1">{{
+                  fileName(artifact.path)
+                }}</span>
+                <span class="material-symbols-outlined text-md text-primary">preview</span>
+              </button>
+              <button
+                type="button"
+                class="flex w-9 flex-shrink-0 items-center justify-center border-l border-surface-border text-text-muted transition-colors hover:bg-primary-soft hover:text-primary"
+                title="编辑文件"
+                @click="emit('edit-artifact', artifact)"
+              >
+                <span class="material-symbols-outlined text-md">edit</span>
+              </button>
+            </div>
           </div>
           <BaseButton
             v-if="entryArtifact"

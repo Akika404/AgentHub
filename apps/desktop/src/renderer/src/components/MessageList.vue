@@ -38,6 +38,7 @@ const emit = defineEmits<{
   (e: 'reply-message', message: ChatDisplayMessage): void
   (e: 'mention-sender', senderId: string): void
   (e: 'preview-artifact', artifact: BlackboardArtifact): void
+  (e: 'edit-artifact', artifact: BlackboardArtifact): void
   (e: 'run-deployment', message: DeployMessage): void
 }>()
 
@@ -212,11 +213,13 @@ watch(scrollSignature, async () => {
           v-else-if="isAgentRunMessage(msg)"
           :message="msg"
           @preview-artifact="emit('preview-artifact', $event)"
+          @edit-artifact="emit('edit-artifact', $event)"
         />
         <DeployMessageView
           v-else-if="isDeployMessage(msg)"
           :message="msg"
           @preview-artifact="emit('preview-artifact', $event)"
+          @edit-artifact="emit('edit-artifact', $event)"
           @run-deployment="emit('run-deployment', $event)"
         />
       </div>

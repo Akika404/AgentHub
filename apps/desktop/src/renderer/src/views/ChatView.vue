@@ -111,7 +111,6 @@ const activeSessionKey = ref<string | null>(null)
 const messages = ref<ChatDisplayMessage[]>([])
 const activeGroupBlackboard = ref<BlackboardView | null>(null)
 const previewArtifact = ref<BlackboardArtifact | null>(null)
-/** inline-card / deploy-card preview opens a fullscreen overlay (vs. the sidebar drawer) */
 const overlayArtifact = ref<BlackboardArtifact | null>(null)
 const activeDeployment = ref<ActiveDeploymentState | null>(null)
 const deploymentStarting = ref(false)
@@ -872,6 +871,16 @@ function appendRunArtifact(runKey: string, artifact: BlackboardArtifact): void {
       : [...existing, artifact]
     return { ...message, artifacts: next }
   })
+}
+
+function openArtifactPreview(artifact: BlackboardArtifact): void {
+  overlayArtifact.value = null
+  previewArtifact.value = artifact
+}
+
+function openArtifactEditor(artifact: BlackboardArtifact): void {
+  previewArtifact.value = null
+  overlayArtifact.value = artifact
 }
 
 function finishAgentRun(chatId: string, success: boolean): void {
@@ -2508,7 +2517,8 @@ onUnmounted(() => {
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"
         @mention-sender="onMentionSender"
-        @preview-artifact="overlayArtifact = $event"
+        @preview-artifact="openArtifactPreview"
+        @edit-artifact="openArtifactEditor"
         @run-deployment="runDeployment"
       />
       <WorkspaceDiffPanel
