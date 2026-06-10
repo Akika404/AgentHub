@@ -34,7 +34,7 @@ Per-package commands use `pnpm -F <pkg> <script>`:
 ```bash
 pnpm -F @agenthub/desktop start       # preview production build
 pnpm -F @agenthub/desktop build:mac   # package for macOS (also :win / :linux)
-pnpm -F @agenthub/shared  typecheck   # types-only package
+pnpm -F @agenthub/shared  typecheck
 pnpm -F @agenthub/server  typecheck
 ```
 
@@ -56,7 +56,7 @@ Native Android app built with Kotlin and the Jetpack Compose UI toolkit. Follow 
 
 ## Shared types (`packages/shared/`)
 
-All data types crossing the desktop ↔ server boundary (chat summaries, messages, message-card kinds, network nodes, the `AgentHubApi` interface) live here and are imported as `@agenthub/shared`. The package ships TypeScript source directly — no build step.
+All data types and runtime constants crossing the desktop ↔ server boundary (chat summaries, messages, message-card kinds, network nodes, the `AgentHubApi` interface, local-runner protocol constants) live here and are imported as `@agenthub/shared`. Runtime consumers load compiled output from `packages/shared/dist`, while TypeScript types continue to resolve from `packages/shared/src`.
 
 When changing an API shape, edit it in `packages/shared/src/` so both ends pick up the change.
 
