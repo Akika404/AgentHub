@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { ConfigService } from '@nestjs/config'
+import { LOCAL_DEFAULT_MODEL } from '@agenthub/shared'
 import { ErrorCode } from '../common/index.js'
 import type { ProviderType } from '../platform-provider/entities/platform-provider.entity.js'
 import { UserWorkspaceService } from '../user-workspace/user-workspace.service.js'
@@ -217,6 +218,50 @@ test('AgentChatService allocates chat workspace and session home in the user spa
             }),
         isForbidden
     )
+})
+
+test('AgentChatService initializes local chats with checkpoint RPC, not commit RPC', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agenthub-service-space-'))
+    const userWorkspace = userWorkspaceFor(root)
+    const localAgent: Agent = {
+        ...agent('user-a', '', '/Users/alice/project'),
+        executionMode: 'local',
+        platformProviderId: null,
+        model: LOCAL_DEFAULT_MODEL
+    }
+    const rpcCalls: Array<{ method: string; params: unknown }> = []
+    const service = new AgentChatService(
+        repo({ find: async () => [] }),
+        repo(),
+        repo({ find: async () => [] }),
+        { loadAgent: async () => localAgent } as never,
+        new AgentPolicyService(),
+        {} as never,
+        {
+            markCheckpoint: async () => undefined,
+            summarize: async () => null,
+            commit: async () => null
+        } as never,
+        userWorkspace,
+        { getActiveTurns: async () => new Map(), getActiveTurn: async () => null } as never,
+        { listChatMessages: async () => [], deleteChatHistory: async () => undefined } as never,
+        {
+            isConnected: () => true,
+            rpc: async (_userId: string, method: string, params: unknown) => {
+                rpcCalls.push({ method, params })
+                return { ok: true }
+            }
+        } as never
+    )
+
+    const view = await service.createChat('user-a', { agentId: localAgent.id })
+
+    assert.equal(view.workingDirectory, '/Users/alice/project')
+    assert.deepEqual(
+        rpcCalls.map((call) => call.method),
+        ['dir.ensure', 'diff.checkpoint']
+    )
+    assert.equal(rpcCalls.some((call) => call.method === 'diff.commit'), false)
 })
 
 test('GroupChatService allocates group workspaces in the current user agent_workspace', async () => {

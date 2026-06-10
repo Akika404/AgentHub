@@ -2,8 +2,8 @@
  * Reverse-channel protocol — server ↔ desktop local runner.
  *
  * 「本地执行模式」下，服务器把一次 turn 的执行转包给用户桌面端：桌面端用本机已安装的
- * Claude Code / Codex 执行，事件经此通道回流，diff/commit 等文件操作也通过此通道的 RPC
- * 在用户本机仓库上执行。
+ * Claude Code / Codex 执行，事件经此通道回流，checkpoint/diff/commit 等文件操作也通过此通道的
+ * RPC 在用户本机仓库上执行。
  *
  * 传输层是一条桌面端发起、JWT 鉴权的持久 WebSocket（见 `apps/server` 的 LocalRunnerGateway
  * 与 `apps/desktop` 的 LocalRunnerService）。本文件只定义消息契约，不绑定具体传输实现。
@@ -49,8 +49,12 @@ export interface LocalRunConfig {
   permissionMode?: AgentPermissionMode
 }
 
-/** RPC 方法名与各自的入参 / 出参映射（diff/commit 代理到本机仓库执行）。 */
+/** RPC 方法名与各自的入参 / 出参映射（checkpoint/diff/commit 代理到本机仓库执行）。 */
 export interface LocalRunnerRpcMap {
+  'diff.checkpoint': {
+    params: { workingDirectory: string; scope: WorkspaceDiffSummary['scope']; ownerId: string }
+    result: { ok: true }
+  }
   'diff.summarize': {
     params: { workingDirectory: string; scope: WorkspaceDiffSummary['scope']; ownerId: string }
     result: WorkspaceDiffSummary

@@ -58,7 +58,7 @@ export class AgentChatService {
     /**
      * 本地执行模式的聊天：工作目录是用户本机路径（不分配服务器目录、不导入服务器 skill、
      * 不在服务器建 git checkpoint）。sessionHomeDirectory 留空，由桌面端本机解析。
-     * 若设备此刻在线，best-effort 让它确认目录存在并打 checkpoint。
+     * 若设备此刻在线，best-effort 让它确认目录存在并记录 checkpoint；不能提交用户既有改动。
      */
     private async createLocalChat(
         userId: string,
@@ -91,11 +91,10 @@ export class AgentChatService {
                 .rpc(userId, 'dir.ensure', { workingDirectory })
                 .catch(() => undefined)
             await this.localRunner
-                .rpc(userId, 'diff.commit', {
+                .rpc(userId, 'diff.checkpoint', {
                     workingDirectory,
                     scope: 'agent-chat',
-                    ownerId: saved.id,
-                    payload: {}
+                    ownerId: saved.id
                 })
                 .catch(() => undefined)
         }

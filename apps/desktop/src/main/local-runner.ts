@@ -36,8 +36,8 @@ function runnerWsUrl(): string {
  * LocalRunnerService —— 桌面端「本地执行模式」runner（主进程）。
  *
  * 与服务器建一条 JWT 鉴权的持久 WebSocket：收到 run.start 用本机已装的 Claude Code / Codex
- * 在用户本机工作目录执行（apiKey 留空走本机登录态），事件回流；收到 diff/commit RPC 用
- * WorkspaceGit 在本机仓库执行。断线自动重连。renderer 登录后通过 IPC 启动、登出时停止。
+ * 在用户本机工作目录执行（apiKey 留空走本机登录态），事件回流；收到 checkpoint/diff/commit
+ * RPC 用 WorkspaceGit 在本机仓库执行。断线自动重连。renderer 登录后通过 IPC 启动、登出时停止。
  */
 export class LocalRunnerService {
   private socket: WebSocket | null = null
@@ -212,6 +212,11 @@ export class LocalRunnerService {
     // method 与 params 在 ServerRpcMessage 上不是关联判别联合，switch 无法窄化 params，
     // 故在各分支按 method 显式取对应入参形状。
     switch (msg.method) {
+      case 'diff.checkpoint': {
+        const p = msg.params as LocalRunnerRpcMap['diff.checkpoint']['params']
+        await this.git.markCheckpoint(p.workingDirectory, p.scope, p.ownerId)
+        return { ok: true }
+      }
       case 'diff.summarize': {
         const p = msg.params as LocalRunnerRpcMap['diff.summarize']['params']
         return this.git.summarize(p.workingDirectory, p.scope, p.ownerId)

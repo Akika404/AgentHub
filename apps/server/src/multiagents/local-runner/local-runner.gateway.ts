@@ -34,7 +34,7 @@ const RPC_TIMEOUT_MS = 30 * 1000
  * LocalRunnerGateway —— 服务器侧反向通道。
  *
  * 桌面端「本地执行模式」的 runner 用一条 JWT 鉴权的 WebSocket 连上来；服务器据此把一次
- * turn 的执行（run.start）与 diff/commit（rpc）转发到用户本机，事件/结果回流后交给上层。
+ * turn 的执行（run.start）与 checkpoint/diff/commit（rpc）转发到用户本机，事件/结果回流后交给上层。
  *
  * v1：每个用户最多保留一条活跃连接（后连的设备顶替先连的）。RemoteAgentAdapter 与
  * AgentChatService 通过本网关的 isConnected / runStream / abortRun / rpc 与设备交互。
@@ -213,7 +213,7 @@ export class LocalRunnerGateway implements OnModuleInit, OnModuleDestroy {
         if (conn) this.send(conn, { type: 'run.abort', runId })
     }
 
-    /** 发起一次 RPC（diff/commit/dir.ensure），等待对端应答。 */
+    /** 发起一次 RPC（checkpoint/diff/commit/dir.ensure），等待对端应答。 */
     async rpc<M extends LocalRunnerRpcMethod>(
         userId: string,
         method: M,
