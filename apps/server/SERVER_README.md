@@ -259,7 +259,7 @@ src/platform-provider/
 ## 多 Agent 管理模块（`src/multiagents/`）
 
 用户「虚拟员工」（Agent）的创建、管理与单 Agent 聊天会话。每个 Agent 归属创建它的用户；同一个 Agent 可以创建多个互不影响的
-`AgentSession`。完整设计见 [`doc/agent-manager-spec.md`](../../doc/agent-manager-spec.md)。
+`AgentSession`。完整设计见 [`doc/agent-manager-spec.md`](../../doc/spec/agent-manager-spec.md)。
 
 ### 目录结构
 

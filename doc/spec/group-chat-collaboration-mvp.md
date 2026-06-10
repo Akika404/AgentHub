@@ -2,7 +2,7 @@
 
 > 本文是群聊功能的第一份落地 Spec，对应 [`doc/context/群聊上下文管理设计方案.md`](../context/群聊上下文管理设计方案.md) P0 的**最小可演示闭环**子集。
 > 后端模块位于 `apps/server/src/multiagents/`（与单聊同域，新增 group 子域）；桌面端入口为 `apps/desktop/src/renderer/src/views/`（群聊视图，复用现有 ChatView 体系）。
-> 设计前置：本 spec 复用单聊已有机制（`AgentSession` + turn 游离后台任务 + Redis Stream 多端围观），详见 [`agent-single-chat-spec.md`](../agent-single-chat-spec.md)。
+> 设计前置：本 spec 复用单聊已有机制（`AgentSession` + turn 游离后台任务 + Redis Stream 多端围观），详见 [`agent-single-chat-spec.md`](agent-single-chat-spec.md)。
 >
 > ⚠️ **后续增量**：本 spec 标注"留待第二份 spec"的 **DAG 并行调度 / 失败降级（重试 + `blocked` 连锁阻断）/ 冲突结构化上报 / Orchestrator 工具隔离** 已在 [`group-chat-orchestration-hardening.md`](./group-chat-orchestration-hardening.md) 实现。下文涉及"串行执行 / 失败即停 / 上报仅展示"的描述以该加固 spec 为准。
 
