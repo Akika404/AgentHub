@@ -2,6 +2,7 @@ import {
   ERROR_CODE,
   SUCCESS_CODE,
   type ApiResponse,
+  type ArtifactContentUpdatePayload,
   type BlackboardArtifactPreview,
   type BlackboardEventView,
   type BlackboardView,
@@ -236,6 +237,11 @@ export const groupChatApi = {
   getArtifactPreview: (id: string, artifactId: string) =>
     http.get<BlackboardArtifactPreview>(
       `/group-chats/${id}/blackboard/artifacts/${artifactId}/preview`
+    ),
+  saveArtifactContent: (id: string, artifactId: string, payload: ArtifactContentUpdatePayload) =>
+    http.put<BlackboardArtifactPreview>(
+      `/group-chats/${id}/blackboard/artifacts/${artifactId}/content`,
+      payload
     ),
   getBlackboardEvents: (id: string) =>
     http.get<BlackboardEventView[]>(`/group-chats/${id}/blackboard/events`),

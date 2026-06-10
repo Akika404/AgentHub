@@ -7,6 +7,7 @@ import {
     Param,
     Patch,
     Post,
+    Put,
     Query,
     Sse,
     UseGuards
@@ -29,6 +30,7 @@ import { StartTurnResultDto, AbortTurnResultDto } from './dto/turn-response.dto.
 import type { AgentChatMessageView } from './dto/agent-message-view.dto.js'
 import { AgentChatMessageViewDto } from './dto/agent-message-response.dto.js'
 import { WorkspaceCommitDto } from './dto/workspace-commit.dto.js'
+import { ArtifactContentUpdateDto } from './dto/artifact-content-update.dto.js'
 import {
     WorkspaceCommitResultDto,
     WorkspaceDiffSummaryDto
@@ -157,6 +159,22 @@ export class AgentChatsController {
         @Query('path') path: string
     ): Promise<BlackboardArtifactPreview> {
         return this.manager.previewArtifact(user.id, chatId, path)
+    }
+
+    @Put(':chatId/artifacts/content')
+    @ApiOperation({
+        summary: '保存单 Agent 聊天工作区内某产物文件内容',
+        description:
+            '仅支持 text/html 产物。运行中的聊天会拒绝保存，避免与 Agent 写文件并发冲突；local 模式经反向通道在用户本机写回。'
+    })
+    @ApiEnvelope(BlackboardArtifactPreviewDto)
+    saveArtifactContent(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Query('path') path: string,
+        @Body() dto: ArtifactContentUpdateDto
+    ): Promise<BlackboardArtifactPreview> {
+        return this.manager.saveArtifactContent(user.id, chatId, path, dto)
     }
 
     @Post(':chatId/converse')

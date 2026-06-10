@@ -83,6 +83,14 @@ export interface LocalRunnerRpcMap {
     params: { workingDirectory: string; path: string }
     result: ArtifactFilePreview
   }
+  /**
+   * Replace a local editable artifact file and return a fresh preview payload. The desktop
+   * side repeats the same workdir/path/type/size validation used by server-mode writes.
+   */
+  'artifact.write': {
+    params: { workingDirectory: string; path: string; content: string }
+    result: ArtifactFilePreview
+  }
 }
 
 export type LocalRunnerRpcMethod = keyof LocalRunnerRpcMap

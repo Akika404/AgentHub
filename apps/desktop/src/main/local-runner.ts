@@ -10,6 +10,7 @@ import {
   createAgent,
   WorkspaceGit,
   buildArtifactPreview,
+  writeArtifactEditableContent,
   type AgentAdapterConfig,
   type AgentEvent,
   type AgentVendor
@@ -234,6 +235,10 @@ export class LocalRunnerService {
       case 'artifact.preview': {
         const p = msg.params as LocalRunnerRpcMap['artifact.preview']['params']
         return buildArtifactPreview(p.workingDirectory, p.path)
+      }
+      case 'artifact.write': {
+        const p = msg.params as LocalRunnerRpcMap['artifact.write']['params']
+        return writeArtifactEditableContent(p.workingDirectory, p.path, p.content)
       }
     }
   }

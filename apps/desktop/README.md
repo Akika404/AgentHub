@@ -86,7 +86,7 @@ apps/desktop/
             │   ├── DeploymentDrawer.vue     # 部署日志/事件抽屉（SSE）
             │   ├── ArtifactPreviewBody.vue  # 产物预览内容（HTML iframe/图片/文本/过大）
             │   ├── ArtifactPreviewDrawer.vue# 拉取并展示产物预览的侧抽屉（群/单聊）
-            │   ├── ArtifactPreviewOverlay.vue# 产物预览全屏覆盖层
+            │   ├── ArtifactPreviewOverlay.vue# 产物全屏编辑层（text/html 可保存写回）
             │   ├── ServerDirectoryPicker.vue# 浏览/选择服务器工作区目录的弹窗
             │   ├── AgentCreateDialog.vue    # 创建/编辑 Agent 弹窗（vendor/mode/provider/model/头像）
             │   ├── AgentChatCreateDialog.vue# 开单聊弹窗（选 Agent/模型/工作目录）

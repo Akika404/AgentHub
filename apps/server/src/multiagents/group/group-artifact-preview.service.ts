@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { resolve } from 'node:path'
 import type { BlackboardArtifactPreview } from '@agenthub/shared'
-import { buildArtifactPreview, ArtifactPreviewError } from '@agenthub/agent-core'
+import {
+    buildArtifactPreview,
+    writeArtifactEditableContent,
+    ArtifactPreviewError
+} from '@agenthub/agent-core'
 import { BusinessException } from '../../common/index.js'
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { GroupWorkspaceService } from './group-workspace.service.js'
@@ -33,9 +37,46 @@ export class GroupArtifactPreviewService {
         return { artifact, ...file }
     }
 
+    async saveContent(
+        groupId: string,
+        workspaceDir: string,
+        artifactId: string,
+        content: string,
+        baseVersion?: number
+    ): Promise<BlackboardArtifactPreview> {
+        const artifact = await this.blackboard.getArtifactById(groupId, artifactId)
+        if (!artifact) throw BusinessException.notFound(`Artifact ${artifactId} not found`)
+        if (baseVersion !== undefined && baseVersion !== artifact.version) {
+            throw BusinessException.conflict(
+                `Artifact ${artifact.path} expected version ${artifact.version}, got ${baseVersion}`,
+                { reason: 'ARTIFACT_VERSION_CONFLICT', currentVersion: artifact.version }
+            )
+        }
+
+        const repo = resolve(this.workspace.repoDir(groupId, workspaceDir))
+        const file = await this.writeEditable(repo, artifact.path, content)
+        const updated = await this.blackboard.upsertArtifact(groupId, {
+            path: artifact.path,
+            type: artifact.type,
+            ownerAgentId: artifact.ownerAgentId,
+            updatedByAgentId: artifact.updatedByAgentId || artifact.ownerAgentId,
+            summary: artifact.summary,
+            status: artifact.status
+        })
+        return { artifact: updated, ...file }
+    }
+
     private async buildPreview(repo: string, path: string) {
         try {
             return await buildArtifactPreview(repo, path)
+        } catch (err) {
+            throw this.toBusiness(err, path)
+        }
+    }
+
+    private async writeEditable(repo: string, path: string, content: string) {
+        try {
+            return await writeArtifactEditableContent(repo, path, content)
         } catch (err) {
             throw this.toBusiness(err, path)
         }

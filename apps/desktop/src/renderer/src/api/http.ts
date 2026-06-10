@@ -44,6 +44,7 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
 export const http = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body)
 }

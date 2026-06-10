@@ -18,16 +18,34 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
+const saving = ref(false)
 const preview = ref<BlackboardArtifactPreview | null>(null)
 const editorText = ref('')
 const errorText = ref<string | null>(null)
+const saveError = ref<string | null>(null)
+const saveMessage = ref<string | null>(null)
 let loadSeq = 0
 
 const open = computed(() => Boolean((props.groupId || props.chatId) && props.artifact))
 const title = computed(() => props.artifact?.path ?? '编辑文件')
-const editable = computed(
-  () => preview.value?.previewKind === 'text' || preview.value?.previewKind === 'html'
+const editable = computed(() => {
+  const current = preview.value
+  return Boolean(
+    current &&
+      (current.previewKind === 'text' || current.previewKind === 'html') &&
+      current.editableContent !== null
+  )
+})
+const dirty = computed(
+  () => editable.value && editorText.value !== (preview.value?.editableContent ?? '')
 )
+const canSave = computed(() => editable.value && dirty.value && !saving.value && !loading.value)
+const saveStatusText = computed(() => {
+  if (saveError.value) return saveError.value
+  if (saving.value) return '保存中…'
+  if (dirty.value) return '未保存'
+  return saveMessage.value
+})
 
 const kindLabel = computed(() => {
   switch (preview.value?.previewKind) {
@@ -68,6 +86,8 @@ async function loadPreview(): Promise<void> {
 
   preview.value = null
   errorText.value = null
+  saveError.value = null
+  saveMessage.value = null
   if (!artifact || (!groupId && !chatId)) return
 
   loading.value = true
@@ -85,6 +105,35 @@ async function loadPreview(): Promise<void> {
   }
 }
 
+async function saveContent(): Promise<void> {
+  const groupId = props.groupId
+  const chatId = props.chatId
+  const artifact = props.artifact
+  const currentPreview = preview.value
+  if (!artifact || !currentPreview || !editable.value || !dirty.value || (!groupId && !chatId)) {
+    return
+  }
+
+  saving.value = true
+  saveError.value = null
+  saveMessage.value = null
+  try {
+    const payload = {
+      content: editorText.value,
+      baseVersion: currentPreview.artifact.version
+    }
+    const next = groupId
+      ? await groupChatApi.saveArtifactContent(groupId, artifact.id, payload)
+      : await agentChatApi.saveArtifactContent(chatId as string, artifact.path, payload)
+    preview.value = next
+    saveMessage.value = '已保存'
+  } catch (err) {
+    saveError.value = err instanceof ApiError ? err.message : '保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
 watch(
   () => [props.groupId, props.chatId, props.artifact?.id] as const,
   () => void loadPreview(),
@@ -92,9 +141,9 @@ watch(
 )
 
 watch(
-  () => preview.value?.content,
-  (content) => {
-    editorText.value = content ?? ''
+  () => preview.value,
+  (next) => {
+    editorText.value = next?.editableContent ?? ''
   },
   { immediate: true }
 )
@@ -119,6 +168,25 @@ watch(
                 {{ preview ? `${kindLabel} · ${formatBytes(preview.size)}` : '准备打开文件' }}
               </p>
             </div>
+            <span
+              v-if="editable && saveStatusText"
+              class="hidden max-w-[220px] truncate text-xs sm:block"
+              :class="saveError ? 'text-danger' : dirty ? 'text-warning' : 'text-success'"
+              :title="saveStatusText"
+            >
+              {{ saveStatusText }}
+            </span>
+            <button
+              v-if="editable"
+              type="button"
+              class="inline-flex h-8 min-w-[76px] items-center justify-center gap-1.5 rounded border border-surface-border px-2.5 text-sm font-medium text-text-main transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!canSave"
+              title="保存文件"
+              @click="saveContent"
+            >
+              <span class="material-symbols-outlined text-lg">save</span>
+              <span>{{ saving ? '保存中' : '保存' }}</span>
+            </button>
             <button
               type="button"
               class="rounded p-1.5 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-main"
@@ -142,6 +210,7 @@ watch(
               <textarea
                 v-if="editable"
                 v-model="editorText"
+                :disabled="saving"
                 class="h-full w-full resize-none border-0 bg-[#101418] p-5 font-mono text-sm leading-6 text-[#e8edf2] outline-none selection:bg-primary/40"
                 spellcheck="false"
               ></textarea>

@@ -16,7 +16,8 @@ import {
   type WorkspaceCommitPayload,
   type WorkspaceCommitResult,
   type WorkspaceDiffSummary,
-  type BlackboardArtifactPreview
+  type BlackboardArtifactPreview,
+  type ArtifactContentUpdatePayload
 } from '@agenthub/shared'
 import { getToken, onUnauthorized } from '../stores/auth'
 import { ApiError, http } from './http'
@@ -196,6 +197,12 @@ export const agentChatApi = {
   getArtifactPreview: (chatId: string, path: string) =>
     http.get<BlackboardArtifactPreview>(
       `/agent-chats/${chatId}/artifacts/preview?path=${encodeURIComponent(path)}`
+    ),
+  /** Save a workspace artifact file by workspace-relative path (single-chat). */
+  saveArtifactContent: (chatId: string, path: string, payload: ArtifactContentUpdatePayload) =>
+    http.put<BlackboardArtifactPreview>(
+      `/agent-chats/${chatId}/artifacts/content?path=${encodeURIComponent(path)}`,
+      payload
     ),
   clear: (chatId: string) => http.post<AgentChatView>(`/agent-chats/${chatId}/clear`),
   delete: (chatId: string) => http.delete<{ deleted: true }>(`/agent-chats/${chatId}`),

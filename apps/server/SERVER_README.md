@@ -334,6 +334,8 @@ src/multiagents/
 | PATCH      | `/api/agent-chats/:chatId/messages/:messageId`  | 修改消息标注状态（`pinned`）；Pin 后进入当前聊天后续 Agent 上下文                      |
 | GET        | `/api/agent-chats/:chatId/workspace-diff`       | 查询本聊天工作区相对 AgentHub checkpoint 的累计文件变更                                |
 | POST       | `/api/agent-chats/:chatId/workspace-commit`     | 提交/确认本聊天工作区变更并推进 checkpoint；运行中拒绝提交                             |
+| GET        | `/api/agent-chats/:chatId/artifacts/preview`    | 按 `path` 查询单聊工作区产物预览                                                       |
+| PUT        | `/api/agent-chats/:chatId/artifacts/content`    | 按 `path` 保存 text/html 产物内容；运行中拒绝写回                                      |
 | POST       | `/api/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离），body 传 prompt，返回 `{ turnId }`；已有活跃 turn 时返回 busy |
 | GET `@Sse` | `/api/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流（回放+追尾），遇 `done` 结束                                            |
 | POST       | `/api/agent-chats/:chatId/turns/:turnId/abort`  | 中止该轮（跨实例广播）                                                                 |
@@ -370,7 +372,7 @@ src/multiagents/group/
 ├── group-message.service.ts           # 展示层 presentation_log 读写
 ├── group-workspace.service.ts         # 共享 git 仓库：init / worktree add / merge / diff / ACTIVE 标记
 ├── group-attachment.service.ts        # 群聊上传文件落入工作区可见目录 + 附件预览
-├── group-artifact-preview.service.ts  # 黑板产出物对应工作区文件 → UI 预览 payload
+├── group-artifact-preview.service.ts  # 黑板产出物对应工作区文件 → UI 预览 / text-html 写回
 ├── git-path.ts                        # 解析 git 的 C 转义/引号文件路径
 ├── entities/                          # group_chat / group_chat_member / group_message / group_run
 ├── blackboard/
@@ -424,6 +426,7 @@ src/multiagents/group/
 | POST       | `/api/group-chats/:id/workspace-commit`                         | 提交/确认共享工作区变更并推进 checkpoint；运行中拒绝提交                                           |
 | GET        | `/api/group-chats/:id/blackboard`                               | 黑板状态快照                                                                                       |
 | GET        | `/api/group-chats/:id/blackboard/artifacts/:artifactId/preview` | 读取黑板产出物对应工作区文件的预览内容                                                             |
+| PUT        | `/api/group-chats/:id/blackboard/artifacts/:artifactId/content` | 保存黑板产出物对应 text/html 文件内容；运行中拒绝写回并在成功后更新 artifact 版本                   |
 | GET        | `/api/group-chats/:id/blackboard/events`                        | 黑板事件流（审计/调试，分页）                                                                      |
 
 > 协作动作（`dispatch_agent` / `report_completion` / `blackboard_write`）是**服务端内部协议**，不暴露为用户 REST：成员输出结构化 `report`，服务端基于 git diff 代写黑板。

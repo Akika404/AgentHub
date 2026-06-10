@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { ArtifactFilePreview, BlackboardArtifactPreviewKind } from '@agenthub/shared'
 
@@ -142,12 +142,15 @@ export async function buildArtifactPreview(
 
   if (info.previewKind === 'html') {
     const content = await readFile(filePath, 'utf8')
-    return buildPreview(info, { content: await embedHtmlResources(content, repo, filePath) })
+    return buildPreview(info, {
+      content: await embedHtmlResources(content, repo, filePath),
+      editableContent: content
+    })
   }
 
   if (info.previewKind === 'text') {
     const content = await readFile(filePath, 'utf8')
-    return buildPreview(info, { content })
+    return buildPreview(info, { content, editableContent: content })
   }
 
   if (usesDataUrl(info.previewKind)) {
@@ -164,6 +167,42 @@ export async function buildArtifactPreview(
   }
 
   return buildPreview(info, { message: '该文件类型暂不支持在应用内预览。' })
+}
+
+/**
+ * Replace the raw source content of an editable artifact file and return a fresh preview.
+ *
+ * Only UTF-8 text and HTML files are editable. The target file must already exist inside
+ * the repo and pass the same path restrictions used by preview generation.
+ */
+export async function writeArtifactEditableContent(
+  repoDir: string,
+  relPath: string,
+  content: string
+): Promise<ArtifactFilePreview> {
+  assertAllowedArtifactPath(relPath)
+  const repo = resolve(repoDir)
+  const filePath = resolve(repo, relPath)
+  assertPathInsideRepo(repo, filePath)
+
+  const info = await fileInfo(filePath, relPath)
+  if (info.previewKind !== 'text' && info.previewKind !== 'html') {
+    throw new ArtifactPreviewError(
+      'bad_request',
+      `Artifact ${relPath} is ${info.previewKind}; only text and HTML artifacts can be edited`
+    )
+  }
+
+  const bytes = Buffer.byteLength(content, 'utf8')
+  if (bytes > MAX_TEXT_PREVIEW_BYTES) {
+    throw new ArtifactPreviewError(
+      'bad_request',
+      `Artifact ${relPath} content is too large to edit (${formatBytes(bytes)})`
+    )
+  }
+
+  await writeFile(filePath, content, 'utf8')
+  return buildArtifactPreview(repo, relPath)
 }
 
 async function fileInfo(filePath: string, relPath: string): Promise<FileInfo> {
@@ -209,6 +248,7 @@ function buildPreview(
   override: {
     previewKind?: BlackboardArtifactPreviewKind
     content?: string | null
+    editableContent?: string | null
     dataUrl?: string | null
     message?: string | null
   } = {}
@@ -220,6 +260,7 @@ function buildPreview(
     size: info.size,
     previewKind: override.previewKind ?? info.previewKind,
     content: override.content ?? null,
+    editableContent: override.editableContent ?? null,
     dataUrl: override.dataUrl ?? null,
     message: override.message ?? null
   }
@@ -448,5 +489,4 @@ function formatBytes(size: number): string {
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
-
 

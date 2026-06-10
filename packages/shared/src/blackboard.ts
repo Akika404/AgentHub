@@ -47,6 +47,8 @@ export interface BlackboardArtifactPreview {
   size: number
   previewKind: BlackboardArtifactPreviewKind
   content: string | null
+  /** Raw source text used by the artifact editor. HTML preview content may be resource-inlined. */
+  editableContent: string | null
   dataUrl: string | null
   message: string | null
 }
@@ -57,6 +59,12 @@ export interface BlackboardArtifactPreview {
  * 后即为完整的 {@link BlackboardArtifactPreview}。
  */
 export type ArtifactFilePreview = Omit<BlackboardArtifactPreview, 'artifact'>
+
+export interface ArtifactContentUpdatePayload {
+  content: string
+  /** Optional optimistic-lock baseline for blackboard-backed artifacts. */
+  baseVersion?: number
+}
 
 // —— Decisions ——
 

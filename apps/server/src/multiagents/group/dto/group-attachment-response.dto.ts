@@ -69,6 +69,9 @@ export class GroupAttachmentPreviewDto implements GroupAttachmentPreview {
     content!: string | null
 
     @ApiProperty({ type: String, nullable: true })
+    editableContent!: string | null
+
+    @ApiProperty({ type: String, nullable: true })
     dataUrl!: string | null
 
     @ApiProperty({ type: String, nullable: true })

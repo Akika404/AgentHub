@@ -12,7 +12,11 @@ import type {
     BlackboardArtifact,
     BlackboardArtifactType
 } from '@agenthub/shared'
-import { buildArtifactPreview, ArtifactPreviewError } from '@agenthub/agent-core'
+import {
+    buildArtifactPreview,
+    writeArtifactEditableContent,
+    ArtifactPreviewError
+} from '@agenthub/agent-core'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
 import { UpdateAgentMessageDto } from '../dto/update-agent-message.dto.js'
@@ -308,6 +312,44 @@ export class AgentChatService {
         }
         try {
             const file = await buildArtifactPreview(session.workingDirectory, path)
+            return { artifact, ...file }
+        } catch (err) {
+            throw this.toPreviewError(err, path)
+        }
+    }
+
+    /** 保存单聊工作区内某个可编辑产物文件。 */
+    async saveArtifactContent(
+        userId: string,
+        chatId: string,
+        path: string,
+        content: string
+    ): Promise<BlackboardArtifactPreview> {
+        const { session } = await this.loadChat(userId, chatId)
+        if (session.archivedAt) {
+            throw BusinessException.forbidden('Archived chat is read-only')
+        }
+
+        const activeTurnId = await this.runtime.getActiveTurn(session.id)
+        if (activeTurnId) {
+            throw BusinessException.agentBusy(
+                `Chat ${chatId} is busy with active turn ${activeTurnId}`
+            )
+        }
+
+        const artifact = this.syntheticArtifact(session.agentId, path)
+        if (session.executionMode === 'local') {
+            this.assertRunnerConnected(userId)
+            const file = await this.localRunner.rpc(userId, 'artifact.write', {
+                workingDirectory: session.workingDirectory,
+                path,
+                content
+            })
+            return { ...file, artifact }
+        }
+
+        try {
+            const file = await writeArtifactEditableContent(session.workingDirectory, path, content)
             return { artifact, ...file }
         } catch (err) {
             throw this.toPreviewError(err, path)

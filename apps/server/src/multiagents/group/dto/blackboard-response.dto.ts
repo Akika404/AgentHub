@@ -99,6 +99,7 @@ export class BlackboardArtifactPreviewDto implements BlackboardArtifactPreview {
     @ApiProperty() size!: number
     @ApiProperty({ enum: ARTIFACT_PREVIEW_KINDS }) previewKind!: BlackboardArtifactPreviewKind
     @ApiProperty({ type: String, nullable: true }) content!: string | null
+    @ApiProperty({ type: String, nullable: true }) editableContent!: string | null
     @ApiProperty({ type: String, nullable: true }) dataUrl!: string | null
     @ApiProperty({ type: String, nullable: true }) message!: string | null
 }

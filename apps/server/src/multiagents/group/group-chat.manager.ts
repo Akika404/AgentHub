@@ -16,7 +16,8 @@ import type {
     UpdateGroupChatPayload,
     WorkspaceCommitPayload,
     WorkspaceCommitResult,
-    WorkspaceDiffSummary
+    WorkspaceDiffSummary,
+    ArtifactContentUpdatePayload
 } from '@agenthub/shared'
 import { BlackboardService } from './blackboard/blackboard.service.js'
 import { GroupChatService } from './group-chat.service.js'
@@ -171,6 +172,32 @@ export class GroupChatManager {
     ): Promise<BlackboardArtifactPreview> {
         const group = await this.groupChat.loadGroup(userId, groupId)
         return this.artifactPreview.preview(group.id, group.workspaceDir, artifactId)
+    }
+
+    async saveArtifactContent(
+        userId: string,
+        groupId: string,
+        artifactId: string,
+        payload: ArtifactContentUpdatePayload
+    ): Promise<BlackboardArtifactPreview> {
+        const group = await this.groupChat.loadGroup(userId, groupId)
+        if (group.status === 'archived' || group.archivedAt) {
+            throw BusinessException.forbidden('Archived group chat is read-only')
+        }
+        const activeRunId = await this.runStream.getActiveRun(group.id)
+        if (activeRunId) {
+            throw BusinessException.conflict(
+                `Group ${group.id} is busy with active run ${activeRunId}`,
+                { reason: 'GROUP_BUSY', activeRunId }
+            )
+        }
+        return this.artifactPreview.saveContent(
+            group.id,
+            group.workspaceDir,
+            artifactId,
+            payload.content,
+            payload.baseVersion
+        )
     }
 
     async listBlackboardEvents(

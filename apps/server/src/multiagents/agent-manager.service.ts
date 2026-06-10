@@ -5,7 +5,8 @@ import type {
     WorkspaceCommitPayload,
     WorkspaceCommitResult,
     WorkspaceDiffSummary,
-    BlackboardArtifactPreview
+    BlackboardArtifactPreview,
+    ArtifactContentUpdatePayload
 } from '@agenthub/shared'
 import { AgentConfigService } from './agents/agent-config.service.js'
 import { AgentChatService } from './chats/agent-chat.service.js'
@@ -99,6 +100,15 @@ export class AgentManager {
         path: string
     ): Promise<BlackboardArtifactPreview> {
         return this.chats.previewArtifact(userId, chatId, path)
+    }
+
+    saveArtifactContent(
+        userId: string,
+        chatId: string,
+        path: string,
+        payload: ArtifactContentUpdatePayload
+    ): Promise<BlackboardArtifactPreview> {
+        return this.chats.saveArtifactContent(userId, chatId, path, payload.content)
     }
 
     startTurn(

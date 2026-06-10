@@ -7,6 +7,7 @@ import {
     Param,
     Patch,
     Post,
+    Put,
     Query,
     Sse,
     UploadedFile,
@@ -67,6 +68,7 @@ import {
     StopDeploymentResultDto
 } from './dto/deployment-response.dto.js'
 import { WorkspaceCommitDto } from '../dto/workspace-commit.dto.js'
+import { ArtifactContentUpdateDto } from '../dto/artifact-content-update.dto.js'
 import {
     WorkspaceCommitResultDto,
     WorkspaceDiffSummaryDto
@@ -281,6 +283,22 @@ export class GroupChatController {
         @Param('artifactId') artifactId: string
     ): Promise<BlackboardArtifactPreview> {
         return this.manager.getArtifactPreview(user.id, id, artifactId)
+    }
+
+    @Put(':id/blackboard/artifacts/:artifactId/content')
+    @ApiOperation({
+        summary: '保存黑板产出物对应文件内容',
+        description:
+            '仅支持 text/html 产物。群运行中会拒绝保存；保存成功后写回工作区文件并更新黑板产物版本。'
+    })
+    @ApiEnvelope(BlackboardArtifactPreviewDto)
+    saveArtifactContent(
+        @CurrentUser() user: User,
+        @Param('id') id: string,
+        @Param('artifactId') artifactId: string,
+        @Body() dto: ArtifactContentUpdateDto
+    ): Promise<BlackboardArtifactPreview> {
+        return this.manager.saveArtifactContent(user.id, id, artifactId, dto)
     }
 
     @Get(':id/blackboard/events')
