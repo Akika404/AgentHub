@@ -39,7 +39,7 @@
 #### 3. 多 Agent 接入
 
 - 统一适配器层，至少接入 2 个主流 Agent 平台（Claude Code + Codex / OpenCode）
-- 支持用户自建 Agent（对话式创建，设定 System Prompt + 工具集） 提供Tool：agent_create
+- 支持用户自建 Agent（对话式创建，设定 System Prompt + 工具集）
 - 每个 Agent 在聊天列表中显示为独立的"联系人"，有头像、名称、能力标签
 
 #### 4. 产物预览与编辑

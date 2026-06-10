@@ -74,6 +74,12 @@ interface ActiveDeploymentState {
 type PreviewAttachment = GroupAttachmentView & {
   previewUrl?: string
 }
+type SendMessagePayload = {
+  text: string
+  replyTo?: MessageReplyRef
+  mentions?: string[]
+  files?: File[]
+}
 
 const CHAT_LIST_WIDTH_STORAGE_KEY = 'agenthub:chat-list-width'
 const INSPECTOR_WIDTH_STORAGE_KEY = 'agenthub:right-inspector-width'
@@ -2220,26 +2226,35 @@ async function stopCurrentTurn(): Promise<void> {
   else if (kind === 'group') await stopGroupRun(id)
 }
 
-async function sendMessage(payload: {
-  text: string
-  replyTo?: MessageReplyRef
-  mentions?: string[]
-  files?: File[]
-}): Promise<void> {
-  if (activeArchived.value) return
-  if (activeChat.value) {
-    await sendAgentMessage(payload)
-    return
-  }
-  if (activeGroup.value) {
-    await sendGroupMessage(payload)
+function plainReplyRef(replyTo?: MessageReplyRef | null): MessageReplyRef | undefined {
+  if (!replyTo) return undefined
+  const { messageId, senderName, excerpt } = replyTo
+  return { messageId, senderName, excerpt }
+}
+
+function normalizeSendMessagePayload(payload: SendMessagePayload): SendMessagePayload {
+  const replyTo = plainReplyRef(payload.replyTo)
+  return {
+    text: payload.text,
+    ...(replyTo ? { replyTo } : {}),
+    ...(payload.mentions?.length ? { mentions: [...payload.mentions] } : {}),
+    ...(payload.files?.length ? { files: [...payload.files] } : {})
   }
 }
 
-async function sendAgentMessage(payload: {
-  text: string
-  replyTo?: MessageReplyRef
-}): Promise<void> {
+async function sendMessage(payload: SendMessagePayload): Promise<void> {
+  if (activeArchived.value) return
+  const normalizedPayload = normalizeSendMessagePayload(payload)
+  if (activeChat.value) {
+    await sendAgentMessage(normalizedPayload)
+    return
+  }
+  if (activeGroup.value) {
+    await sendGroupMessage(normalizedPayload)
+  }
+}
+
+async function sendAgentMessage(payload: SendMessagePayload): Promise<void> {
   const chat = activeChat.value
   if (!chat || streaming.value || chat.archivedAt) return
 
@@ -2335,12 +2350,7 @@ async function onRegenerateMessage(msg: ChatDisplayMessage): Promise<void> {
   await startAgentTurn(chat, (handlers) => agentChatApi.regenerate(chat.id, msg.id, handlers))
 }
 
-async function sendGroupMessage(payload: {
-  text: string
-  replyTo?: MessageReplyRef
-  mentions?: string[]
-  files?: File[]
-}): Promise<void> {
+async function sendGroupMessage(payload: SendMessagePayload): Promise<void> {
   const group = activeGroup.value
   if (!group || streaming.value || group.archivedAt || group.status === 'archived') return
 
