@@ -65,7 +65,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1703,6 +1706,7 @@ private fun DirectoryValueField(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectField(
     label: String,
@@ -1714,23 +1718,23 @@ private fun SelectField(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val display = options.find { it.first == value }?.second ?: emptyLabel
-    Box(modifier) {
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (options.isNotEmpty()) expanded = it },
+        modifier = modifier
+    ) {
         OutlinedTextField(
             value = display,
             onValueChange = {},
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, options.isNotEmpty()),
             label = { Text(label) },
             readOnly = true,
             enabled = options.isNotEmpty(),
-            trailingIcon = { Icon(Icons.Default.MoreVert, contentDescription = null) }
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
         )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(4.dp))
-                .clickable(enabled = options.isNotEmpty()) { expanded = true }
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (id, text) ->
                 DropdownMenuItem(text = { Text(text) }, onClick = { expanded = false; onSelected(id) })
             }
