@@ -545,36 +545,57 @@ function agentRunFromView(view: AgentChatMessageView, chat: AgentChatView): Agen
     sender: agentSender(chat),
     status: 'done',
     steps,
-    text: view.text
+    text: view.text,
+    ...(view.artifacts && view.artifacts.length > 0 ? { artifacts: view.artifacts } : {})
   }
 }
 
-function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatDisplayMessage {
+/** 单聊本轮 static 交付物 → 一张独立预览卡片(紧跟 agent-run 气泡)。 */
+function deployFromView(view: AgentChatMessageView, chat: AgentChatView): DeployMessage | null {
+  if (!view.deployManifest) return null
+  return {
+    id: `${view.id}:deploy`,
+    chatId: view.chatId,
+    kind: 'deploy',
+    timestamp: view.createdAt,
+    pinned: false,
+    sender: agentSender(chat),
+    manifest: view.deployManifest,
+    artifacts: view.artifacts ?? []
+  }
+}
+
+function messageFromView(view: AgentChatMessageView, chat: AgentChatView): ChatDisplayMessage[] {
   if (view.role === 'system') {
-    return {
-      id: view.id,
-      chatId: view.chatId,
-      kind: 'system',
-      timestamp: view.createdAt,
-      pinned: view.pinned,
-      text: view.text
-    }
+    return [
+      {
+        id: view.id,
+        chatId: view.chatId,
+        kind: 'system',
+        timestamp: view.createdAt,
+        pinned: view.pinned,
+        text: view.text
+      }
+    ]
   }
 
   if (view.role === 'agent' && view.steps && view.steps.length > 0) {
-    return agentRunFromView(view, chat)
+    const deploy = deployFromView(view, chat)
+    return deploy ? [agentRunFromView(view, chat), deploy] : [agentRunFromView(view, chat)]
   }
 
-  return {
-    id: view.id,
-    chatId: view.chatId,
-    kind: 'text',
-    timestamp: view.createdAt,
-    pinned: view.pinned,
-    sender: view.role === 'user' ? currentUserSender() : agentSender(chat),
-    text: view.text,
-    ...(view.replyTo ? { replyTo: view.replyTo } : {})
-  }
+  return [
+    {
+      id: view.id,
+      chatId: view.chatId,
+      kind: 'text',
+      timestamp: view.createdAt,
+      pinned: view.pinned,
+      sender: view.role === 'user' ? currentUserSender() : agentSender(chat),
+      text: view.text,
+      ...(view.replyTo ? { replyTo: view.replyTo } : {})
+    }
+  ]
 }
 
 function appendMessage(sessionKey: string, message: ChatDisplayMessage): void {
@@ -1275,7 +1296,7 @@ async function loadAgentMessages(
 
   try {
     const history = await agentChatApi.listMessages(chatId)
-    const next = history.map((message) => messageFromView(message, chat))
+    const next = history.flatMap((message) => messageFromView(message, chat))
     messageCache.set(sessionKey, next)
     if (updatesActiveChat && loadId === activeLoadId && activeSessionKey.value === sessionKey) {
       messages.value = next
@@ -2571,11 +2592,13 @@ onUnmounted(() => {
     />
     <ArtifactPreviewDrawer
       :group-id="activeGroup?.id ?? null"
+      :chat-id="activeGroup ? null : (activeChat?.id ?? null)"
       :artifact="previewArtifact"
       @close="previewArtifact = null"
     />
     <ArtifactPreviewOverlay
       :group-id="activeGroup?.id ?? null"
+      :chat-id="activeGroup ? null : (activeChat?.id ?? null)"
       :artifact="overlayArtifact"
       @close="overlayArtifact = null"
     />

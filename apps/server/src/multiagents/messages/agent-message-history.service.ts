@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
-import type { MessageReplyRef, UpdateAgentChatMessagePayload } from '@agenthub/shared'
+import type { MessageReplyRef, UpdateAgentChatMessagePayload, BlackboardArtifact, DeployManifest } from '@agenthub/shared'
 import type { AgentEvent, AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { AgentMessage } from '../entities/agent-message.entity.js'
@@ -60,7 +60,8 @@ export class AgentMessageHistoryService {
         sessionId: string,
         role: AgentMessage['role'],
         text: string,
-        replyTo: MessageReplyRef | null = null
+        replyTo: MessageReplyRef | null = null,
+        extra: { artifacts?: BlackboardArtifact[]; deployManifest?: DeployManifest | null } = {}
     ): Promise<AgentMessage | null> {
         const trimmed = text.trim()
         if (!trimmed) return null
@@ -72,7 +73,9 @@ export class AgentMessageHistoryService {
                 role,
                 text: trimmed,
                 replyTo,
-                pinned: false
+                pinned: false,
+                artifacts: extra.artifacts && extra.artifacts.length > 0 ? extra.artifacts : null,
+                deployManifest: extra.deployManifest ?? null
             })
         )
     }

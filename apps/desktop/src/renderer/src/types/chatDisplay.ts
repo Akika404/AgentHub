@@ -35,7 +35,7 @@ export interface AgentRunMessage {
   status: 'thinking' | 'tool' | 'responding' | 'done' | 'error'
   steps: AgentRunStep[]
   text: string
-  /** inline artifact preview cards produced by this run (group chats only) */
+  /** inline artifact preview cards produced by this run (group chats, and single chats via diff-derived artifacts) */
   artifacts?: BlackboardArtifact[]
 }
 

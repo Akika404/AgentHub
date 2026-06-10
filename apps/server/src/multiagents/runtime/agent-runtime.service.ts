@@ -18,6 +18,8 @@ import {
     AgentMessageHistoryService,
     type StepDraft
 } from '../messages/agent-message-history.service.js'
+import { AgentArtifactService } from './agent-artifact.service.js'
+import type { BlackboardArtifact, DeployManifest } from '@agenthub/shared'
 
 interface RunningTurn {
     sessionId: string
@@ -49,7 +51,8 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         private readonly turnStream: TurnStream,
         private readonly messages: AgentMessageHistoryService,
         private readonly config: ConfigService,
-        private readonly localRunner: LocalRunnerGateway
+        private readonly localRunner: LocalRunnerGateway,
+        private readonly artifacts: AgentArtifactService
     ) {
         this.maxLive = this.config.get<number>('AGENT_MAX_LIVE', 30)
         this.maxLiveCodex = this.config.get<number>('AGENT_MAX_LIVE_CODEX', 8)
@@ -228,6 +231,9 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         let timeout: NodeJS.Timeout | null = null
         const stepDrafts: StepDraft[] = []
         const toolIndexById = new Map<string, number>()
+        // 仅用户单聊推导产物;turn 开始抓基线快照,结束据增量推导(group 内部会话不走这里)。
+        const artifactBaseline =
+            session.scope === 'user' ? await this.artifacts.snapshot(session) : null
         const timeoutPromise =
             this.turnTimeoutMs > 0
                 ? new Promise<never>((_, reject) => {
@@ -291,12 +297,21 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
             try {
                 const agentText = (finalTextFromDone ?? textParts.join('')).trim()
                 if (agentText) {
+                    let derivedArtifacts: BlackboardArtifact[] = []
+                    let derivedManifest: DeployManifest | null = null
+                    if (artifactBaseline) {
+                        const derived = await this.artifacts.derive(session, artifactBaseline)
+                        derivedArtifacts = derived.artifacts
+                        derivedManifest = derived.manifest
+                    }
                     const message = await this.messages.saveMessage(
                         session.userId,
                         session.agentId,
                         session.id,
                         'agent',
-                        agentText
+                        agentText,
+                        null,
+                        { artifacts: derivedArtifacts, deployManifest: derivedManifest }
                     )
                     if (message) await this.messages.saveSteps(message.id, session.id, stepDrafts)
                 } else if (fatalErrorMessage) {

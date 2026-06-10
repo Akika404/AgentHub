@@ -11,6 +11,7 @@ import { AgentPolicyService } from './agents/agent-policy.service.js'
 import { AgentChatService } from './chats/agent-chat.service.js'
 import { AgentMessageHistoryService } from './messages/agent-message-history.service.js'
 import { AgentRuntimeService } from './runtime/agent-runtime.service.js'
+import { AgentArtifactService } from './runtime/agent-artifact.service.js'
 import { TurnStream } from './runtime/turn-stream.service.js'
 import { AgentWorkspaceService } from './workspace/agent-workspace.service.js'
 import { WorkspaceDiffService } from './workspace/workspace-diff.service.js'
@@ -52,6 +53,7 @@ import { GroupChatMember } from './group/entities/group-chat-member.entity.js'
         WorkspaceDiffService,
         AgentMessageHistoryService,
         AgentRuntimeService,
+        AgentArtifactService,
         TurnStream,
         LocalRunnerGateway
     ],

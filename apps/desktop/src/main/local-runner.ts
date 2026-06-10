@@ -9,6 +9,7 @@ import WebSocket from 'ws'
 import {
   createAgent,
   WorkspaceGit,
+  buildArtifactPreview,
   type AgentAdapterConfig,
   type AgentEvent,
   type AgentVendor
@@ -229,6 +230,10 @@ export class LocalRunnerService {
         const p = msg.params as LocalRunnerRpcMap['dir.ensure']['params']
         await mkdir(p.workingDirectory, { recursive: true })
         return { ok: true }
+      }
+      case 'artifact.preview': {
+        const p = msg.params as LocalRunnerRpcMap['artifact.preview']['params']
+        return buildArtifactPreview(p.workingDirectory, p.path)
       }
     }
   }

@@ -7,6 +7,7 @@ import {
     Param,
     Patch,
     Post,
+    Query,
     Sse,
     UseGuards
 } from '@nestjs/common'
@@ -32,7 +33,12 @@ import {
     WorkspaceCommitResultDto,
     WorkspaceDiffSummaryDto
 } from './dto/workspace-diff-response.dto.js'
-import type { WorkspaceCommitResult, WorkspaceDiffSummary } from '@agenthub/shared'
+import { BlackboardArtifactPreviewDto } from './group/dto/blackboard-response.dto.js'
+import type {
+    WorkspaceCommitResult,
+    WorkspaceDiffSummary,
+    BlackboardArtifactPreview
+} from '@agenthub/shared'
 
 @ApiTags('agent-chats')
 @ApiBearerAuth()
@@ -121,6 +127,21 @@ export class AgentChatsController {
         @Body() dto: WorkspaceCommitDto
     ): Promise<WorkspaceCommitResult> {
         return this.manager.commitWorkspace(user.id, chatId, dto)
+    }
+
+    @Get(':chatId/artifacts/preview')
+    @ApiOperation({
+        summary: '读取单 Agent 聊天工作区内某产物文件的预览内容',
+        description:
+            'path 为工作目录相对路径，来自该聊天 agent 消息持久化的产物快照。server 模式读服务器文件；local 模式经反向通道在用户本机读取。'
+    })
+    @ApiEnvelope(BlackboardArtifactPreviewDto)
+    artifactPreview(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Query('path') path: string
+    ): Promise<BlackboardArtifactPreview> {
+        return this.manager.previewArtifact(user.id, chatId, path)
     }
 
     @Post(':chatId/converse')

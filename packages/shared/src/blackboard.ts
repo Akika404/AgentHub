@@ -51,6 +51,13 @@ export interface BlackboardArtifactPreview {
   message: string | null
 }
 
+/**
+ * 仅由文件本身派生的预览负载(不含 blackboard `artifact` 元信息)。由框架无关的
+ * `buildArtifactPreview`(@agenthub/agent-core)产出;群聊 / 单聊各自补上 `artifact`
+ * 后即为完整的 {@link BlackboardArtifactPreview}。
+ */
+export type ArtifactFilePreview = Omit<BlackboardArtifactPreview, 'artifact'>
+
 // —— Decisions ——
 
 export type BlackboardDecisionStatus = 'proposed' | 'approved' | 'superseded' | 'rejected'

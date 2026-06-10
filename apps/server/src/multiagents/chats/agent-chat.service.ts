@@ -7,8 +7,12 @@ import type {
     MessageReplyRef,
     WorkspaceCommitPayload,
     WorkspaceCommitResult,
-    WorkspaceDiffSummary
+    WorkspaceDiffSummary,
+    BlackboardArtifactPreview,
+    BlackboardArtifact,
+    BlackboardArtifactType
 } from '@agenthub/shared'
+import { buildArtifactPreview, ArtifactPreviewError } from '@agenthub/agent-core'
 import { CreateAgentChatDto } from '../dto/create-agent-chat.dto.js'
 import { UpdateAgentChatDto } from '../dto/update-agent-chat.dto.js'
 import { UpdateAgentMessageDto } from '../dto/update-agent-message.dto.js'
@@ -279,6 +283,68 @@ export class AgentChatService {
             session.id,
             payload
         )
+    }
+
+    /**
+     * 读取单聊工作目录内某个产物文件的预览。路径来自该聊天持久化的产物快照(经
+     * 控制器透传),server 模式直接读服务器文件;local 模式经反向通道在用户本机执行。
+     * 两种模式都由 `buildArtifactPreview` 做工作目录边界校验。
+     */
+    async previewArtifact(
+        userId: string,
+        chatId: string,
+        path: string
+    ): Promise<BlackboardArtifactPreview> {
+        const { session } = await this.loadChat(userId, chatId)
+        const artifact = this.syntheticArtifact(session.agentId, path)
+        if (session.executionMode === 'local') {
+            this.assertRunnerConnected(userId)
+            const file = await this.localRunner.rpc(userId, 'artifact.preview', {
+                workingDirectory: session.workingDirectory,
+                path
+            })
+            // 本机 runner 已返回完整 BlackboardArtifactPreview;以服务端合成的 artifact 为准。
+            return { ...file, artifact }
+        }
+        try {
+            const file = await buildArtifactPreview(session.workingDirectory, path)
+            return { artifact, ...file }
+        } catch (err) {
+            throw this.toPreviewError(err, path)
+        }
+    }
+
+    /** 单聊无黑板,据相对路径合成一个最小 BlackboardArtifact 供预览渲染层复用。 */
+    private syntheticArtifact(agentId: string, path: string): BlackboardArtifact {
+        const now = new Date().toISOString()
+        return {
+            id: path,
+            type: this.artifactType(path),
+            path,
+            ownerAgentId: agentId,
+            version: 1,
+            status: 'draft',
+            summary: '',
+            updatedAt: now,
+            updatedByAgentId: agentId
+        }
+    }
+
+    private artifactType(path: string): BlackboardArtifactType {
+        const lower = path.toLowerCase()
+        if (/\.(md|txt|rst|adoc)$/.test(lower)) return 'document'
+        if (/test|spec/.test(lower)) return 'test_report'
+        if (/\.(png|svg|fig|sketch)$/.test(lower)) return 'design'
+        return 'code'
+    }
+
+    private toPreviewError(err: unknown, path: string): BusinessException {
+        if (err instanceof ArtifactPreviewError) {
+            if (err.reason === 'not_found') return BusinessException.notFound(err.message)
+            if (err.reason === 'forbidden') return BusinessException.forbidden(err.message)
+            return BusinessException.badRequest(err.message)
+        }
+        return BusinessException.badRequest(`Artifact ${path} preview failed`)
     }
 
     /** local 文件操作需要桌面端在线；不在线时给出明确错误而非超时。 */

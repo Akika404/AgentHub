@@ -3,10 +3,14 @@ import { computed, ref, watch } from 'vue'
 import type { BlackboardArtifact, BlackboardArtifactPreview } from '../api'
 import { ApiError } from '../api'
 import { groupChatApi } from '../api/group-chats'
+import { agentChatApi } from '../api/agents'
 import ArtifactPreviewBody from './ArtifactPreviewBody.vue'
 
 const props = defineProps<{
-  groupId: string | null
+  /** 群聊来源:据 artifact.id 取黑板产物预览 */
+  groupId?: string | null
+  /** 单聊来源:据 artifact.path(工作目录相对路径)取工作区文件预览 */
+  chatId?: string | null
   artifact: BlackboardArtifact | null
 }>()
 
@@ -19,7 +23,7 @@ const preview = ref<BlackboardArtifactPreview | null>(null)
 const errorText = ref<string | null>(null)
 let loadSeq = 0
 
-const open = computed(() => Boolean(props.groupId && props.artifact))
+const open = computed(() => Boolean((props.groupId || props.chatId) && props.artifact))
 const title = computed(() => props.artifact?.path ?? '产出物预览')
 
 const kindLabel = computed(() => {
@@ -55,16 +59,20 @@ function formatBytes(size: number): string {
 
 async function loadPreview(): Promise<void> {
   const groupId = props.groupId
+  const chatId = props.chatId
   const artifact = props.artifact
   const seq = ++loadSeq
 
   preview.value = null
   errorText.value = null
-  if (!groupId || !artifact) return
+  if (!artifact || (!groupId && !chatId)) return
 
   loading.value = true
   try {
-    const next = await groupChatApi.getArtifactPreview(groupId, artifact.id)
+    // 群聊据黑板 artifact.id 取数;单聊据 artifact.path(工作目录相对路径)取数。
+    const next = groupId
+      ? await groupChatApi.getArtifactPreview(groupId, artifact.id)
+      : await agentChatApi.getArtifactPreview(chatId as string, artifact.path)
     if (seq === loadSeq) preview.value = next
   } catch (err) {
     if (seq !== loadSeq) return
@@ -75,7 +83,7 @@ async function loadPreview(): Promise<void> {
 }
 
 watch(
-  () => [props.groupId, props.artifact?.id] as const,
+  () => [props.groupId, props.chatId, props.artifact?.id] as const,
   () => void loadPreview(),
   { immediate: true }
 )

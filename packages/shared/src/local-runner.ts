@@ -20,6 +20,7 @@ import type {
   WorkspaceCommitResult,
   WorkspaceDiffSummary
 } from './workspace-diff.js'
+import type { ArtifactFilePreview } from './blackboard.js'
 
 /** 当前协议版本。握手时桌面端上报，服务器据此判断兼容性。 */
 export const LOCAL_RUNNER_PROTOCOL_VERSION = 1
@@ -72,6 +73,15 @@ export interface LocalRunnerRpcMap {
   'dir.ensure': {
     params: { workingDirectory: string }
     result: { ok: true }
+  }
+  /**
+   * 读取本机工作目录内某个产物文件,生成应用内预览负载(仅文件派生字段;blackboard
+   * `artifact` 由服务端合成)。路径由服务端从单聊产物快照解析后下发,桌面端仍按工作目录
+   * 边界二次校验(相对、无 `..`、在 workdir 内)。
+   */
+  'artifact.preview': {
+    params: { workingDirectory: string; path: string }
+    result: ArtifactFilePreview
   }
 }
 

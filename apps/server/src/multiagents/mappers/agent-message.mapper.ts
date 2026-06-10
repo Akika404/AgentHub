@@ -34,6 +34,12 @@ export function toAgentChatMessageView(
     if (steps.length > 0) {
         view.steps = steps.map(toAgentRunStepView)
     }
+    if (message.artifacts && message.artifacts.length > 0) {
+        view.artifacts = message.artifacts
+    }
+    if (message.deployManifest) {
+        view.deployManifest = message.deployManifest
+    }
     if (message.replyTo) {
         view.replyTo = message.replyTo
     }

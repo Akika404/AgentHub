@@ -4,6 +4,8 @@
  */
 
 import type { MessageReplyRef } from './chat.js'
+import type { BlackboardArtifact } from './blackboard.js'
+import type { DeployManifest } from './deployment.js'
 
 export type AgentVendor = 'claude' | 'codex'
 
@@ -108,6 +110,17 @@ export interface AgentChatMessageView {
   pinned: boolean
   /** 该消息产出过程中的有序运行步骤；仅 agent 消息可能非空 */
   steps?: AgentRunStepView[]
+  /**
+   * 本轮 agent run 产出/改动的文件,从 turn 起止的 workspace diff 增量推导,
+   * 作为快照随消息持久化,供 agent-run 气泡内联预览卡片渲染(对齐群聊
+   * `GroupTextMessageView.artifacts`)。仅 agent 消息可能非空。
+   */
+  artifacts?: BlackboardArtifact[]
+  /**
+   * 本轮产出可呈现交付物时附带的 static 预览清单(如 `index.html`),供渲染层在
+   * 该 agent 消息后插入一张预览卡片。单聊仅支持 `static`,不做 service 部署。
+   */
+  deployManifest?: DeployManifest
   /** when present, this user message is a reply that quotes another message */
   replyTo?: MessageReplyRef
 }
