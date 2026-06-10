@@ -1,4 +1,5 @@
 import 'reflect-metadata'
+import { networkInterfaces } from 'node:os'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -14,6 +15,20 @@ import { ErrorCode } from './common/exceptions/error-code.js'
 
 const httpLogger = new Logger('HTTP')
 const API_BODY_LIMIT = '512kb'
+
+function getLanIPv4Addresses(): string[] {
+    const addresses = new Set<string>()
+
+    for (const networkInterface of Object.values(networkInterfaces())) {
+        for (const address of networkInterface ?? []) {
+            if (address.family === 'IPv4' && !address.internal) {
+                addresses.add(address.address)
+            }
+        }
+    }
+
+    return [...addresses]
+}
 
 /**
  * 挂载 API 文档（Scalar UI）。
@@ -89,6 +104,9 @@ async function bootstrap(): Promise<void> {
     const port = config.get<number>('SERVER_PORT', 3000)
     await app.listen(port)
     Logger.log(`AgentHub server listening on http://localhost:${port}/api`, 'Bootstrap')
+    for (const address of getLanIPv4Addresses()) {
+        Logger.log(`AgentHub server listening on http://${address}:${port}/api`, 'Bootstrap')
+    }
     if (docsEnabled) {
         Logger.log(`API docs (Scalar) on http://localhost:${port}/api/reference`, 'Bootstrap')
     }
