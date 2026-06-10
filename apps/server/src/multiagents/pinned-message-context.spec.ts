@@ -101,6 +101,42 @@ test('AgentMessageHistoryService persists message pin and renders single-chat co
     assert.equal(context.includes('请始终记住这个约束'), true)
 })
 
+test('AgentMessageHistoryService resolves regenerate prompt from selected agent reply', async () => {
+    const rows = [
+        agentMessage({
+            id: 'user-message-1',
+            role: 'user',
+            text: '请实现消息重新生成',
+            replyTo: { messageId: 'quoted-1', senderName: 'Codex', excerpt: '上一轮摘要' },
+            createdAt: new Date('2026-01-01T00:00:00.000Z')
+        }),
+        agentMessage({
+            id: 'agent-message-1',
+            role: 'agent',
+            text: '已完成',
+            createdAt: new Date('2026-01-01T00:00:01.000Z')
+        })
+    ]
+    const messageRepo = {
+        find: async ({ where }: { where: Record<string, unknown> }) =>
+            rows.filter((row) => matchesWhere(row as unknown as Record<string, unknown>, where))
+    }
+    const service = new AgentMessageHistoryService(
+        messageRepo as never,
+        { find: async () => [] } as never
+    )
+
+    const source = await service.resolveRegeneratePrompt('user-1', 'session-1', 'agent-message-1')
+
+    assert.equal(source.sourceMessageId, 'user-message-1')
+    assert.equal(source.prompt, '请实现消息重新生成')
+    assert.deepEqual(source.replyTo, {
+        messageId: 'quoted-1',
+        senderName: 'Codex',
+        excerpt: '上一轮摘要'
+    })
+})
+
 test('GroupMessageService persists pin and renders card summaries for group context', async () => {
     const rows = [
         groupMessage({
@@ -121,10 +157,7 @@ test('GroupMessageService persists pin and renders card summaries for group cont
         create: (value: unknown) => value,
         save: async (value: GroupMessage) => value
     }
-    const service = new GroupMessageService(
-        messageRepo as never,
-        { find: async () => [] } as never
-    )
+    const service = new GroupMessageService(messageRepo as never, { find: async () => [] } as never)
 
     const view = await service.updateMessage('group-1', 'group-message-1', { pinned: true })
     const context = await service.pinnedContext('group-1')

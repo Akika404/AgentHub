@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
-import type { MessageReplyRef, UpdateAgentChatMessagePayload, BlackboardArtifact, DeployManifest } from '@agenthub/shared'
+import type {
+    MessageReplyRef,
+    UpdateAgentChatMessagePayload,
+    BlackboardArtifact,
+    DeployManifest
+} from '@agenthub/shared'
 import type { AgentEvent, AgentTodoItem, ToolCallStatus } from '../adapter/index.js'
 import type { AgentChatMessageView } from '../dto/agent-message-view.dto.js'
 import { AgentMessage } from '../entities/agent-message.entity.js'
@@ -23,6 +28,12 @@ export interface StepDraft {
     output?: unknown
     isError?: boolean
     todos?: AgentTodoItem[]
+}
+
+export interface RegeneratePromptSource {
+    prompt: string
+    replyTo: MessageReplyRef | null
+    sourceMessageId: string
 }
 
 @Injectable()
@@ -118,6 +129,38 @@ export class AgentMessageHistoryService {
             where: { id: messageId, userId, sessionId }
         })
         return row?.text ?? null
+    }
+
+    async resolveRegeneratePrompt(
+        userId: string,
+        sessionId: string,
+        messageId: string
+    ): Promise<RegeneratePromptSource> {
+        const rows = await this.messageRepo.find({
+            where: { userId, sessionId },
+            order: { createdAt: 'ASC', id: 'ASC' }
+        })
+        const targetIndex = rows.findIndex((row) => row.id === messageId)
+        if (targetIndex === -1) throw BusinessException.notFound(`Message ${messageId} not found`)
+
+        const target = rows[targetIndex]
+        const source =
+            target.role === 'user'
+                ? target
+                : rows
+                      .slice(0, targetIndex)
+                      .reverse()
+                      .find((row) => row.role === 'user')
+
+        if (!source) {
+            throw BusinessException.badRequest('没有可用于重新生成的用户消息')
+        }
+
+        return {
+            prompt: source.text,
+            replyTo: source.replyTo,
+            sourceMessageId: source.id
+        }
     }
 
     private async listPinnedContextItems(

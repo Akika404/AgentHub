@@ -105,6 +105,21 @@ export class AgentChatsController {
         return this.manager.updateChatMessage(user.id, chatId, messageId, dto)
     }
 
+    @Post(':chatId/messages/:messageId/regenerate')
+    @ApiOperation({
+        summary: '基于单 Agent 聊天消息重新生成回复',
+        description:
+            '从目标消息解析最近的用户消息，启动一轮后台 turn，不重复追加用户消息；通过 GET :chatId/turns/:turnId/events 订阅进度。'
+    })
+    @ApiEnvelope(StartTurnResultDto, { status: 201 })
+    regenerateFromMessage(
+        @CurrentUser() user: User,
+        @Param('chatId') chatId: string,
+        @Param('messageId') messageId: string
+    ): Promise<{ turnId: string }> {
+        return this.manager.regenerateFromMessage(user.id, chatId, messageId)
+    }
+
     @Get(':chatId/workspace-diff')
     @ApiOperation({ summary: '获取单 Agent 聊天工作区当前未提交变更' })
     @ApiEnvelope(WorkspaceDiffSummaryDto)

@@ -45,18 +45,19 @@
 
 所有接口前缀为 `/api`，并且需要 `Authorization: Bearer <token>`。
 
-| Method     | Path                                        | 说明                                                                |
-| ---------- | ------------------------------------------- | ------------------------------------------------------------------- |
-| `GET`      | `/agents`                                   | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗                 |
-| `POST`     | `/agent-chats`                              | 创建单 Agent 聊天                                                   |
-| `GET`      | `/agent-chats`                              | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用                     |
-| `GET`      | `/agent-chats/:chatId`                      | 查询单个聊天                                                        |
-| `GET`      | `/agent-chats/:chatId/messages`             | 查询该聊天 UI 消息历史，按时间升序                                  |
-| `POST`     | `/agent-chats/:chatId/converse`             | 启动一轮对话（后台游离运行），body 传 `prompt`，返回 `{ turnId }`   |
-| `GET @Sse` | `/agent-chats/:chatId/turns/:turnId/events` | 订阅该轮事件流，先回放后追尾，逐条推送 `AgentEvent`，遇 `done` 结束 |
-| `POST`     | `/agent-chats/:chatId/turns/:turnId/abort`  | 主动中止该轮（跨实例广播）                                          |
-| `POST`     | `/agent-chats/:chatId/clear`                | 清空该聊天 SDK 句柄和 UI 消息历史                                   |
-| `DELETE`   | `/agent-chats/:chatId`                      | 删除该聊天                                                          |
+| Method     | Path                                                  | 说明                                                                |
+| ---------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| `GET`      | `/agents`                                             | 当前用户的全部 Agent 配置，用于管理页和创建聊天弹窗                 |
+| `POST`     | `/agent-chats`                                        | 创建单 Agent 聊天                                                   |
+| `GET`      | `/agent-chats`                                        | 当前用户的全部单 Agent 聊天，聊天页左侧列表使用                     |
+| `GET`      | `/agent-chats/:chatId`                                | 查询单个聊天                                                        |
+| `GET`      | `/agent-chats/:chatId/messages`                       | 查询该聊天 UI 消息历史，按时间升序                                  |
+| `POST`     | `/agent-chats/:chatId/messages/:messageId/regenerate` | 基于已有消息关联的用户输入启动重新生成 turn，不重复追加用户消息     |
+| `POST`     | `/agent-chats/:chatId/converse`                       | 启动一轮对话（后台游离运行），body 传 `prompt`，返回 `{ turnId }`   |
+| `GET @Sse` | `/agent-chats/:chatId/turns/:turnId/events`           | 订阅该轮事件流，先回放后追尾，逐条推送 `AgentEvent`，遇 `done` 结束 |
+| `POST`     | `/agent-chats/:chatId/turns/:turnId/abort`            | 主动中止该轮（跨实例广播）                                          |
+| `POST`     | `/agent-chats/:chatId/clear`                          | 清空该聊天 SDK 句柄和 UI 消息历史                                   |
+| `DELETE`   | `/agent-chats/:chatId`                                | 删除该聊天                                                          |
 
 > 契约变更：旧版 `GET @Sse /agent-chats/:chatId/converse?prompt=` 一个端点既启动又流式返回、且客户端断连即中止；现拆分为「`POST converse` 启动（返回 turnId）」+「`GET turns/:turnId/events` 订阅」。启动是写操作、订阅是读操作，且订阅可被多端并发，是后台运行与多端围观的前提。
 
@@ -159,6 +160,7 @@ interface AgentChatView {
 - 发送消息：先 `POST converse` 拿到 `turnId`，再订阅 `turns/:turnId/events`；切换聊天不会取消订阅，卸载页面只「detach」（取消订阅，不中止 turn）。
 - 后台订阅按 chat 维护，事件复用与发送一致的 handler 渲染「进行中」的运行折叠条；当前打开聊天同步右侧 runtime，非当前聊天只更新对应 message cache 与列表运行态。若本地缓存里已有该聊天未完成的临时 `agent-run` 消息，会优先复用它，避免切走/切回后出现两张 Agent 运行卡；复用时会先把该临时卡重置为初始运行态，再用 Redis backlog 重建步骤，避免重复追加旧步骤。流结束后会重新加载 DB 历史，用后端权威消息覆盖本地临时态，并发出桌面通知；如果订阅结束但尚未收到 Agent `done`，前端会刷新 `activeTurnId` 并在该 turn 仍活跃时自动重新订阅。
 - 输入区在有轮运行时显示「停止」按钮，点击调 `abort` 端点。
+- 消息右键菜单在单聊用户消息和 Agent 回复上提供「重新生成」：用户消息直接用自身文本，Agent 回复由服务端回溯最近一条用户消息。前端拿到新的 `turnId` 后复用现有 turn 订阅和运行消息渲染流程；重新生成不会重复追加用户消息。
 - `messageFromView` 在 `agent` 消息带 `steps` 时重建为 `AgentRunMessage`（运行过程折叠条）：thinking 标签按序复原为"思考中/继续思考"，tool 标签复原为"正在调用 {toolName}"，状态置 `done`；否则维持纯文本气泡。重开/刷新会话即可看到历史运行过程。
 - 右侧状态区显示 Agent 摘要和当前聊天的真实 `workingDirectory/sessionHomeDirectory`。
 
@@ -172,3 +174,4 @@ interface AgentChatView {
 - clear 不删除底层 SDK 已落盘的旧会话文件。
 - 多实例部署下：跨实例 abort 已支持（控制频道）；但 boot 回收默认只对单实例安全，多实例须设 `AGENT_RECLAIM_ON_BOOT=false`，残留活跃指针改由安全 TTL 兜底。turn 的执行实例路由（连续轮落到不同实例）仍依赖 `sdkSessionId` 续接，未做粘性会话。
 - turn 事件流仅在 Redis 中保留 TTL（默认 1h）；晚于 TTL 才打开的端回退读 DB 历史（此时 turn 多半已结束）。
+- 重新生成不会删除旧回复、不会截断后续历史，也不会回滚工作区文件；它是在当前会话末尾追加一条新的 Agent 回复。

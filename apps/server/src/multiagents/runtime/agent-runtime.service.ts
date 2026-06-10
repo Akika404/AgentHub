@@ -88,6 +88,23 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         prompt: string,
         replyTo: MessageReplyRef | null = null
     ): Promise<{ turnId: string }> {
+        return this.startPromptTurn(session, prompt, replyTo, { saveUserMessage: true })
+    }
+
+    async regenerateTurn(
+        session: AgentSession,
+        prompt: string,
+        replyTo: MessageReplyRef | null = null
+    ): Promise<{ turnId: string }> {
+        return this.startPromptTurn(session, prompt, replyTo, { saveUserMessage: false })
+    }
+
+    private async startPromptTurn(
+        session: AgentSession,
+        prompt: string,
+        replyTo: MessageReplyRef | null,
+        options: { saveUserMessage: boolean }
+    ): Promise<{ turnId: string }> {
         const turnId = randomUUID()
         const owned = await this.turnStream.acquireActiveTurn(session.id, turnId)
         if (owned !== turnId) {
@@ -114,16 +131,30 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
         live.abort = abort
         this.runningTurns.set(turnId, { sessionId: session.id, abort })
 
+        if (options.saveUserMessage) {
+            try {
+                // 落库存「干净原文 + 引用快照」，刷新后据 replyTo 重渲染引用气泡。
+                await this.messages.saveMessage(
+                    session.userId,
+                    session.agentId,
+                    session.id,
+                    'user',
+                    prompt,
+                    replyTo
+                )
+            } catch (err) {
+                live.busy = false
+                live.abort = null
+                this.runningTurns.delete(turnId)
+                await this.turnStream.abandonTurn(session.id, turnId)
+                throw err
+            }
+        }
+
+        let sdkPrompt: string
         try {
-            // 落库存「干净原文 + 引用快照」，刷新后据 replyTo 重渲染引用气泡。
-            await this.messages.saveMessage(
-                session.userId,
-                session.agentId,
-                session.id,
-                'user',
-                prompt,
-                replyTo
-            )
+            // 发给 SDK 的 prompt 拼 pinned 全局上下文 + 引用前言；二者不落库。
+            sdkPrompt = await this.buildSdkPrompt(session, prompt, replyTo)
         } catch (err) {
             live.busy = false
             live.abort = null
@@ -131,9 +162,6 @@ export class AgentRuntimeService implements OnModuleInit, OnModuleDestroy {
             await this.turnStream.abandonTurn(session.id, turnId)
             throw err
         }
-
-        // 发给 SDK 的 prompt 拼 pinned 全局上下文 + 引用前言；二者不落库。
-        const sdkPrompt = await this.buildSdkPrompt(session, prompt, replyTo)
         void this.runTurn(session, live, sdkPrompt, abort, turnId)
         return { turnId }
     }

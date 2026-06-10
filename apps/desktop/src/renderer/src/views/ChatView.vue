@@ -2194,7 +2194,6 @@ async function sendAgentMessage(payload: {
 
   const chatId = chat.id
   const key = agentSessionKey(chatId)
-  const prompt = payload.text
   const userMessage: TextMessage = {
     id: `m-user-${Date.now()}`,
     chatId: key,
@@ -2207,6 +2206,20 @@ async function sendAgentMessage(payload: {
 
   appendMessage(key, userMessage)
   pendingReply.value = null
+  await startAgentTurn(
+    chat,
+    (handlers) => agentChatApi.converse(chatId, payload.text, handlers, payload.replyTo),
+    () => removeMessage(key, userMessage.id)
+  )
+}
+
+async function startAgentTurn(
+  chat: AgentChatView,
+  createStream: (handlers: AgentConverseHandlers) => Promise<AgentConverseStream>,
+  onStartError?: (err: unknown) => void
+): Promise<void> {
+  const chatId = chat.id
+  const key = agentSessionKey(chatId)
   setChatRunning(key, true)
   runtime.value = { ...idleRuntime(), phase: 'streaming', label: 'Starting' }
 
@@ -2231,7 +2244,7 @@ async function sendAgentMessage(payload: {
   }
 
   try {
-    stream = await agentChatApi.converse(chatId, prompt, proxyHandlers, payload.replyTo)
+    stream = await createStream(proxyHandlers)
     handlers = buildConverseHandlers(chat, stream.turnId)
     turnStreams.set(key, stream)
     markChatActiveTurn(chatId, stream.turnId)
@@ -2246,14 +2259,29 @@ async function sendAgentMessage(payload: {
       void reloadAfterStreamDrop(chatId)
       return
     }
-    removeMessage(key, userMessage.id)
-    if (activeSessionKey.value !== key) return
+    onStartError?.(err)
     setChatRunning(key, false)
     removeCurrentAgentRun(key)
     const message = err instanceof Error ? err.message : String(err)
-    runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
+    if (activeSessionKey.value === key) {
+      runtime.value = { ...runtime.value, phase: 'error', label: 'Error', detail: message }
+    }
     appendSystemMessage(key, message)
   }
+}
+
+async function onRegenerateMessage(msg: ChatDisplayMessage): Promise<void> {
+  const chat = activeChat.value
+  const key = activeSessionKey.value
+  if (!chat || !key || streaming.value || activeArchived.value || chat.archivedAt) return
+
+  if (msg.id.startsWith('m-')) {
+    appendSystemMessage(key, '消息仍在同步，稍后再试')
+    return
+  }
+
+  pendingReply.value = null
+  await startAgentTurn(chat, (handlers) => agentChatApi.regenerate(chat.id, msg.id, handlers))
 }
 
 async function sendGroupMessage(payload: {
@@ -2531,12 +2559,15 @@ onUnmounted(() => {
         :mention-targets="activeMentionTargets"
         :mention-disabled="streaming || activeArchived"
         :interaction-disabled="activeArchived"
+        :regenerate-enabled="!!activeChat"
+        :regenerate-disabled="streaming || activeArchived"
         @select-option="onSelectOption"
         @reply-option="onReplyOption"
         @submit-question="onSubmitQuestion"
         @pin-message="onPinMessage"
         @copy-message="onCopyMessage"
         @reply-message="onReplyMessage"
+        @regenerate-message="onRegenerateMessage"
         @mention-sender="onMentionSender"
         @preview-artifact="openArtifactPreview"
         @edit-artifact="openArtifactEditor"

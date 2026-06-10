@@ -369,6 +369,19 @@ export class AgentChatService {
         return this.runtime.startTurn(session, prompt, replyTo)
     }
 
+    async regenerateFromMessage(
+        userId: string,
+        chatId: string,
+        messageId: string
+    ): Promise<{ turnId: string }> {
+        const { session } = await this.loadChat(userId, chatId)
+        if (session.archivedAt) {
+            throw BusinessException.forbidden('Archived chat is read-only')
+        }
+        const source = await this.messages.resolveRegeneratePrompt(userId, session.id, messageId)
+        return this.runtime.regenerateTurn(session, source.prompt, source.replyTo)
+    }
+
     async subscribeTurn(
         userId: string,
         chatId: string,

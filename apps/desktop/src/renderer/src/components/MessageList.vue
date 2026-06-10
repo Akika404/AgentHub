@@ -24,6 +24,8 @@ const props = defineProps<{
   mentionTargets?: MentionTarget[]
   mentionDisabled?: boolean
   interactionDisabled?: boolean
+  regenerateEnabled?: boolean
+  regenerateDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +38,7 @@ const emit = defineEmits<{
   (e: 'pin-message', message: ChatDisplayMessage): void
   (e: 'copy-message', message: ChatDisplayMessage): void
   (e: 'reply-message', message: ChatDisplayMessage): void
+  (e: 'regenerate-message', message: ChatDisplayMessage): void
   (e: 'mention-sender', senderId: string): void
   (e: 'preview-artifact', artifact: BlackboardArtifact): void
   (e: 'edit-artifact', artifact: BlackboardArtifact): void
@@ -89,6 +92,12 @@ function mentionTargetFor(message: ChatDisplayMessage): MentionTarget | null {
   return props.mentionTargets?.find((target) => target.id === senderId) ?? null
 }
 
+function canRegenerateMessage(message: ChatDisplayMessage): boolean {
+  if (isAgentRunMessage(message)) return true
+  if (isDeployMessage(message) || message.kind !== 'text') return false
+  return message.sender.role === 'user' || message.sender.role === 'agent'
+}
+
 function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
   event.preventDefault()
   menuTarget.value = message
@@ -112,7 +121,17 @@ function openMenu(event: MouseEvent, message: ChatDisplayMessage): void {
       icon: message.pinned ? 'keep_off' : 'keep'
     },
     { id: 'copy', label: '复制', icon: 'content_copy' },
-    { id: 'reply', label: '回复', icon: 'reply', disabled: props.interactionDisabled }
+    { id: 'reply', label: '回复', icon: 'reply', disabled: props.interactionDisabled },
+    ...(props.regenerateEnabled && canRegenerateMessage(message)
+      ? [
+          {
+            id: 'regenerate',
+            label: '重新生成',
+            icon: 'refresh',
+            disabled: props.regenerateDisabled || props.interactionDisabled
+          }
+        ]
+      : [])
   ]
   menuOpen.value = true
 }
@@ -137,6 +156,7 @@ function onMenuSelect(id: string): void {
   if (id === 'pin') emit('pin-message', target)
   else if (id === 'copy') emit('copy-message', target)
   else if (id === 'reply') emit('reply-message', target)
+  else if (id === 'regenerate') emit('regenerate-message', target)
   else if (id === 'mention') {
     const senderId = senderIdFor(target)
     if (senderId) emit('mention-sender', senderId)

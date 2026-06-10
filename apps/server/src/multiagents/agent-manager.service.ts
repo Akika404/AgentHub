@@ -110,6 +110,14 @@ export class AgentManager {
         return this.chats.startTurn(userId, chatId, prompt, replyTo)
     }
 
+    regenerateFromMessage(
+        userId: string,
+        chatId: string,
+        messageId: string
+    ): Promise<{ turnId: string }> {
+        return this.chats.regenerateFromMessage(userId, chatId, messageId)
+    }
+
     subscribeTurn(
         userId: string,
         chatId: string,

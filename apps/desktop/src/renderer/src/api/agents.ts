@@ -156,6 +156,17 @@ async function startConverseStream(
   return subscribeTurn(chatId, turnId, handlers)
 }
 
+async function startRegenerateStream(
+  chatId: string,
+  messageId: string,
+  handlers: AgentConverseHandlers
+): Promise<AgentConverseStream> {
+  const { turnId } = await http.post<StartTurnResult>(
+    `/agent-chats/${chatId}/messages/${messageId}/regenerate`
+  )
+  return subscribeTurn(chatId, turnId, handlers)
+}
+
 /** Multi-agent module client. Maps `/api/agents/*`. */
 export const agentApi = {
   list: () => http.get<AgentView[]>('/agents'),
@@ -190,6 +201,8 @@ export const agentChatApi = {
   delete: (chatId: string) => http.delete<{ deleted: true }>(`/agent-chats/${chatId}`),
   /** Start a turn (runs server-side, detached) and subscribe to its event stream. */
   converse: startConverseStream,
+  /** Start a regenerate turn from an existing message and subscribe to its event stream. */
+  regenerate: startRegenerateStream,
   /** Subscribe to an already-running turn's stream (replay + tail) — used to watch live progress. */
   subscribeTurn,
   /** Stop a running turn server-side (affects every watching device). */
