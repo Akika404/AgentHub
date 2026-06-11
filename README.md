@@ -14,8 +14,6 @@
 | **多 Agent 接入** | 统一适配器层抹平 API 差异，至少接入 Claude Code + Codex；支持用户自建 Agent（System Prompt + 工具集），每个 Agent 是一个独立「联系人」 |
 | **产物预览与编辑** | 回复中内联产物卡片（网页 iframe、文档渲染等），点击展开预览或编辑；text/html 产物可写回工作区文件 |
 
-> **群聊实现进度**：「最小闭环」MVP 已落地（建群 + 黑板 + MessageRouter + Orchestrator 串行拆解/派发 + 聚合汇报 + ContextAssembler + agent_memory + 子 Agent worktree 执行）。本轮为串行执行；DAG 并行调度 / 冲突检测仲裁 / 失败重试降级留待后续。详见 [`doc/spec/group-chat-collaboration-mvp.md`](doc/spec/group-chat-collaboration-mvp.md)。
-
 ---
 
 ## 🧱 技术栈
@@ -70,7 +68,8 @@ pnpm install
 
 ```bash
 cd apps/server
-cp .env.example .env          # 按需填写 MySQL / Redis / JWT 配置
+cp .env.example .env          # 按需填写 MySQL（运行apps/server/sql 中的 DDL 建表） / Redis / JWT 配置
+
 pnpm -F @agenthub/server dev   # nest start --watch，默认监听 :3000，API 前缀 /api
 ```
 
